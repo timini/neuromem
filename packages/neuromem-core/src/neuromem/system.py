@@ -33,8 +33,11 @@ import threading
 import time
 import uuid
 
+import numpy as np
+
 from .providers import EmbeddingProvider, LLMProvider
 from .storage.base import StorageAdapter
+from .vectors import compute_centroid
 
 logger = logging.getLogger("neuromem.system")
 
@@ -291,10 +294,125 @@ class NeuroMemory:
         return label_to_node
 
     def _run_clustering(self, label_to_node: dict[str, dict]) -> None:
-        """Agglomerative clustering over all current nodes.
+        """Greedy agglomerative clustering over all current nodes.
 
-        T020 Half A: stub — does nothing. Half B lands the greedy
-        pairwise-merge loop that creates centroid parent nodes and
-        ``child_of`` edges per spec.md §Phase B step 8.
+        Builds a pairwise cosine-similarity matrix via numpy, finds
+        the highest-similarity pair, merges them into a centroid
+        node (``is_centroid=True``) with an LLM-generated one-word
+        label, writes ``child_of`` edges from the centroid to both
+        members, and repeats until no remaining pair exceeds
+        ``cluster_threshold``.
+
+        The method MUTATES storage (upserts centroid nodes, inserts
+        child_of edges) but does NOT mutate ``label_to_node`` — leaf
+        tag nodes stay addressable so ``_run_dream_cycle`` can still
+        wire ``has_tag`` edges from memories to their direct tags
+        (not to their centroid ancestors).
+
+        Safety bound: the loop runs at most ``2 * len(candidates)``
+        iterations so a pathological similarity matrix cannot hang.
         """
-        _ = label_to_node  # used in Half B
+        # Copy the starting nodes into a working list. Appending
+        # centroids to this list grows the pool — a centroid can
+        # itself merge with another node on a later iteration,
+        # producing a multi-level hierarchy.
+        candidates: list[dict] = [
+            {
+                "id": node["id"],
+                "label": node["label"],
+                "embedding": np.asarray(node["embedding"], dtype=np.float64),
+                "is_centroid": bool(node["is_centroid"]),
+            }
+            for node in label_to_node.values()
+        ]
+        alive = [True] * len(candidates)
+
+        max_iterations = max(2, 2 * len(candidates))
+        for _iteration in range(max_iterations):
+            alive_indices = [i for i, a in enumerate(alive) if a]
+            if len(alive_indices) < 2:
+                break
+
+            # Build a (k, D) matrix of only the alive embeddings.
+            alive_embs = np.stack([candidates[i]["embedding"] for i in alive_indices])
+
+            # Pairwise cosine similarity: normalise rows, then dot-product.
+            row_norms = np.linalg.norm(alive_embs, axis=1, keepdims=True)
+            safe_norms = np.where(row_norms > 0.0, row_norms, 1.0)
+            normed = alive_embs / safe_norms
+            sim = normed @ normed.T
+            np.fill_diagonal(sim, -np.inf)  # never merge with self
+
+            # Find the highest-similarity pair.
+            flat_idx = int(np.argmax(sim))
+            k = len(alive_indices)
+            i_rel, j_rel = divmod(flat_idx, k)
+            best_sim = float(sim[i_rel, j_rel])
+            if best_sim < self.cluster_threshold:
+                break
+
+            # Resolve back to indices in the full candidates list.
+            i = alive_indices[i_rel]
+            j = alive_indices[j_rel]
+            a = candidates[i]
+            b = candidates[j]
+
+            # Merge: compute centroid, name it, persist.
+            centroid_emb = compute_centroid([a["embedding"], b["embedding"]])
+            raw_label = self.llm.generate_category_name([a["label"], b["label"]])
+            parent_label = _sanitise_category_name(raw_label)
+            centroid_id = f"node_{uuid.uuid4()}"
+
+            self.storage.upsert_node(
+                node_id=centroid_id,
+                label=parent_label,
+                embedding=centroid_emb,
+                is_centroid=True,
+            )
+            self.storage.insert_edge(
+                source_id=centroid_id,
+                target_id=a["id"],
+                weight=best_sim,
+                relationship="child_of",
+            )
+            self.storage.insert_edge(
+                source_id=centroid_id,
+                target_id=b["id"],
+                weight=best_sim,
+                relationship="child_of",
+            )
+
+            # Retire the two members and add the centroid as a new
+            # live candidate so the next iteration can merge IT too.
+            alive[i] = False
+            alive[j] = False
+            candidates.append(
+                {
+                    "id": centroid_id,
+                    "label": parent_label,
+                    "embedding": centroid_emb,
+                    "is_centroid": True,
+                }
+            )
+            alive.append(True)
+
+
+def _sanitise_category_name(raw: str) -> str:
+    """Enforce the one-word contract on LLMProvider.generate_category_name.
+
+    If the LLM returns multiple words or an empty string, take the
+    first word (or a safe default) and log a warning. This is the
+    defensive layer that protects the concept graph from free-form
+    LLM output sneaking in as a node label.
+    """
+    stripped = (raw or "").strip()
+    if not stripped:
+        return "Category"
+    first_word = stripped.split()[0]
+    if len(stripped.split()) > 1:
+        logger.warning(
+            "generate_category_name returned multi-word %r; using %r",
+            raw,
+            first_word,
+        )
+    return first_word

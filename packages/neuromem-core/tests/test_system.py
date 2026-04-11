@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 
+import numpy as np
 import pytest
 from neuromem.providers import EmbeddingProvider, LLMProvider
 from neuromem.storage.sqlite import SQLiteAdapter
@@ -470,6 +471,200 @@ class TestEnsureTagNodes:
         nodes_after_second = memory_system.storage.get_all_nodes()
         shared_count_2 = sum(1 for n in nodes_after_second if n["label"] == "shared")
         assert shared_count_2 == 1
+
+
+# ---------------------------------------------------------------------------
+# Agglomerative clustering (T020 Half B)
+# ---------------------------------------------------------------------------
+
+
+class ControlledEmbedder(EmbeddingProvider):
+    """Deterministic embedder for clustering tests.
+
+    Returns a fixed 4-dim vector for every known label. Unknown
+    labels raise KeyError so bugs in the tag-to-node wiring surface
+    loudly rather than silently returning arbitrary vectors.
+    """
+
+    def __init__(self, vectors: dict[str, list[float]]) -> None:
+        self._vectors = {label: np.asarray(vec, dtype=np.float32) for label, vec in vectors.items()}
+        self.dim = next(iter(self._vectors.values())).shape[0]
+
+    def get_embeddings(self, texts: list[str]) -> np.ndarray:
+        return np.stack([self._vectors[t] for t in texts])
+
+
+class TestAgglomerativeClustering:
+    def test_clustering_creates_centroid_when_close(
+        self,
+        mock_llm: MockLLMProvider,
+    ) -> None:
+        """Two tags with cosine ~0.995 merge into a centroid."""
+        ctrl = ControlledEmbedder(
+            {
+                # alpha and beta are nearly identical (cos ≈ 0.995)
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.995, 0.1, 0.0, 0.0],
+                # gamma is orthogonal to both
+                "gamma": [0.0, 0.0, 1.0, 0.0],
+            }
+        )
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        # MockLLMProvider.extract_tags returns first 3 alpha tokens.
+        system.enqueue("alpha beta gamma")
+        system.force_dream()
+
+        nodes = system.storage.get_all_nodes()
+        leaves = [n for n in nodes if not n["is_centroid"]]
+        centroids = [n for n in nodes if n["is_centroid"]]
+
+        # 3 leaves (alpha, beta, gamma) + at least 1 centroid (alpha+beta)
+        leaf_labels = {n["label"] for n in leaves}
+        assert leaf_labels >= {"alpha", "beta", "gamma"}
+        assert len(centroids) >= 1
+
+        # MockLLMProvider.generate_category_name(["alpha","beta"]) → "CatAB"
+        # or "CatBA" depending on argmax ordering; both are valid.
+        centroid_labels = {n["label"] for n in centroids}
+        assert centroid_labels & {"CatAB", "CatBA"}
+
+    def test_clustering_does_not_merge_below_threshold(
+        self,
+        mock_llm: MockLLMProvider,
+    ) -> None:
+        """With cluster_threshold=0.99, cos=0.5 pairs are not merged."""
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.5, 0.866, 0.0, 0.0],  # cos(alpha, beta) = 0.5
+                "gamma": [0.0, 0.5, 0.866, 0.0],
+            }
+        )
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=ctrl,
+            cluster_threshold=0.99,
+        )
+        system.enqueue("alpha beta gamma")
+        system.force_dream()
+
+        nodes = system.storage.get_all_nodes()
+        centroids = [n for n in nodes if n["is_centroid"]]
+        assert len(centroids) == 0
+
+    def test_has_tag_edges_still_point_to_leaves_after_clustering(
+        self,
+        mock_llm: MockLLMProvider,
+    ) -> None:
+        """A memory's has_tag edges must land on the LEAF tag nodes,
+        never on their centroid parents, so contextual recall can
+        still reach the original concept."""
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.999, 0.01, 0.0, 0.0],
+                "gamma": [0.0, 0.0, 1.0, 0.0],
+            }
+        )
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        mem_id = system.enqueue("alpha beta gamma")
+        system.force_dream()
+
+        # Pull alpha's leaf node id and walk the subgraph from it.
+        nodes = system.storage.get_all_nodes()
+        alpha_leaf = next(n for n in nodes if n["label"] == "alpha" and not n["is_centroid"])
+        sub = system.storage.get_subgraph([alpha_leaf["id"]], depth=2)
+
+        # The memory must be reachable via the alpha leaf (has_tag edge).
+        reachable = {m["id"] for m in sub["memories"]}
+        assert mem_id in reachable
+
+        # Verify directly: the has_tag edge source is the memory, target
+        # is the leaf, NOT the centroid.
+        has_tag_edges = [e for e in sub["edges"] if e["relationship"] == "has_tag"]
+        assert any(
+            e["source_id"] == mem_id and e["target_id"] == alpha_leaf["id"] for e in has_tag_edges
+        )
+
+    def test_child_of_edges_wired_centroid_to_members(
+        self,
+        mock_llm: MockLLMProvider,
+    ) -> None:
+        """After clustering, centroid → member edges exist with
+        relationship='child_of' and weight equal to the merge similarity."""
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.99, 0.0, 0.0, 0.0],  # cos = 0.99 exactly
+            }
+        )
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+
+        nodes = system.storage.get_all_nodes()
+        centroids = [n for n in nodes if n["is_centroid"]]
+        assert len(centroids) == 1
+        centroid = centroids[0]
+
+        sub = system.storage.get_subgraph([centroid["id"]], depth=1)
+        child_of_edges = [
+            e
+            for e in sub["edges"]
+            if e["relationship"] == "child_of" and e["source_id"] == centroid["id"]
+        ]
+        assert len(child_of_edges) == 2
+        for edge in child_of_edges:
+            assert edge["weight"] >= 0.9  # above the cluster threshold
+            assert edge["weight"] <= 1.0
+
+
+class TestSanitiseCategoryName:
+    def test_single_word_passthrough(self) -> None:
+        from neuromem.system import _sanitise_category_name
+
+        assert _sanitise_category_name("Databases") == "Databases"
+
+    def test_multi_word_takes_first(self) -> None:
+        from neuromem.system import _sanitise_category_name
+
+        assert _sanitise_category_name("Large Databases") == "Large"
+
+    def test_newline_separated_takes_first(self) -> None:
+        from neuromem.system import _sanitise_category_name
+
+        assert _sanitise_category_name("Databases\nStorage") == "Databases"
+
+    def test_empty_returns_fallback(self) -> None:
+        from neuromem.system import _sanitise_category_name
+
+        assert _sanitise_category_name("") == "Category"
+
+    def test_whitespace_only_returns_fallback(self) -> None:
+        from neuromem.system import _sanitise_category_name
+
+        assert _sanitise_category_name("   ") == "Category"
+
+    def test_leading_trailing_whitespace_stripped(self) -> None:
+        from neuromem.system import _sanitise_category_name
+
+        assert _sanitise_category_name("  Databases  ") == "Databases"
 
 
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
