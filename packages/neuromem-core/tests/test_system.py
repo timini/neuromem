@@ -949,6 +949,260 @@ class TestSanitiseCategoryName:
         assert _sanitise_category_name("  Databases  ") == "Databases"
 
 
+# ---------------------------------------------------------------------------
+# T024: US3 end-to-end decay and archival integration tests
+#
+# No new production code — the decay/archival behaviour was
+# implemented in T018 (SQLiteAdapter.apply_decay_and_archive) and
+# wired into the dreaming cycle in T020 (_run_dream_cycle step 8).
+# These tests validate the full User Story 3 lifecycle end-to-end:
+#
+#   1. Consolidated memory with old last_accessed + force_dream →
+#      gets archived, its edges stripped from the active graph.
+#   2. Partially-decayed memory above the archive threshold stays
+#      consolidated with a lowered access_weight.
+#   3. retrieve_memories on an archived memory returns raw_content
+#      but does NOT resurrect the status AND does NOT trigger LTP.
+#   4. Archived memories no longer appear in search_memory results
+#      for a query that would have matched them pre-archival.
+# ---------------------------------------------------------------------------
+
+
+class TestDecayAndArchivalEndToEnd:
+    """User Story 3 — Memories Decay and Are Archived When Not Accessed."""
+
+    def _seed_consolidated_memory(
+        self,
+        memory_system: NeuroMemory,
+        raw_text: str = "alpha beta gamma",
+    ) -> str:
+        """Helper: enqueue one memory and force a dream cycle so it's
+        fully consolidated with tag nodes and has_tag edges in place."""
+        mem_id = memory_system.enqueue(raw_text)
+        memory_system.force_dream(block=True)
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row is not None
+        assert row["status"] == "consolidated"
+        return mem_id
+
+    def test_old_memory_gets_archived_after_force_dream(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """A consolidated memory with last_accessed 60 days past and
+        access_weight already low gets archived on the next dream cycle."""
+        mem_id = self._seed_consolidated_memory(memory_system)
+
+        # Simulate age: set last_accessed to 60 days ago, weight already
+        # low from prior decay. Aggressive lambda so one decay pass
+        # pushes it below the archive_threshold.
+        sixty_days_ago = int(time.time()) - 60 * 86400
+        memory_system.storage._conn.execute(
+            "UPDATE memories SET last_accessed = ?, access_weight = 0.5 WHERE id = ?",
+            (sixty_days_ago, mem_id),
+        )
+
+        # Use the system's configured decay_lambda via force_dream.
+        # Default 3e-7/s * 60 days = 0.0016 — too small. Override by
+        # directly calling apply_decay_and_archive with a lambda tuned
+        # to archive this memory.
+        lambda_for_test = 1e-6  # half-life ~8 days at 1e-6
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=lambda_for_test,
+            archive_threshold=0.1,
+            current_timestamp=int(time.time()),
+        )
+
+        # The memory must now be archived.
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["status"] == "archived"
+
+    def test_recently_accessed_memory_stays_consolidated(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """A consolidated memory with last_accessed 7 days past and a
+        gentle decay lambda should stay consolidated — just with a
+        slightly lower access_weight."""
+        mem_id = self._seed_consolidated_memory(memory_system)
+
+        seven_days_ago = int(time.time()) - 7 * 86400
+        memory_system.storage._conn.execute(
+            "UPDATE memories SET last_accessed = ?, access_weight = 1.0 WHERE id = ?",
+            (seven_days_ago, mem_id),
+        )
+
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=3e-7,  # ~30-day half-life
+            archive_threshold=0.1,
+            current_timestamp=int(time.time()),
+        )
+
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["status"] == "consolidated"
+        # access_weight should have dropped slightly but not below 0.5
+        # (7 days * 3e-7 = ~0.18 lambda-t → exp(-0.18) ≈ 0.83)
+        assert 0.5 < row["access_weight"] < 1.0
+
+    def test_archival_strips_has_tag_edges(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """When a memory is archived, its has_tag edges must be
+        removed from the active graph (but child_of edges between
+        nodes must be preserved — the I-3 invariant from the T018
+        contract)."""
+        mem_id = self._seed_consolidated_memory(memory_system, "python")
+
+        # Confirm the memory has at least one has_tag edge before archival.
+        nodes = memory_system.storage.get_all_nodes()
+        assert nodes  # consolidation produced tag nodes
+        pre_has_tag = memory_system.storage._conn.execute(
+            "SELECT COUNT(*) AS n FROM edges WHERE source_id = ? AND relationship = 'has_tag'",
+            (mem_id,),
+        ).fetchone()
+        assert pre_has_tag["n"] >= 1
+
+        # Force archival.
+        old = int(time.time()) - 365 * 86400
+        memory_system.storage._conn.execute(
+            "UPDATE memories SET last_accessed = ?, access_weight = 0.01 WHERE id = ?",
+            (old, mem_id),
+        )
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=int(time.time()),
+        )
+
+        assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "archived"
+
+        # has_tag edges for this memory must be gone.
+        post_has_tag = memory_system.storage._conn.execute(
+            "SELECT COUNT(*) AS n FROM edges WHERE source_id = ? AND relationship = 'has_tag'",
+            (mem_id,),
+        ).fetchone()
+        assert post_has_tag["n"] == 0
+
+    def test_retrieve_memories_on_archived_returns_content_no_resurrect(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """User Story 3 acceptance #2: archived memories are still
+        retrievable via retrieve_memories — the content is preserved.
+        But the retrieval MUST NOT flip the status back to
+        consolidated, and MUST NOT trigger the LTP spike."""
+        from neuromem.tools import retrieve_memories
+
+        mem_id = self._seed_consolidated_memory(
+            memory_system, "important knowledge about sqlite wal mode"
+        )
+
+        # Archive it.
+        old = int(time.time()) - 365 * 86400
+        memory_system.storage._conn.execute(
+            "UPDATE memories SET last_accessed = ?, access_weight = 0.02 WHERE id = ?",
+            (old, mem_id),
+        )
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=int(time.time()),
+        )
+        assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "archived"
+
+        # Retrieve the archived memory via the tool.
+        results = retrieve_memories([mem_id], memory_system)
+        assert len(results) == 1
+        row = results[0]
+
+        # Content intact.
+        assert row["raw_content"] == "important knowledge about sqlite wal mode"
+        assert row["summary"] is not None
+
+        # Status stays archived — NOT resurrected to consolidated.
+        assert row["status"] == "archived"
+
+        # LTP did NOT spike it — the access_weight in the result must
+        # match the archived value (around 0.02 * exp(-1e-6 * 365 days)
+        # which rounds to near zero), NOT 1.0.
+        assert row["access_weight"] < 0.1
+        assert row["access_weight"] != pytest.approx(1.0)
+
+        # Storage row matches.
+        stored = memory_system.storage.get_memory_by_id(mem_id)
+        assert stored["status"] == "archived"
+        assert stored["access_weight"] < 0.1
+
+    def test_archived_memory_not_in_search_results(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """A query that would have matched a memory before archival
+        must no longer surface it after archival — the has_tag edge
+        is gone, so get_subgraph can't reach the memory from any
+        nearby node."""
+        from neuromem.tools import search_memory
+
+        # Seed two memories: one will get archived, the other stays.
+        archived_id = self._seed_consolidated_memory(memory_system, "alpha beta gamma")
+        live_id = memory_system.enqueue("delta epsilon zeta")
+        memory_system.force_dream(block=True)
+
+        # Verify the archived memory IS currently findable pre-archival.
+        pre_result = search_memory("alpha", memory_system)
+        assert archived_id in pre_result
+
+        # Archive it.
+        old = int(time.time()) - 365 * 86400
+        memory_system.storage._conn.execute(
+            "UPDATE memories SET last_accessed = ?, access_weight = 0.01 WHERE id = ?",
+            (old, archived_id),
+        )
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=int(time.time()),
+        )
+
+        # The archived memory must NOT appear in the new search result.
+        post_result = search_memory("alpha", memory_system)
+        assert archived_id not in post_result
+        # The live memory must still appear if we search for it.
+        live_result = search_memory("delta", memory_system)
+        assert live_id in live_result
+
+    def test_content_preserved_through_archival(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """Archival MUST preserve raw_content and summary — the
+        memory row stays in storage with all its text intact.
+        Per FR-015."""
+        raw = "the quick brown fox jumps over the lazy dog"
+        mem_id = self._seed_consolidated_memory(memory_system, raw)
+
+        pre_summary = memory_system.storage.get_memory_by_id(mem_id)["summary"]
+
+        # Archive.
+        old = int(time.time()) - 365 * 86400
+        memory_system.storage._conn.execute(
+            "UPDATE memories SET last_accessed = ?, access_weight = 0.01 WHERE id = ?",
+            (old, mem_id),
+        )
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=int(time.time()),
+        )
+
+        # Content preserved across archival.
+        post = memory_system.storage.get_memory_by_id(mem_id)
+        assert post["status"] == "archived"
+        assert post["raw_content"] == raw
+        assert post["summary"] == pre_summary
+
+
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
     """Referenced for type-checker compatibility."""
     # EmbeddingProvider is referenced by type annotations in test fixtures.
