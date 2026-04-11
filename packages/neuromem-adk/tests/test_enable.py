@@ -326,3 +326,74 @@ class TestEnableMemoryRegistersFunctionTools:
         # two tools appended at 1 and 2.
         assert len(mock_adk_agent.tools) == 3
         assert mock_adk_agent.tools[0] is my_existing_tool
+
+
+# ---------------------------------------------------------------------------
+# T014 — US6 manual provider override (partial fallback paths)
+# ---------------------------------------------------------------------------
+
+
+class TestManualProviderOverride:
+    """US6: advanced users can pass explicit llm/embedder instances
+    to skip the default Gemini auto-instantiation path, with
+    per-slot fallback when only one is supplied."""
+
+    def test_explicit_both_providers_skips_default_entirely(
+        self,
+        mock_adk_agent: Agent,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Already verified in TestEnableMemoryErrors, but kept here
+        as part of the US6 grouping for review clarity. Explicit
+        both → no credential check ever runs."""
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+        # No credential error raised, providers use the mocks.
+        assert memory.llm.__class__.__name__ == "MockLLMProvider"
+        assert memory.embedder.__class__.__name__ == "MockEmbeddingProvider"
+
+    def test_explicit_llm_only_falls_back_to_default_embedder(
+        self,
+        mock_adk_agent: Agent,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Passing only `llm=...` means the embedder still comes
+        from the default Gemini path, which requires GOOGLE_API_KEY
+        to be set. Removing the env var makes the default path fail
+        — proving the fallback route was taken.
+        """
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        with pytest.raises(KeyError, match="GOOGLE_API_KEY"):
+            enable_memory(
+                mock_adk_agent,
+                ":memory:",
+                llm=MockLLMProvider(),
+                # embedder omitted → falls back to default → credential check
+            )
+
+    def test_explicit_embedder_only_falls_back_to_default_llm(
+        self,
+        mock_adk_agent: Agent,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Mirror of the above — omitting llm triggers the default
+        path for the LLM slot, which needs the API key."""
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+        with pytest.raises(KeyError, match="GOOGLE_API_KEY"):
+            enable_memory(
+                mock_adk_agent,
+                ":memory:",
+                embedder=MockEmbeddingProvider(),
+                # llm omitted → falls back to default → credential check
+            )
