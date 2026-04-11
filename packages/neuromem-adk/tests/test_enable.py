@@ -178,3 +178,151 @@ class TestEnableMemoryErrors:
             embedder=MockEmbeddingProvider(),
         )
         assert isinstance(memory, NeuroMemory)
+
+
+# ---------------------------------------------------------------------------
+# T012 — US4 LLM-driven active memory search via function tools
+# ---------------------------------------------------------------------------
+
+
+class TestEnableMemoryRegistersFunctionTools:
+    """US4 acceptance: after enable_memory, agent.tools contains
+    partial-bound search_memory and retrieve_memories tools. The
+    internal `system` argument is pre-bound and invisible to ADK's
+    schema generator, so the LLM only sees user-facing args."""
+
+    def test_tools_appended_after_enable(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """agent.tools goes from empty to a 2-element list after
+        enable_memory."""
+        assert mock_adk_agent.tools == []
+        enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+        assert len(mock_adk_agent.tools) == 2
+
+    def test_tool_signatures_hide_internal_system_handle(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """Both registered tools are wrapper functions (local closures
+        over ``memory``) that expose ONLY the user-facing arguments.
+        The LLM's schema will see `{query, top_k, depth}` for
+        search_memory and `{memory_ids}` for retrieve_memories.
+
+        Wrapper functions are used instead of ``functools.partial``
+        because `inspect.signature` on a partial keeps pre-bound
+        keyword args in the parameter list (marked with the bound
+        value as the default), which would leak the internal
+        ``system`` handle into the LLM-visible schema. Wrappers with
+        the exact right signature solve this cleanly.
+        """
+        import inspect  # noqa: PLC0415
+
+        enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+
+        search_tool, retrieve_tool = mock_adk_agent.tools
+
+        # Both are plain callables (closures), not partials.
+        assert callable(search_tool)
+        assert callable(retrieve_tool)
+
+        # Signature inspection — what ADK's schema generator sees.
+        search_params = set(inspect.signature(search_tool).parameters.keys())
+        retrieve_params = set(inspect.signature(retrieve_tool).parameters.keys())
+
+        # Internal plumbing is hidden.
+        assert "system" not in search_params
+        assert "system" not in retrieve_params
+        # Exactly the user-facing args.
+        assert search_params == {"query", "top_k", "depth"}
+        assert retrieve_params == {"memory_ids"}
+
+        # Docstrings are preserved — ADK uses the docstring as the
+        # tool description sent to the LLM.
+        assert search_tool.__doc__ is not None
+        assert "Search long-term memory" in search_tool.__doc__
+        assert retrieve_tool.__doc__ is not None
+        assert "Fetch full memory records" in retrieve_tool.__doc__
+
+    def test_search_tool_works_when_invoked_directly(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """Invoking the partial directly (the way ADK would invoke
+        it in response to an LLM tool call) returns the expected
+        neuromem.tools.search_memory output."""
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+        memory.enqueue("python sqlite async")
+        memory.force_dream(block=True)
+
+        search_tool = mock_adk_agent.tools[0]
+        result = search_tool(query="python")
+        assert isinstance(result, str)
+        # Non-empty tree (we just consolidated a memory matching).
+        assert "📁" in result or "📄" in result
+
+    def test_retrieve_tool_works_when_invoked_directly(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """Invoking retrieve_memories directly returns a list of
+        dict memory records and spikes access_weight as the LTP
+        contract requires."""
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+        mem_id = memory.enqueue("test memory")
+        memory.force_dream(block=True)
+
+        retrieve_tool = mock_adk_agent.tools[1]
+        results = retrieve_tool(memory_ids=[mem_id])
+        assert len(results) == 1
+        assert results[0]["id"] == mem_id
+        assert results[0]["raw_content"] == "test memory"
+        assert results[0]["access_weight"] == pytest.approx(1.0)
+
+    def test_preserves_pre_existing_tools(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """If the agent already has tools in its list, the neuromem
+        tools are appended to the end — pre-existing tools stay
+        in place."""
+
+        def my_existing_tool(foo: str) -> dict:
+            """An unrelated tool the user registered at Agent
+            construction time."""
+            return {"result": foo}
+
+        mock_adk_agent.tools.append(my_existing_tool)
+
+        enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+
+        # Pre-existing tool still present at index 0; neuromem's
+        # two tools appended at 1 and 2.
+        assert len(mock_adk_agent.tools) == 3
+        assert mock_adk_agent.tools[0] is my_existing_tool

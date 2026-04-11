@@ -21,6 +21,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from neuromem import NeuroMemory, SQLiteAdapter
+from neuromem.tools import retrieve_memories, search_memory
 
 from neuromem_adk.callbacks import (
     build_after_agent_turn_capturer,
@@ -169,7 +170,15 @@ def enable_memory(
         build_after_agent_turn_capturer(memory),
     )
 
-    # TODO(T012-T013): register function tools + wire MemoryService.
+    # Register the memory function tools (T012). We use functools.partial
+    # to pre-bind the internal ``system`` handle, so ADK's schema
+    # generator (which reads the partial's signature via
+    # inspect.signature) sees only the user-facing args the LLM should
+    # pass. The LLM never has to construct or reference a NeuroMemory
+    # object — that's internal plumbing.
+    _register_memory_tools(agent, memory)
+
+    # TODO(T013): wire NeuromemMemoryService into the runner hook.
 
     # Set the marker LAST so a mid-wiring failure doesn't leave the
     # agent in a half-attached state where double-attachment detection
@@ -177,6 +186,79 @@ def enable_memory(
     setattr(agent, _ENABLED_MARKER, True)
 
     return memory
+
+
+def _register_memory_tools(agent: Agent, memory: NeuroMemory) -> None:
+    """Append the two memory function tools to ``agent.tools``.
+
+    Defines local wrapper functions that close over ``memory`` and
+    expose ONLY the user-facing arguments to ADK's schema generator.
+    The LLM sees:
+
+    - ``search_memory``: ``{query, top_k, depth}``
+    - ``retrieve_memories``: ``{memory_ids}``
+
+    **Why wrapper functions instead of functools.partial**: Python's
+    ``inspect.signature`` on a partial object keeps pre-bound keyword
+    args in the reported parameter list (just marked with the bound
+    value as the default). Since ADK's schema generator reads that
+    signature to build the function-call schema it hands to the LLM,
+    the internal ``system`` handle would leak into the visible args.
+    Wrapper functions with the exact right signature solve this
+    cleanly — ``inspect.signature`` reports only the three arguments
+    we want the LLM to see, and the schema generator never sees the
+    internal plumbing.
+
+    Wrapper functions also produce cleaner tracebacks (the wrapper's
+    module and line show up in the traceback) and preserve docstrings
+    the LLM actually uses — ADK reads the docstring as the tool's
+    description.
+
+    Any pre-existing tools on the agent are preserved — the new
+    tools are appended to the end.
+    """
+
+    def search_memory_tool(query: str, top_k: int = 5, depth: int = 2) -> str:
+        """Search long-term memory for concepts related to the query.
+
+        Returns an ASCII tree showing the most relevant memories
+        organised by concept category. Each memory leaf includes its
+        ID (``mem_...``) which can be passed to ``retrieve_memories``
+        to fetch the full content.
+
+        Arguments:
+            query: The search query text.
+            top_k: Number of nearest concept nodes to anchor the
+                search on. Defaults to 5.
+            depth: Graph traversal depth from the nearest nodes.
+                Defaults to 2.
+
+        Returns:
+            An ASCII tree string, or an empty string if nothing
+            relevant is in memory.
+        """
+        return search_memory(query=query, system=memory, top_k=top_k, depth=depth)
+
+    def retrieve_memories_tool(memory_ids: list[str]) -> list[dict[str, Any]]:
+        """Fetch full memory records by ID and reinforce them.
+
+        Use this after ``search_memory`` returns memory IDs of
+        interest, to get the full content and metadata. This call
+        also reinforces each memory's recency weight (Long-Term
+        Potentiation) so frequently-recalled memories survive
+        future decay cycles.
+
+        Arguments:
+            memory_ids: List of memory IDs (each starts with ``mem_``)
+                to fetch. Unknown IDs are silently skipped.
+
+        Returns:
+            A list of memory record dicts, one per found memory.
+        """
+        return retrieve_memories(memory_ids=memory_ids, system=memory)
+
+    agent.tools.append(search_memory_tool)
+    agent.tools.append(retrieve_memories_tool)
 
 
 def _chain_callback(agent: Agent, slot_name: str, new_cb: Any) -> None:
