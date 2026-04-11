@@ -16,16 +16,19 @@ stability. Inputs are never mutated.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TypeAlias
 
 import numpy as np
+from numpy.typing import NDArray
 
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
+# numpy is already a mandatory runtime dependency per Constitution v2.0.0
+# Principle II (Lean Dependency Set), so importing NDArray at module top-
+# level is free. Keeping it outside the TYPE_CHECKING guard makes
+# typing.get_type_hints() work correctly for downstream introspection
+# tools (Pydantic, FastAPI, beartype, etc.).
 
-
-VectorLike = "NDArray[np.floating] | list[float]"
-VectorBatch = "NDArray[np.floating] | list[NDArray[np.floating]] | list[list[float]]"
+VectorLike: TypeAlias = NDArray[np.floating] | list[float]
+VectorBatch: TypeAlias = NDArray[np.floating] | list[NDArray[np.floating]] | list[list[float]]
 
 
 def cosine_similarity(vec_a: VectorLike, vec_b: VectorLike) -> float:

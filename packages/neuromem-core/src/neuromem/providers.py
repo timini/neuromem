@@ -18,11 +18,14 @@ behavioural contract per method.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import numpy as np
-    from numpy.typing import NDArray
+import numpy as np
+from numpy.typing import NDArray
+
+# numpy is already a mandatory runtime dependency per Constitution v2.0.0
+# Principle II. Importing NDArray at module top-level (rather than under
+# TYPE_CHECKING) lets typing.get_type_hints() work correctly for downstream
+# tools that introspect the ABC signatures.
 
 
 class EmbeddingProvider(ABC):
