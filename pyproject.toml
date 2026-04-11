@@ -48,11 +48,27 @@ max-complexity = 10
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["packages/neuromem-core/tests"]
+testpaths = [
+    "packages/neuromem-core/tests",
+    "packages/neuromem-gemini/tests",
+]
+markers = [
+    # Integration tests that hit a live external API and require a
+    # credentials secret. Declared here so --strict-markers doesn't
+    # error on `@pytest.mark.integration`. Excluded from the default
+    # run via the `-m "not integration"` entry in addopts — opt in
+    # with `pytest -m integration --no-cov` to run them explicitly.
+    "integration: test requires network access and a live API key (deselect with '-m \"not integration\"')",
+]
 addopts = [
     "-q",
     "--strict-markers",
     "--strict-config",
+    # Default run excludes the integration marker so pre-commit
+    # hooks and normal `uv run pytest` invocations never trigger a
+    # network call. Opt in with `pytest -m integration --no-cov`.
+    "-m",
+    "not integration",
     # Coverage gate — see [tool.coverage] below. `--cov` with no value
     # picks up the source list from [tool.coverage.run] and the
     # fail-under threshold from [tool.coverage.report].
