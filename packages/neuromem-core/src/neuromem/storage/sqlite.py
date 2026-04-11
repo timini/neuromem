@@ -153,6 +153,7 @@ class SQLiteAdapter(StorageAdapter):
         summary: str,
         metadata: dict[str, Any] | None = None,
     ) -> str:
+        self._check_open()
         if raw_content is None or raw_content == "":
             raise ValueError("raw_content must be non-empty")
 
@@ -183,6 +184,7 @@ class SQLiteAdapter(StorageAdapter):
         return memory_id
 
     def count_memories_by_status(self, status: str) -> int:
+        self._check_open()
         if status not in _VALID_STATUSES:
             raise ValueError(f"invalid status: {status!r}")
         try:
@@ -199,6 +201,7 @@ class SQLiteAdapter(StorageAdapter):
         status: str,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
+        self._check_open()
         if status not in _VALID_STATUSES:
             raise ValueError(f"invalid status: {status!r}")
         if limit is not None and limit <= 0:
@@ -227,6 +230,7 @@ class SQLiteAdapter(StorageAdapter):
         memory_ids: list[str],
         new_status: str,
     ) -> None:
+        self._check_open()
         if new_status not in _VALID_STATUSES:
             raise ValueError(f"invalid status: {new_status!r}")
         if not memory_ids:
@@ -243,6 +247,7 @@ class SQLiteAdapter(StorageAdapter):
             raise StorageError(f"update_memory_status failed: {exc}") from exc
 
     def get_memory_by_id(self, memory_id: str) -> dict[str, Any] | None:
+        self._check_open()
         try:
             row = self._conn.execute(
                 """
@@ -269,6 +274,7 @@ class SQLiteAdapter(StorageAdapter):
         embedding: NDArray[np.floating] | list[float],
         is_centroid: bool,
     ) -> None:
+        self._check_open()
         arr = np.asarray(embedding, dtype=np.float32)
         if arr.ndim != 1:
             raise ValueError(f"embedding must be 1-D, got shape {arr.shape}")
@@ -311,6 +317,7 @@ class SQLiteAdapter(StorageAdapter):
             raise StorageError(f"upsert_node failed: {exc}") from exc
 
     def get_all_nodes(self) -> list[dict[str, Any]]:
+        self._check_open()
         try:
             rows = self._conn.execute(
                 "SELECT id, label, embedding, embedding_dim, is_centroid FROM nodes ORDER BY id ASC"
@@ -326,6 +333,7 @@ class SQLiteAdapter(StorageAdapter):
         weight: float,
         relationship: str,
     ) -> None:
+        self._check_open()
         if relationship not in _VALID_RELATIONSHIPS:
             raise ValueError(f"invalid relationship: {relationship!r}")
         try:
@@ -363,6 +371,7 @@ class SQLiteAdapter(StorageAdapter):
         )
 
     def remove_edges_for_memory(self, memory_id: str) -> None:
+        self._check_open()
         try:
             with self._conn:
                 # Only has_tag edges originate from memories.
@@ -376,6 +385,7 @@ class SQLiteAdapter(StorageAdapter):
         query_embedding: NDArray[np.floating] | list[float],
         top_k: int = 5,
     ) -> list[dict[str, Any]]:
+        self._check_open()
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
         query = np.asarray(query_embedding, dtype=np.float64)
@@ -413,6 +423,7 @@ class SQLiteAdapter(StorageAdapter):
         root_node_ids: list[str],
         depth: int = 2,
     ) -> dict[str, Any]:
+        self._check_open()
         if depth < 0:
             raise ValueError(f"depth must be >= 0, got {depth}")
         if not root_node_ids:
@@ -520,6 +531,7 @@ class SQLiteAdapter(StorageAdapter):
         archive_threshold: float,
         current_timestamp: int,
     ) -> list[str]:
+        self._check_open()
         if decay_lambda <= 0:
             raise ValueError(f"decay_lambda must be positive, got {decay_lambda}")
         if not (0 <= archive_threshold < 1.0):
@@ -567,6 +579,7 @@ class SQLiteAdapter(StorageAdapter):
         memory_ids: list[str],
         timestamp: int,
     ) -> None:
+        self._check_open()
         if not memory_ids:
             return
         placeholders = ",".join("?" * len(memory_ids))
@@ -601,6 +614,18 @@ class SQLiteAdapter(StorageAdapter):
     # ------------------------------------------------------------------
     # Lifecycle — close, context manager protocol, GC fallback
     # ------------------------------------------------------------------
+
+    def _check_open(self) -> None:
+        """Raise ``StorageError`` if the adapter has been closed.
+
+        Called at the top of every public method. Replaces the
+        opaque ``TypeError: 'NoneType' object does not support the
+        context manager protocol`` that a post-close
+        ``with self._conn:`` would raise with a clear, actionable
+        "adapter is closed" signal for the caller.
+        """
+        if self._conn is None:
+            raise StorageError("SQLiteAdapter is closed")
 
     def close(self) -> None:
         """Close the underlying connection. Idempotent and safe to call
@@ -648,10 +673,18 @@ class SQLiteAdapter(StorageAdapter):
         context-manager protocol. See ``packages/neuromem-core/tests/
         test_sqlite_adapter.py::TestLifecycle`` for regression tests.
         """
-        # __del__ must never raise. Swallow any cleanup failure —
-        # Python would silently swallow it with a cryptic warning
-        # anyway. contextlib.suppress makes the intent explicit.
-        with contextlib.suppress(Exception):
+        # __del__ must never raise. Narrow the suppress scope to
+        # the two error classes a well-formed close() can
+        # legitimately produce:
+        #   sqlite3.Error — the underlying connection close failing
+        #   AttributeError — partial construction (e.g., __init__
+        #                    raised before _conn was assigned)
+        # Anything else is a real bug and should propagate to
+        # Python's unraisable-exception handler (visible on stderr
+        # in CI). suppress(Exception) would silently mask real
+        # subclass bugs; (sqlite3.Error, AttributeError) catches
+        # exactly the cleanup-time failures we intend to tolerate.
+        with contextlib.suppress(sqlite3.Error, AttributeError):
             self.close()
 
 

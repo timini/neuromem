@@ -245,22 +245,59 @@ class TestLifecycle:
         adapter.close()  # second call must not raise
         adapter.close()  # nor third
 
-    def test_close_then_use_raises(self) -> None:
-        """Calling methods on a closed adapter should fail loudly, not
-        silently return stale state.
+    def test_close_then_use_raises_storage_error(self) -> None:
+        """Calling methods on a closed adapter raises ``StorageError``
+        with an actionable ``"closed"`` message.
 
-        The specific exception type depends on which code path hits
-        the nulled-out ``_conn`` first. Current impl raises
-        ``TypeError`` (from ``with self._conn:`` on None). We accept
-        any of TypeError, AttributeError, or sqlite3.ProgrammingError
-        — all three are reasonable "adapter is closed" signals.
+        Before the I-1 fix, post-close method calls raised an opaque
+        ``TypeError: 'NoneType' object does not support the context
+        manager protocol`` from ``with self._conn:``. The fix adds a
+        ``_check_open()`` guard at the top of every public method
+        that raises ``StorageError("SQLiteAdapter is closed")`` for a
+        clear caller signal.
         """
         adapter = SQLiteAdapter(":memory:")
         adapter.insert_memory("raw", "summary")
         adapter.close()
 
-        with pytest.raises((TypeError, AttributeError, sqlite3.ProgrammingError)):
+        with pytest.raises(StorageError, match="closed"):
             adapter.insert_memory("raw2", "summary2")
+
+    def test_close_then_every_public_method_raises_storage_error(self) -> None:
+        """Defence in depth: every public method on a closed adapter
+        must raise StorageError, not just insert_memory.
+
+        This smoke-tests the _check_open() guard was added to every
+        method, not just the one exercised by the test above.
+        """
+        import numpy as np
+
+        adapter = SQLiteAdapter(":memory:")
+        # Seed some state while the adapter is open so methods have
+        # something to operate on.
+        mem_id = adapter.insert_memory("raw", "summary")
+        adapter.upsert_node("n1", "tag", np.zeros(4, dtype=np.float32), False)
+        adapter.close()
+
+        # Every public method must raise StorageError with "closed".
+        checks = [
+            lambda: adapter.insert_memory("r", "s"),
+            lambda: adapter.count_memories_by_status("inbox"),
+            lambda: adapter.get_memories_by_status("inbox"),
+            lambda: adapter.update_memory_status([mem_id], "dreaming"),
+            lambda: adapter.get_memory_by_id(mem_id),
+            lambda: adapter.upsert_node("n2", "x", np.zeros(4, dtype=np.float32), False),
+            lambda: adapter.get_all_nodes(),
+            lambda: adapter.insert_edge("a", "b", 1.0, "has_tag"),
+            lambda: adapter.remove_edges_for_memory(mem_id),
+            lambda: adapter.get_nearest_nodes(np.zeros(4, dtype=np.float32), 1),
+            lambda: adapter.get_subgraph(["n1"], 1),
+            lambda: adapter.apply_decay_and_archive(1e-9, 0.01, 100),
+            lambda: adapter.spike_access_weight([mem_id], 100),
+        ]
+        for fn in checks:
+            with pytest.raises(StorageError, match="closed"):
+                fn()
 
     def test_context_manager_closes_on_exit(self) -> None:
         with SQLiteAdapter(":memory:") as adapter:
