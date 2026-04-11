@@ -343,18 +343,31 @@ class SQLiteAdapter(StorageAdapter):
         except sqlite3.Error as exc:
             raise StorageError(f"insert_edge failed: {exc}") from exc
 
+    def _delete_has_tag_edges(self, memory_id: str) -> None:
+        """Raw DELETE of all ``has_tag`` edges originating from ``memory_id``.
+
+        Private helper shared by ``remove_edges_for_memory`` and
+        ``apply_decay_and_archive``'s archival step. Extracted so both
+        call sites go through a single implementation and future changes
+        to the edge-deletion SQL (logging, additional relationship types,
+        audit events) land in one place instead of drifting apart.
+
+        Does NOT wrap itself in a ``with self._conn:`` block — the caller
+        is responsible for transaction context. This avoids nested
+        SAVEPOINTs when the helper is called from inside another
+        ``with self._conn:`` block (as ``apply_decay_and_archive`` does).
+        """
+        self._conn.execute(
+            "DELETE FROM edges WHERE relationship = 'has_tag' AND source_id = ?",
+            (memory_id,),
+        )
+
     def remove_edges_for_memory(self, memory_id: str) -> None:
         try:
             with self._conn:
                 # Only has_tag edges originate from memories.
                 # child_of edges are between nodes and MUST be preserved.
-                self._conn.execute(
-                    """
-                    DELETE FROM edges
-                    WHERE relationship = 'has_tag' AND source_id = ?
-                    """,
-                    (memory_id,),
-                )
+                self._delete_has_tag_edges(memory_id)
         except sqlite3.Error as exc:
             raise StorageError(f"remove_edges_for_memory failed: {exc}") from exc
 
@@ -534,10 +547,11 @@ class SQLiteAdapter(StorageAdapter):
                             "WHERE id = ?",
                             (w_new, mem_id),
                         )
-                        self._conn.execute(
-                            "DELETE FROM edges WHERE relationship = 'has_tag' AND source_id = ?",
-                            (mem_id,),
-                        )
+                        # Drop has_tag edges through the shared helper so
+                        # this path honours the base class contract
+                        # (StorageAdapter.apply_decay_and_archive docstring
+                        # says: "call remove_edges_for_memory(id)").
+                        self._delete_has_tag_edges(mem_id)
                         archived.append(mem_id)
                     else:
                         self._conn.execute(
