@@ -1,7 +1,7 @@
 """Shared pytest fixtures for neuromem-core.
 
 Populated incrementally by:
-  - T011: MockEmbeddingProvider, MockLLMProvider fixtures (this file)
+  - T011: MockEmbeddingProvider, MockLLMProvider fixtures
   - T012: storage_adapter parametrised fixture (initially empty params)
   - T013: SQLiteAdapter added to storage_adapter params
   - T025: DictStorageAdapter added to storage_adapter params
@@ -10,10 +10,20 @@ Populated incrementally by:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 from neuromem.providers import EmbeddingProvider, LLMProvider
+
+if TYPE_CHECKING:
+    from neuromem.storage.base import StorageAdapter
+
+
+# ---------------------------------------------------------------------------
+# Mock providers (T011)
+# ---------------------------------------------------------------------------
 
 
 class MockEmbeddingProvider(EmbeddingProvider):
@@ -71,3 +81,31 @@ def mock_embedder() -> MockEmbeddingProvider:
 def mock_llm() -> MockLLMProvider:
     """A freshly-constructed MockLLMProvider."""
     return MockLLMProvider()
+
+
+# ---------------------------------------------------------------------------
+# StorageAdapter parametrised fixture (T012)
+# ---------------------------------------------------------------------------
+
+# List of ``() -> StorageAdapter`` callables. Each entry produces a
+# fresh adapter instance per test. Starts empty; T013 appends a
+# SQLiteAdapter factory; T025 appends a DictStorageAdapter factory.
+STORAGE_ADAPTER_FACTORIES: list[Callable[[], StorageAdapter]] = []
+
+
+@pytest.fixture(
+    params=STORAGE_ADAPTER_FACTORIES,
+    ids=lambda f: f.__name__.replace("_factory", ""),
+)
+def storage_adapter(request: pytest.FixtureRequest) -> StorageAdapter:
+    """Parametrised fixture over every concrete StorageAdapter.
+
+    Used by test_storage_adapter_contract.py to run the 13-item
+    contract test suite against every implementation in a single
+    pytest run. Starts empty (no adapters registered); tasks T013
+    and T025 append SQLiteAdapter and DictStorageAdapter factories
+    respectively. With an empty params list, every contract test
+    is collected with 0 parameterisations and skipped silently.
+    """
+    factory: Callable[[], StorageAdapter] = request.param
+    return factory()
