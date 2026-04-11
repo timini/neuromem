@@ -137,7 +137,7 @@ Each SQLiteAdapter task incrementally fills `packages/neuromem-core/src/neuromem
 
 **Note**: `force_dream` was implemented as part of T021 (bundled with the background-thread infrastructure). This phase is tests-only.
 
-- [ ] T026 [US5] Add end-to-end acceptance tests for `force_dream` to `packages/neuromem-core/tests/test_system.py`. Scenarios: (a) 3 inbox memories + `dream_threshold=10` + `force_dream(block=True)` → all 3 become `consolidated`; (b) empty inbox + `force_dream(block=True)` → returns immediately, no error, no state change; (c) `force_dream(block=False)` → returns before dreaming finishes (measurable by `is_dreaming` still being `True` briefly after the call); (d) calling `force_dream` while a previous cycle is in progress does not spawn a second thread. **No new production code.**
+- [X] T026 [US5] Add end-to-end acceptance tests for `force_dream` to `packages/neuromem-core/tests/test_system.py`. Scenarios: (a) 3 inbox memories + `dream_threshold=10` + `force_dream(block=True)` → all 3 become `consolidated`; (b) empty inbox + `force_dream(block=True)` → returns immediately, no error, no state change; (c) `force_dream(block=False)` → returns before dreaming finishes (measurable by `is_dreaming` still being `True` briefly after the call); (d) calling `force_dream` while a previous cycle is in progress does not spawn a second thread. **No new production code.**
 
 **Checkpoint** (US5 complete): All 5 user stories validated. Full feature set from spec.md §User Scenarios landed.
 

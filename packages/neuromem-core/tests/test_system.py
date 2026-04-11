@@ -1204,6 +1204,164 @@ class TestDecayAndArchivalEndToEnd:
 
 
 # ---------------------------------------------------------------------------
+# T026 — US5 force_dream acceptance tests
+# ---------------------------------------------------------------------------
+#
+# Four acceptance scenarios from spec.md User Story 5
+# ("developer can manually flush the inbox"):
+#
+#   (a) 3 inbox memories + dream_threshold=10 + force_dream(block=True)
+#       → all 3 become consolidated without the threshold being hit.
+#   (b) empty inbox + force_dream(block=True)
+#       → returns immediately, no error, no state change.
+#   (c) force_dream(block=False)
+#       → returns before dreaming finishes (is_dreaming still True briefly).
+#   (d) force_dream while a previous cycle is in progress
+#       → does NOT spawn a second thread.
+#
+# These overlap intentionally with the T020/T021 thread-concurrency tests
+# above; they exist as a cleanly-labelled US5 acceptance checklist a
+# reviewer can tick off against the spec.
+
+
+class TestForceDreamAcceptance:
+    def test_us5_a_force_dream_block_true_consolidates_below_threshold(
+        self,
+        mock_llm: MockLLMProvider,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """US5 (a): force_dream(block=True) processes the entire inbox
+        even when its size is well below the automatic dream threshold.
+        """
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=mock_embedder,
+            dream_threshold=10,
+        )
+        for i in range(3):
+            system.enqueue(f"memory number {i}")
+
+        # Pre-condition: 3 inbox, 0 consolidated, threshold not reached.
+        assert system.storage.count_memories_by_status("inbox") == 3
+        assert system._dream_thread is None
+        assert system.is_dreaming is False
+
+        system.force_dream(block=True)
+
+        # Post-condition: all 3 consolidated without threshold spawn.
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 3
+        assert system.is_dreaming is False
+
+    def test_us5_b_force_dream_block_true_on_empty_inbox_is_noop(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """US5 (b): force_dream(block=True) with an empty inbox returns
+        without raising and without changing any state."""
+        # Pre-condition: completely empty storage.
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        assert memory_system.storage.count_memories_by_status("consolidated") == 0
+        assert memory_system.is_dreaming is False
+
+        # Should return quickly and silently.
+        start = time.perf_counter()
+        memory_system.force_dream(block=True)
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        assert elapsed_ms < 500.0, f"empty-inbox force_dream took {elapsed_ms:.1f} ms"
+
+        # Post-condition: nothing changed.
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        assert memory_system.storage.count_memories_by_status("consolidated") == 0
+        assert memory_system.is_dreaming is False
+
+    def test_us5_c_force_dream_block_false_returns_before_dreaming_finishes(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """US5 (c): force_dream(block=False) returns before the spawned
+        dream cycle finishes — observable because ``is_dreaming`` is
+        still True immediately after the call returns.
+        """
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("alpha beta gamma")
+
+        system.force_dream(block=False)
+
+        # Wait for the dream thread to enter extract_tags — at this point
+        # we know the cycle is live but CAN'T finish (BlockingLLM has not
+        # been released).
+        assert blocking_llm.entered_event.wait(timeout=2.0), (
+            "dream thread never entered extract_tags"
+        )
+        assert system.is_dreaming is True
+        assert system._dream_thread is not None
+        assert system._dream_thread.is_alive()
+
+        # Release and clean up.
+        blocking_llm.proceed_event.set()
+        system._dream_thread.join(timeout=5.0)
+        assert system.is_dreaming is False
+        assert system.storage.count_memories_by_status("consolidated") == 1
+
+    def test_us5_d_force_dream_does_not_spawn_second_thread_while_running(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """US5 (d): calling force_dream while a previous cycle is still
+        in flight does NOT spawn a second thread.
+
+        Exercises both modes:
+          - block=False → silent no-op, ``_dream_thread`` unchanged.
+          - block=True  → joins the existing thread, does not spawn
+            another thread for the (now-empty) leftover inbox.
+        """
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("first memory")
+        system.force_dream(block=False)
+        assert blocking_llm.entered_event.wait(timeout=2.0)
+
+        first_thread = system._dream_thread
+        assert first_thread is not None and first_thread.is_alive()
+
+        # Second block=False — must NOT spawn a new thread.
+        system.force_dream(block=False)
+        assert system._dream_thread is first_thread, (
+            "force_dream(block=False) while a cycle is in flight spawned a new thread"
+        )
+
+        # Release from a side-thread so block=True can join the existing
+        # thread and return.
+        releaser = threading.Thread(
+            target=lambda: blocking_llm.proceed_event.set(),
+            name="releaser",
+        )
+        releaser.start()
+
+        # block=True while a cycle is in flight → join existing, then
+        # run a fresh cycle (trivially no-op on the empty leftover inbox).
+        system.force_dream(block=True)
+        releaser.join(timeout=5.0)
+
+        assert not first_thread.is_alive()
+        assert system.is_dreaming is False
+        # Exactly one consolidation path ran, so the memory is
+        # consolidated exactly once.
+        assert system.storage.count_memories_by_status("consolidated") == 1
+
+
+# ---------------------------------------------------------------------------
 # T025 — full-loop parity against DictStorageAdapter
 # ---------------------------------------------------------------------------
 
