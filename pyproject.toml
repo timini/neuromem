@@ -38,6 +38,7 @@ ignore = [
 "**/tests/**/*.py" = [
     "B011",   # allow `assert False` in tests
     "SIM117", # allow nested `with` in tests
+    "C901",   # test stub classes can be complex (e.g. 13-method ABCs)
 ]
 
 [tool.ruff.lint.mccabe]
