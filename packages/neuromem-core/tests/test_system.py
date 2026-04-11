@@ -949,6 +949,484 @@ class TestSanitiseCategoryName:
         assert _sanitise_category_name("  Databases  ") == "Databases"
 
 
+# ---------------------------------------------------------------------------
+# T024: US3 end-to-end decay and archival integration tests
+#
+# No new production code — the decay/archival behaviour was
+# implemented in T018 (SQLiteAdapter.apply_decay_and_archive) and
+# wired into the dreaming cycle in T020 (_run_dream_cycle step 8).
+# These tests validate the full User Story 3 lifecycle end-to-end:
+#
+#   1. Consolidated memory with old last_accessed + force_dream →
+#      gets archived, its edges stripped from the active graph.
+#   2. Partially-decayed memory above the archive threshold stays
+#      consolidated with a lowered access_weight.
+#   3. retrieve_memories on an archived memory returns raw_content
+#      but does NOT resurrect the status AND does NOT trigger LTP.
+#   4. Archived memories no longer appear in search_memory results
+#      for a query that would have matched them pre-archival.
+# ---------------------------------------------------------------------------
+
+
+class TestDecayAndArchivalEndToEnd:
+    """User Story 3 — Memories Decay and Are Archived When Not Accessed."""
+
+    def _seed_consolidated_memory(
+        self,
+        memory_system: NeuroMemory,
+        raw_text: str = "alpha beta gamma",
+    ) -> str:
+        """Helper: enqueue one memory and force a dream cycle so it's
+        fully consolidated with tag nodes and has_tag edges in place."""
+        mem_id = memory_system.enqueue(raw_text)
+        memory_system.force_dream(block=True)
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row is not None
+        assert row["status"] == "consolidated"
+        return mem_id
+
+    def test_old_memory_gets_archived_after_force_dream(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """A consolidated memory with last_accessed 60 days past gets
+        archived on the next decay pass."""
+        mem_id = self._seed_consolidated_memory(memory_system)
+
+        # Simulate age via the public ABC: spike_access_weight sets
+        # last_accessed to the supplied timestamp (and resets
+        # access_weight to 1.0) for consolidated memories. Handing it a
+        # 60-days-ago timestamp is the adapter-agnostic way to simulate
+        # an old last-accessed without touching a private `._conn`.
+        now = int(time.time())
+        sixty_days_ago = now - 60 * 86400
+        memory_system.storage.spike_access_weight([mem_id], sixty_days_ago)
+
+        # Aggressive lambda so 60 days of decay pushes the weight from
+        # 1.0 down to ~0.006, well below the 0.1 archive threshold.
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,  # half-life ~8 days
+            archive_threshold=0.1,
+            current_timestamp=now,
+        )
+
+        # The memory must now be archived.
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["status"] == "archived"
+
+    def test_recently_accessed_memory_stays_consolidated(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """A consolidated memory with last_accessed 7 days past and a
+        gentle decay lambda should stay consolidated — just with a
+        slightly lower access_weight."""
+        mem_id = self._seed_consolidated_memory(memory_system)
+
+        now = int(time.time())
+        seven_days_ago = now - 7 * 86400
+        memory_system.storage.spike_access_weight([mem_id], seven_days_ago)
+
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=3e-7,  # ~30-day half-life
+            archive_threshold=0.1,
+            current_timestamp=now,
+        )
+
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["status"] == "consolidated"
+        # access_weight should have dropped slightly but not below 0.5
+        # (7 days * 3e-7 = ~0.18 lambda-t → exp(-0.18) ≈ 0.83)
+        assert 0.5 < row["access_weight"] < 1.0
+
+    def test_archival_strips_has_tag_edges(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """When a memory is archived, its has_tag edges must be
+        removed from the active graph (but child_of edges between
+        nodes must be preserved — the I-3 invariant from the T018
+        contract).
+
+        Verified through the public ABC by traversing the graph from
+        every node with ``get_subgraph(depth=2)``: the memory should
+        appear as a has_tag source pre-archival and should be gone
+        post-archival. This is adapter-agnostic — it works for any
+        ``StorageAdapter`` implementation, not just SQLite."""
+        mem_id = self._seed_consolidated_memory(memory_system, "python")
+
+        # Confirm the memory shows up via has_tag edges before archival.
+        nodes = memory_system.storage.get_all_nodes()
+        assert nodes, "consolidation should have produced tag nodes"
+        node_ids = [n["id"] for n in nodes]
+
+        def collect_has_tag_sources() -> set[str]:
+            """Return the set of memory IDs reachable via has_tag edges
+            from any currently-stored node. Uses only the public ABC."""
+            sub = memory_system.storage.get_subgraph(node_ids, depth=2)
+            return {e["source_id"] for e in sub["edges"] if e["relationship"] == "has_tag"}
+
+        assert mem_id in collect_has_tag_sources()
+
+        # Force archival through the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([mem_id], year_ago)
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=now,
+        )
+        assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "archived"
+
+        # The archived memory must no longer surface via has_tag edges.
+        assert mem_id not in collect_has_tag_sources()
+
+    def test_retrieve_memories_on_archived_returns_content_no_resurrect(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """User Story 3 acceptance #2: archived memories are still
+        retrievable via retrieve_memories — the content is preserved.
+        But the retrieval MUST NOT flip the status back to
+        consolidated, and MUST NOT trigger the LTP spike."""
+        from neuromem.tools import retrieve_memories
+
+        mem_id = self._seed_consolidated_memory(
+            memory_system, "important knowledge about sqlite wal mode"
+        )
+
+        # Archive it via the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([mem_id], year_ago)
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=now,
+        )
+        assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "archived"
+
+        # Retrieve the archived memory via the tool.
+        results = retrieve_memories([mem_id], memory_system)
+        assert len(results) == 1
+        row = results[0]
+
+        # Content intact.
+        assert row["raw_content"] == "important knowledge about sqlite wal mode"
+        assert row["summary"] is not None
+
+        # Status stays archived — NOT resurrected to consolidated.
+        assert row["status"] == "archived"
+
+        # LTP did NOT spike it — the access_weight in the result must
+        # match the archived value (around 0.02 * exp(-1e-6 * 365 days)
+        # which rounds to near zero), NOT 1.0.
+        assert row["access_weight"] < 0.1
+        assert row["access_weight"] != pytest.approx(1.0)
+
+        # Storage row matches.
+        stored = memory_system.storage.get_memory_by_id(mem_id)
+        assert stored["status"] == "archived"
+        assert stored["access_weight"] < 0.1
+
+    def test_archived_memory_not_in_search_results(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """A query that would have matched a memory before archival
+        must no longer surface it after archival — the has_tag edge
+        is gone, so get_subgraph can't reach the memory from any
+        nearby node."""
+        from neuromem.tools import search_memory
+
+        # Seed two memories: one will get archived, the other stays.
+        archived_id = self._seed_consolidated_memory(memory_system, "alpha beta gamma")
+        live_id = memory_system.enqueue("delta epsilon zeta")
+        memory_system.force_dream(block=True)
+
+        # Verify the archived memory IS currently findable pre-archival.
+        pre_result = search_memory("alpha", memory_system)
+        assert archived_id in pre_result
+
+        # Archive it via the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([archived_id], year_ago)
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=now,
+        )
+
+        # The archived memory must NOT appear in the new search result.
+        post_result = search_memory("alpha", memory_system)
+        assert archived_id not in post_result
+        # The live memory must still appear if we search for it.
+        live_result = search_memory("delta", memory_system)
+        assert live_id in live_result
+
+    def test_content_preserved_through_archival(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """Archival MUST preserve raw_content and summary — the
+        memory row stays in storage with all its text intact.
+        Per FR-015."""
+        raw = "the quick brown fox jumps over the lazy dog"
+        mem_id = self._seed_consolidated_memory(memory_system, raw)
+
+        pre_summary = memory_system.storage.get_memory_by_id(mem_id)["summary"]
+
+        # Archive via the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([mem_id], year_ago)
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=1e-6,
+            archive_threshold=0.1,
+            current_timestamp=now,
+        )
+
+        # Content preserved across archival.
+        post = memory_system.storage.get_memory_by_id(mem_id)
+        assert post["status"] == "archived"
+        assert post["raw_content"] == raw
+        assert post["summary"] == pre_summary
+
+
+# ---------------------------------------------------------------------------
+# T026 — US5 force_dream acceptance tests
+# ---------------------------------------------------------------------------
+#
+# Four acceptance scenarios from spec.md User Story 5
+# ("developer can manually flush the inbox"):
+#
+#   (a) 3 inbox memories + dream_threshold=10 + force_dream(block=True)
+#       → all 3 become consolidated without the threshold being hit.
+#   (b) empty inbox + force_dream(block=True)
+#       → returns immediately, no error, no state change.
+#   (c) force_dream(block=False)
+#       → returns before dreaming finishes (is_dreaming still True briefly).
+#   (d) force_dream while a previous cycle is in progress
+#       → does NOT spawn a second thread.
+#
+# These overlap intentionally with the T020/T021 thread-concurrency tests
+# above; they exist as a cleanly-labelled US5 acceptance checklist a
+# reviewer can tick off against the spec.
+
+
+class TestForceDreamAcceptance:
+    def test_us5_a_force_dream_block_true_consolidates_below_threshold(
+        self,
+        mock_llm: MockLLMProvider,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """US5 (a): force_dream(block=True) processes the entire inbox
+        even when its size is well below the automatic dream threshold.
+        """
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=mock_embedder,
+            dream_threshold=10,
+        )
+        for i in range(3):
+            system.enqueue(f"memory number {i}")
+
+        # Pre-condition: 3 inbox, 0 consolidated, threshold not reached.
+        assert system.storage.count_memories_by_status("inbox") == 3
+        assert system._dream_thread is None
+        assert system.is_dreaming is False
+
+        system.force_dream(block=True)
+
+        # Post-condition: all 3 consolidated without threshold spawn.
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 3
+        assert system.is_dreaming is False
+
+    def test_us5_b_force_dream_block_true_on_empty_inbox_is_noop(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """US5 (b): force_dream(block=True) with an empty inbox returns
+        without raising and without changing any state."""
+        # Pre-condition: completely empty storage.
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        assert memory_system.storage.count_memories_by_status("consolidated") == 0
+        assert memory_system.is_dreaming is False
+
+        # Should return quickly and silently.
+        start = time.perf_counter()
+        memory_system.force_dream(block=True)
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        assert elapsed_ms < 500.0, f"empty-inbox force_dream took {elapsed_ms:.1f} ms"
+
+        # Post-condition: nothing changed.
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        assert memory_system.storage.count_memories_by_status("consolidated") == 0
+        assert memory_system.is_dreaming is False
+
+    def test_us5_c_force_dream_block_false_returns_before_dreaming_finishes(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """US5 (c): force_dream(block=False) returns before the spawned
+        dream cycle finishes — observable because ``is_dreaming`` is
+        still True immediately after the call returns.
+        """
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("alpha beta gamma")
+
+        system.force_dream(block=False)
+
+        # Wait for the dream thread to enter extract_tags — at this point
+        # we know the cycle is live but CAN'T finish (BlockingLLM has not
+        # been released).
+        assert blocking_llm.entered_event.wait(timeout=2.0), (
+            "dream thread never entered extract_tags"
+        )
+        assert system.is_dreaming is True
+        assert system._dream_thread is not None
+        assert system._dream_thread.is_alive()
+
+        # Release and clean up.
+        blocking_llm.proceed_event.set()
+        system._dream_thread.join(timeout=5.0)
+        assert system.is_dreaming is False
+        assert system.storage.count_memories_by_status("consolidated") == 1
+
+    def test_us5_d_force_dream_does_not_spawn_second_thread_while_running(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """US5 (d): calling force_dream while a previous cycle is still
+        in flight does NOT spawn a second thread.
+
+        Exercises both modes:
+          - block=False → silent no-op, ``_dream_thread`` unchanged.
+          - block=True  → joins the existing thread, does not spawn
+            another thread for the (now-empty) leftover inbox.
+        """
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("first memory")
+        system.force_dream(block=False)
+        assert blocking_llm.entered_event.wait(timeout=2.0)
+
+        first_thread = system._dream_thread
+        assert first_thread is not None and first_thread.is_alive()
+
+        # Second block=False — must NOT spawn a new thread.
+        system.force_dream(block=False)
+        assert system._dream_thread is first_thread, (
+            "force_dream(block=False) while a cycle is in flight spawned a new thread"
+        )
+
+        # Release from a side-thread so block=True can join the existing
+        # thread and return.
+        releaser = threading.Thread(
+            target=lambda: blocking_llm.proceed_event.set(),
+            name="releaser",
+        )
+        releaser.start()
+
+        # block=True while a cycle is in flight → join existing, then
+        # run a fresh cycle (trivially no-op on the empty leftover inbox).
+        system.force_dream(block=True)
+        releaser.join(timeout=5.0)
+
+        assert not first_thread.is_alive()
+        assert system.is_dreaming is False
+        # Exactly one consolidation path ran, so the memory is
+        # consolidated exactly once.
+        assert system.storage.count_memories_by_status("consolidated") == 1
+
+
+# ---------------------------------------------------------------------------
+# T025 — full-loop parity against DictStorageAdapter
+# ---------------------------------------------------------------------------
+
+
+def test_dict_adapter_full_loop(
+    mock_embedder: MockEmbeddingProvider,
+    mock_llm: MockLLMProvider,
+) -> None:
+    """Run the US1 enqueue → force_dream → build_prompt_context flow
+    against ``DictStorageAdapter`` and assert it produces the same
+    shape of output as the SQLite path.
+
+    This is the behavioural end-to-end proof that
+    ``NeuroMemory``/``ContextHelper`` couple only to the
+    ``StorageAdapter`` ABC — not to any sqlite-specific quirk. The 14
+    contract tests already assert method-by-method parity at the
+    adapter boundary; this test does so at the orchestration boundary,
+    which is where Principle III actually pays off.
+    """
+    from neuromem.context import ContextHelper
+
+    from tests.conftest import DictStorageAdapter
+
+    dict_system = NeuroMemory(
+        storage=DictStorageAdapter(),
+        llm=mock_llm,
+        embedder=mock_embedder,
+    )
+
+    sqlite_system = NeuroMemory(
+        storage=SQLiteAdapter(":memory:"),
+        llm=mock_llm,
+        embedder=mock_embedder,
+    )
+
+    # Identical content into both systems.
+    raw_texts = [
+        "python sqlite async",
+        "python numpy vectorized",
+        "rust tokio async",
+    ]
+    for system in (dict_system, sqlite_system):
+        for t in raw_texts:
+            system.enqueue(t)
+        system.force_dream(block=True)
+
+    # Both systems must end up with 3 consolidated memories and at
+    # least one concept node each.
+    for system in (dict_system, sqlite_system):
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 3
+        assert len(system.storage.get_all_nodes()) >= 1
+
+    # ContextHelper.build_prompt_context must produce a non-empty ASCII
+    # tree containing the memory markers for both backends.
+    dict_tree = ContextHelper(dict_system).build_prompt_context("python")
+    sqlite_tree = ContextHelper(sqlite_system).build_prompt_context("python")
+
+    assert dict_tree != ""
+    assert sqlite_tree != ""
+    assert "📁" in dict_tree and "📁" in sqlite_tree
+    assert "📄" in dict_tree and "📄" in sqlite_tree
+
+    # Structural parity check: both trees should reference the same
+    # number of memory markers, since the two adapters were fed
+    # identical input and the MockEmbeddingProvider is deterministic.
+    # (The exact node labels can differ because the dream clustering
+    # depends on MockLLMProvider.generate_category_name, which is also
+    # deterministic — so the trees should in fact be structurally
+    # identical.)
+    assert dict_tree.count("📄") == sqlite_tree.count("📄")
+
+
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
     """Referenced for type-checker compatibility."""
     # EmbeddingProvider is referenced by type annotations in test fixtures.

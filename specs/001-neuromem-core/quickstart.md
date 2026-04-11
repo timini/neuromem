@@ -154,9 +154,10 @@ Relevant memories:
     return response.choices[0].message.content
 ```
 
-`context_block` will look like:
+`context_block` will look roughly like this:
 
 ```
+Relevant Memory Context:
 📁 Databases
 ├── 📁 SQLite
 │   ├── 📄 mem_7732: "WAL mode discussion — pragma journal_mode=WAL..."
@@ -164,6 +165,11 @@ Relevant memories:
 └── 📁 Indexing
     └── 📄 mem_4421: "Composite indexes for multi-column WHERE..."
 ```
+
+The `Relevant Memory Context:` header is always prepended so the block is immediately recognisable when it's spliced into a larger prompt. The exact tree structure depends on two things:
+
+- **Tag quality.** Your `LLMProvider.extract_tags` output is what the dreaming cycle clusters on. A production LLM should return meaningful concepts and filter stopwords; a naive implementation (e.g. "first 3 words of the summary") will leak words like `is` / `a` / `the` into the tree as their own categories. The mock providers used in the test suite deliberately don't filter, so test output is noisier than production output — that's expected.
+- **Cluster depth.** Agglomerative clustering only creates a parent centroid when two or more leaf concepts are close enough (cosine similarity ≥ `cluster_threshold`, default `0.82`). With only a handful of consolidated memories or unrelated topics, you'll see flat single-level trees rather than the nested example above. Tune `cluster_threshold` downward to encourage more merging.
 
 If the query has no match in the graph (cold start, or totally unrelated topic), `build_prompt_context` returns an **empty string** — your agent just runs without memory context (per Resolved Design Decision #2: return empty, no on-demand dreaming, KISS).
 
