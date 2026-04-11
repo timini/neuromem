@@ -1,0 +1,127 @@
+# Integration test workflow for `neuromem-gemini`.
+#
+# Runs the real-Gemini-API integration suite inside
+# `packages/neuromem-gemini/tests/` on a separate cadence from the
+# main CI workflow. This file is deliberately independent from
+# `ci.yml` so that:
+#
+#   1. **API hiccups never block PR merges.** A Gemini 5xx or rate
+#      limit shouldn't stop unrelated work from landing, so this
+#      workflow is NOT a required check in branch protection.
+#   2. **Tokens are conserved.** Running the integration suite on
+#      every PR push would burn API tokens on churning branches.
+#      Nightly + on-merge + manual-dispatch is the right cadence
+#      for a smoke test against an external service.
+#   3. **Fork PRs don't spuriously fail.** Secrets aren't available
+#      to workflow runs from forked repos, so running this as a
+#      `pull_request`-triggered job would fail every external
+#      contribution with a "secret not set" error. This workflow
+#      only triggers on events where secrets are guaranteed
+#      available (push to main, schedule, manual dispatch).
+#
+# The neuromem-core unit tests (208 deterministic tests, no network)
+# still run on every PR push via the main `ci.yml` workflow — that's
+# the primary merge gate. This workflow is the belt-and-braces real-
+# world verification.
+
+name: Integration Tests
+
+on:
+  # Manual trigger — use the "Run workflow" button in the Actions
+  # UI to verify an arbitrary branch / commit against real Gemini
+  # before merging something sensitive.
+  workflow_dispatch:
+
+  # Nightly at 03:17 UTC. Off-peak, and the minute-17 avoids
+  # synchronising with every-other-nightly-job-in-existence at the
+  # top of the hour.
+  schedule:
+    - cron: "17 3 * * *"
+
+  # After every merge to main. Catches regressions the moment they
+  # land so the nightly run isn't the first signal that something
+  # broke. Ignores PRs themselves (see rationale at the top).
+  push:
+    branches: [main]
+    # Only trigger when the integration-relevant parts of the tree
+    # actually changed. Saves API budget when the merge only
+    # touched docs or core-internal code the Gemini provider
+    # doesn't exercise.
+    paths:
+      - "packages/neuromem-gemini/**"
+      - "packages/neuromem-core/src/neuromem/providers.py"
+      - "packages/neuromem-core/src/neuromem/system.py"
+      - "packages/neuromem-core/src/neuromem/context.py"
+      - "packages/neuromem-core/src/neuromem/tools.py"
+      - ".github/workflows/integration.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+
+# Cancel older queued runs on the same ref. If you push two merges
+# to main back-to-back, only the latest kicks off an integration run.
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gemini:
+    name: Gemini real-API tests
+    runs-on: ubuntu-latest
+    # Hard-stop if the run inexplicably hangs — the whole suite
+    # normally finishes in under 15 seconds locally, so anything
+    # past 10 minutes is a stuck HTTP client worth investigating
+    # rather than waiting on.
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      # Fail loud if the secret is missing. Using `exit 1` with a
+      # clear ::error:: annotation is better than a cryptic pytest
+      # skip — a missing secret is an infra problem that should
+      # page someone, not silently pretend the tests passed.
+      - name: Verify GEMINI_API_KEY secret is configured
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::GEMINI_API_KEY secret is not configured in repository settings."
+            echo "::error::Set it at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            echo "::error::See packages/neuromem-gemini/README.md for context."
+            exit 1
+          fi
+          echo "GEMINI_API_KEY secret is present (length: ${#GEMINI_API_KEY})."
+
+      - name: Run Gemini integration tests
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # --no-cov: the workspace coverage gate is scoped to the
+        # four neuromem-core files; a sibling-package-only run
+        # would trivially miss the 90% threshold and fail the suite.
+        # -v: verbose output so the real tag set and ASCII tree
+        # produced by the live LLM are visible in the Actions log
+        # (useful when debugging prompt regressions).
+        # -s: disable stdout capture so the diagnostic print()
+        # calls inside the integration tests surface in real time.
+        run: |
+          uv run pytest packages/neuromem-gemini/tests/ \
+            -m integration \
+            --no-cov \
+            -v \
+            -s

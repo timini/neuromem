@@ -1,0 +1,89 @@
+# Package manifest for neuromem-gemini — the Google Gemini provider
+# pair for the neuromem cognitive memory library. Published to PyPI
+# as `neuromem-gemini`. Import name: `neuromem_gemini`.
+#
+# This is the FIRST sibling package under the workspace root, and
+# sets the scaffolding pattern every future vendor-specific provider
+# (neuromem-anthropic, neuromem-openai, neuromem-fastembed, ...) will
+# follow per Constitution v2.0.0 §Additional Constraints — Repository
+# Structure.
+#
+# Runtime deps:
+#   - neuromem-core: the abstract base classes this package implements.
+#     Resolved from the workspace, NOT from PyPI — see [tool.uv.sources].
+#   - google-genai:  the official Google Gen AI Python SDK.
+#   - numpy:         for the (N, D) float32 array shape returned by
+#                    GeminiEmbeddingProvider.get_embeddings.
+#
+# NOT added to core deps — core stays framework-agnostic (Principle I,
+# II). The SC-005 / SC-006 tripwire tests inside neuromem-core enforce
+# this by construction.
+
+[project]
+name = "neuromem-gemini"
+version = "0.1.0"
+description = "Google Gemini provider pair (LLM + embedder) for the neuromem cognitive memory library."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Tim Richardson" },
+]
+keywords = [
+    "memory",
+    "agents",
+    "llm",
+    "gemini",
+    "google",
+    "neuromem",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neuromem-core",
+    "google-genai>=1.0",
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/timini/neuromem"
+Repository = "https://github.com/timini/neuromem"
+Issues = "https://github.com/timini/neuromem/issues"
+Documentation = "https://github.com/timini/neuromem/blob/main/packages/neuromem-gemini/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+# Resolve `neuromem-core` from the workspace sibling instead of PyPI.
+# This is the plumbing that makes the monorepo's local-dev story work:
+# `uv sync` links this package's `neuromem-core` dep at the local
+# `packages/neuromem-core/` source tree in editable mode.
+[tool.uv.sources]
+neuromem-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuromem_gemini"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "README.md",
+    "pyproject.toml",
+]
