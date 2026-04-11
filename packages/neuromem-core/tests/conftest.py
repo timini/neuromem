@@ -88,9 +88,19 @@ def mock_llm() -> MockLLMProvider:
 # ---------------------------------------------------------------------------
 
 # List of ``() -> StorageAdapter`` callables. Each entry produces a
-# fresh adapter instance per test. Starts empty; T013 appends a
-# SQLiteAdapter factory; T025 appends a DictStorageAdapter factory.
+# fresh adapter instance per test. T013 appends SQLiteAdapter;
+# T025 appends DictStorageAdapter.
 STORAGE_ADAPTER_FACTORIES: list[Callable[[], StorageAdapter]] = []
+
+
+def sqlite_factory() -> StorageAdapter:
+    """Return a fresh in-memory ``SQLiteAdapter`` for contract tests."""
+    from neuromem.storage.sqlite import SQLiteAdapter
+
+    return SQLiteAdapter(":memory:")
+
+
+STORAGE_ADAPTER_FACTORIES.append(sqlite_factory)
 
 
 # Skip-sentinel used when STORAGE_ADAPTER_FACTORIES is empty. Without it,
