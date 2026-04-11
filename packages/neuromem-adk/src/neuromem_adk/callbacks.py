@@ -114,7 +114,11 @@ def build_after_agent_turn_capturer(memory: NeuroMemory) -> Any:
     doesn't break the conversation.
     """
 
-    def after_agent_turn_capturer(ctx: Any) -> None:
+    def after_agent_turn_capturer(callback_context: Any) -> None:
+        # ADK 1.29 passes the context as a keyword argument named
+        # ``callback_context``. Older docs sometimes call it ``ctx``.
+        # Bind to a local for readability.
+        ctx = callback_context
         session = getattr(ctx, "session", None)
         events = getattr(session, "events", None) or []
         agent_name = getattr(ctx, "agent_name", None)
@@ -185,8 +189,13 @@ def build_before_model_context_injector(memory: NeuroMemory) -> Any:
     """
     helper = ContextHelper(memory)
 
-    def before_model_context_injector(ctx: Any, llm_request: Any) -> None:
-        query = _resolve_query_text(ctx)
+    def before_model_context_injector(
+        callback_context: Any,
+        llm_request: Any,
+    ) -> None:
+        # ADK 1.29 invokes this callback with keyword arguments
+        # ``callback_context=`` and ``llm_request=``.
+        query = _resolve_query_text(callback_context)
         if not query:
             return None
         tree = helper.build_prompt_context(query)
