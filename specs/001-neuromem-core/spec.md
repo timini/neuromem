@@ -137,9 +137,9 @@ In a testing or CLI context, a developer wants to consolidate inbox memories imm
 - **FR-021**: `retrieve_memories()` MUST update `last_accessed` to the current timestamp and reset `access_weight` to `1.0` for each successfully retrieved consolidated memory (Long-Term Potentiation).
 - **FR-022**: The library MUST provide a `StorageAdapter` ABC in `neuromem.storage.base` defining the complete storage contract.
 - **FR-023**: The library MUST ship a `SQLiteAdapter` in `neuromem.storage.sqlite` that satisfies the `StorageAdapter` contract using only Python's stdlib `sqlite3` module.
-- **FR-024**: The `SQLiteAdapter.get_nearest_nodes()` MUST implement cosine similarity locally using the pure-Python functions in `neuromem.math` (no numpy required).
-- **FR-025**: The library MUST provide `EmbeddingProvider` and `LLMProvider` ABCs in `neuromem.providers`. The core library MUST NOT import `openai`, `anthropic`, `google-genai`, or any specific LLM/embedding SDK.
-- **FR-026**: The library MUST be packaged with `pyproject.toml` and managed with `uv`. Runtime dependencies MUST be limited to the Python 3.x standard library; `requests` (or `httpx`) is the only permitted non-stdlib runtime dependency for optional HTTP utilities.
+- **FR-024**: The `SQLiteAdapter.get_nearest_nodes()` MUST implement cosine similarity locally using **numpy** (vectorised matrix-vector operations over the full node-embedding matrix). This is the performance path SC-003 is calibrated against.
+- **FR-025**: The library MUST provide `EmbeddingProvider` and `LLMProvider` ABCs in `neuromem.providers`. The core library MUST NOT import `openai`, `anthropic`, `google-genai`, or any specific LLM/embedding SDK. (numpy and pandas are NOT LLM/embedding SDKs — they are permitted per Constitution Principle II v2.0.0.)
+- **FR-026**: The repository MUST be a `uv` workspace monorepo. The core library MUST live at `packages/neuromem-core/` with its own `pyproject.toml`, and MUST be published to PyPI as `neuromem-core` with import name `neuromem`. Runtime dependencies of `neuromem-core` are: Python 3.10+ standard library, `numpy` (>= 1.26), and `pandas` (>= 2.1). No other runtime dependencies without a constitutional amendment.
 - **FR-027**: `NeuroMemory.force_dream()` MUST trigger the dreaming pipeline immediately, processing all current inbox memories, and MUST block until completion unless `block=False` is passed.
 - **FR-028**: The system MUST prevent concurrent dreaming threads: if a dreaming cycle is already running, a second trigger MUST NOT spawn a second thread.
 - **FR-029**: If the dreaming pipeline fails mid-cycle (provider exception), it MUST roll back the batch status from `'dreaming'` to `'inbox'` so the batch is retried in the next cycle.
@@ -169,8 +169,8 @@ In a testing or CLI context, a developer wants to consolidate inbox memories imm
 - **SC-002**: `enqueue()` must complete and return in under 50 ms on the calling thread **excluding the `LLMProvider.generate_summary()` call**, which is the caller's responsibility and whose latency depends on the injected provider. The dreaming thread is asynchronous and does not count against this budget. Callers that need true hot-path latency MUST supply a fast local or no-op summary provider.
 - **SC-003**: `search_memory()` must return a rendered ASCII tree in under 500 ms for a graph containing up to 10,000 nodes, using the `SQLiteAdapter` with local cosine similarity computation.
 - **SC-004**: The `StorageAdapter` ABC must be sufficient to implement a fully functional alternative backend (demonstrated by a `DictStorageAdapter` used in the test suite) without modifying any file in `neuromem/` outside `storage/`.
-- **SC-005**: Zero runtime imports of any named LLM or embedding vendor SDK (`openai`, `anthropic`, `google-genai`, `cohere`, etc.) anywhere in `src/neuromem/`.
-- **SC-006**: The `SQLiteAdapter` must have zero non-stdlib runtime dependencies (verified by checking `pyproject.toml` optional-dependency groups).
+- **SC-005**: Zero runtime imports of any named LLM or embedding vendor SDK (`openai`, `anthropic`, `google-genai`, `cohere`, etc.) and zero imports of any agent framework SDK (Google ADK, LangChain, LlamaIndex, LangGraph, Anthropic SDK agent scaffolding) anywhere in `packages/neuromem-core/src/neuromem/`. Verified by a `tests/test_no_forbidden_imports.py` file-walk test.
+- **SC-006**: `packages/neuromem-core/pyproject.toml` runtime `dependencies` list contains exactly three entries: `numpy`, `pandas`, and (optionally, only if needed) a lightweight HTTP client. Verified by parsing the TOML in a test.
 - **SC-007**: The library's test suite (using a `MockStorageAdapter` and mock providers) must achieve >= 90% line coverage on `system.py`, `context.py`, `tools.py`, and `math.py`.
 - **SC-008**: The system must be evaluated against GraphRAG-Bench, AMB (Agent Memory Benchmark), and LongMemEval as the intended benchmark harnesses. No specific score targets are set at v1; the goal is baseline measurement for future improvement.
 - **SC-009**: Archived memories must remain retrievable via `retrieve_memories()` — zero data loss on archival.
@@ -184,7 +184,7 @@ In a testing or CLI context, a developer wants to consolidate inbox memories imm
 - The caller is responsible for providing working `LLMProvider` and `EmbeddingProvider` implementations; the library does not validate that the providers produce correct output (only that they return the correct types).
 - `enqueue()` is called on conversational text. Binary media (images, audio) is out of scope for v1; `raw_content` is always a UTF-8 string.
 - The SQLite database file is local to the process; multi-process concurrent writes to the same SQLite file are out of scope for v1.
-- Framework integrations (Google ADK, Anthropic SDK, LangChain hooks) will be separate PyPI packages; this spec covers only the core library.
+- Framework integrations (Google ADK, Anthropic SDK, LangChain hooks) will be separate packages published under the same `uv` workspace monorepo at `packages/neuromem-adk/`, `packages/neuromem-anthropic/`, `packages/neuromem-langchain/`, each depending on `neuromem-core` as a workspace dependency. This spec covers only `packages/neuromem-core/`.
 - Embedding dimensionality is determined entirely by the injected `EmbeddingProvider`; the library does not enforce a fixed dimension. The `SQLiteAdapter` MUST log a performance warning if any embedding exceeds 4096 dimensions (JSON-serialised BLOB storage starts to dominate node-table size beyond that).
 - The `dream_threshold` default is **10** inbox memories. Configurable via `NeuroMemory(dream_threshold=…)`.
 - The decay rate `λ` default is **3e-7 per second**, giving a half-life of roughly 30 days of elapsed time since `last_accessed`. Configurable via `NeuroMemory(decay_lambda=…)`.
@@ -215,37 +215,65 @@ In a testing or CLI context, a developer wants to consolidate inbox memories imm
 
 **Knowledge Graph, Not Pure Tree.** The underlying data structure is a directed weighted graph (nodes + edges). It is projected as a tree for rendering using a depth-limited traversal from the nearest matching nodes, with multi-parent relationships expressed via repeated subtree inclusion (mimicking symlinks semantically).
 
-**Local Math, Remote Embeddings.** Embedding generation is remote (provider API). All similarity computation, centroid arithmetic, and clustering are local using Python stdlib `math`. numpy is an optional future optimisation.
+**Local Math, Remote Embeddings.** Embedding generation is remote (provider API). All similarity computation, centroid arithmetic, and clustering are local using numpy (vectorised dot products + broadcasting). pandas is used for tabular transforms during the dreaming cycle (memory/node batch frames) where clarity benefits.
 
 ---
 
 ## Package Layout
 
+The repository is a `uv` workspace monorepo (Constitution v2.0.0 Additional Constraints — Repository Structure). The v1 target is a single package, `neuromem-core`, living at `packages/neuromem-core/`. Future framework-wrapper packages land as siblings under `packages/` in later features.
+
 ```
-neuromem/
-├── pyproject.toml                  # uv-managed, stdlib-only runtime deps
-├── README.md
-├── src/
-│   └── neuromem/
-│       ├── __init__.py             # __version__, re-exports of public surface
-│       ├── system.py               # NeuroMemory class — orchestration engine
-│       ├── context.py              # ContextHelper — prompt injection helper
-│       ├── tools.py                # search_memory(), retrieve_memories()
-│       ├── math.py                 # cosine_similarity(), compute_centroid()
-│       ├── providers.py            # EmbeddingProvider ABC, LLMProvider ABC
-│       └── storage/
-│           ├── __init__.py
-│           ├── base.py             # StorageAdapter ABC
-│           └── sqlite.py           # SQLiteAdapter (stdlib sqlite3)
-└── tests/
-    ├── conftest.py                 # shared fixtures, MockStorageAdapter,
-    │                               # MockLLMProvider, MockEmbeddingProvider
-    ├── test_system.py
-    ├── test_context.py
-    ├── test_tools.py
-    ├── test_math.py
-    └── test_storage_sqlite.py
+neuromem/                                        # repo root (git)
+├── pyproject.toml                               # uv workspace root:
+│                                                # [tool.uv.workspace]
+│                                                # members = ["packages/*"]
+├── uv.lock                                      # shared lockfile
+├── .pre-commit-config.yaml                      # already landed
+├── .gitignore                                   # already landed
+├── README.md                                    # repo-level (TBD)
+├── .specify/                                    # speckit scaffolding
+├── specs/001-neuromem-core/                     # this feature
+├── CLAUDE.md                                    # agent context file
+└── packages/
+    └── neuromem-core/                           # v1 package
+        ├── pyproject.toml                       # package config:
+        │                                        # name = "neuromem-core"
+        │                                        # dependencies = [
+        │                                        #   "numpy>=1.26",
+        │                                        #   "pandas>=2.1",
+        │                                        # ]
+        ├── README.md                            # package-level
+        ├── src/
+        │   └── neuromem/                        # import name
+        │       ├── __init__.py                  # __version__, re-exports
+        │       ├── system.py                    # NeuroMemory orchestration engine
+        │       ├── context.py                   # ContextHelper prompt injector
+        │       ├── tools.py                     # search_memory, retrieve_memories
+        │       ├── vectors.py                   # cosine_similarity, compute_centroid
+        │       │                                # (numpy-based; renamed from math.py
+        │       │                                # to avoid stdlib name shadowing)
+        │       ├── providers.py                 # EmbeddingProvider, LLMProvider ABCs
+        │       └── storage/
+        │           ├── __init__.py              # re-exports
+        │           ├── base.py                  # StorageAdapter ABC
+        │           └── sqlite.py                # SQLiteAdapter (stdlib sqlite3 +
+        │                                        # numpy for embedding (de)serialisation
+        │                                        # and vectorised get_nearest_nodes)
+        └── tests/
+            ├── __init__.py
+            ├── conftest.py                      # MockStorageAdapter, MockLLMProvider,
+            │                                    # MockEmbeddingProvider fixtures
+            ├── test_vectors.py                  # cosine_similarity, compute_centroid
+            ├── test_storage_sqlite.py           # StorageAdapter contract tests
+            ├── test_system.py                   # NeuroMemory + dreaming cycle
+            ├── test_context.py                  # ContextHelper + ASCII tree
+            ├── test_tools.py                    # search_memory, retrieve_memories, LTP
+            └── test_no_forbidden_imports.py     # SC-005 enforcement: grep src/
+                                                  # for openai/anthropic/etc
 ```
+
+**Naming note**: The module originally called `math.py` in the first draft is renamed to `vectors.py` here because (a) `math` shadows the stdlib `math` module and confuses tooling, and (b) with numpy in the mix, the module is a vector operations module, not a scalar math module. Public import path is `from neuromem.vectors import cosine_similarity, compute_centroid`.
 
 ---
 
@@ -327,16 +355,35 @@ def retrieve_memories(
     """
 ```
 
-### `neuromem.math`
+### `neuromem.vectors`
 
 ```python
-def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
-    """Cosine similarity in [0.0, 1.0]. Uses stdlib math only.
-    Returns 0.0 if either vector has zero magnitude."""
+import numpy as np
+from numpy.typing import NDArray
 
-def compute_centroid(vectors: list[list[float]]) -> list[float]:
-    """Element-wise mean of a list of equal-length vectors.
-    Raises ValueError if vectors is empty or lengths differ."""
+def cosine_similarity(
+    vec_a: NDArray[np.floating] | list[float],
+    vec_b: NDArray[np.floating] | list[float],
+) -> float:
+    """Cosine similarity in [-1.0, 1.0] (practically [0.0, 1.0] for embeddings).
+    Accepts numpy arrays or Python lists (the latter are converted).
+    Returns 0.0 if either vector has zero magnitude.
+    Raises ValueError on length mismatch."""
+
+def batch_cosine_similarity(
+    query: NDArray[np.floating],
+    matrix: NDArray[np.floating],
+) -> NDArray[np.float64]:
+    """Vectorised cosine similarity between one query vector and an (N, D)
+    matrix of candidate vectors. Returns a 1-D array of N similarity scores.
+    Used by SQLiteAdapter.get_nearest_nodes() for the full-table scan path."""
+
+def compute_centroid(
+    vectors: NDArray[np.floating] | list[NDArray[np.floating]] | list[list[float]],
+) -> NDArray[np.float64]:
+    """Element-wise mean. Accepts a 2-D array OR a list of 1-D arrays/lists.
+    Returns a new 1-D numpy array. Raises ValueError if empty or if lengths
+    differ."""
 ```
 
 ### `neuromem.providers`
@@ -524,7 +571,10 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE TABLE IF NOT EXISTS nodes (
     id           TEXT PRIMARY KEY,          -- UUID v4
     label        TEXT NOT NULL,             -- human-readable concept name
-    embedding    BLOB NOT NULL,             -- JSON-serialised list[float]
+    embedding    BLOB NOT NULL,             -- numpy float32 bytes
+                                            -- (np.ndarray.astype(np.float32).tobytes())
+    embedding_dim INTEGER NOT NULL,         -- length of the array, for
+                                            -- np.frombuffer reshape on read
     is_centroid  INTEGER NOT NULL DEFAULT 0 -- 0=leaf tag, 1=centroid parent
 );
 
@@ -538,7 +588,7 @@ CREATE TABLE IF NOT EXISTS edges (
 );
 ```
 
-**Embedding storage in SQLiteAdapter.** Embeddings are stored as JSON-serialised `list[float]` in a `BLOB` / `TEXT` column. On read, they are deserialised back to `list[float]` for cosine math. This is intentionally simple; no SQLite vector extension is required.
+**Embedding storage in SQLiteAdapter.** Embeddings are stored as raw numpy `float32` bytes in a `BLOB` column via `arr.astype(np.float32).tobytes()`. On read, `np.frombuffer(blob, dtype=np.float32)` reconstructs the 1-D array (the `embedding_dim` column is redundant check data but catches corruption). This is ~4× more compact than JSON text and ~10× faster to deserialise; the debuggability loss is acceptable because an operator can always `SELECT id, label FROM nodes` and pull embeddings programmatically when needed. No SQLite vector extension is required.
 
 **Status state machine.**
 
