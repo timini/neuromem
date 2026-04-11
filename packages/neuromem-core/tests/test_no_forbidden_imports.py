@@ -71,7 +71,13 @@ def _imports_in(path: Path) -> list[tuple[str, int]]:
 
     - ``import foo`` → yields ``("foo", lineno)`` (one per alias).
     - ``import foo.bar`` → yields ``("foo.bar", lineno)``.
-    - ``from foo.bar import baz`` → yields ``("foo.bar", lineno)``.
+    - ``from foo.bar import baz`` → yields ``("foo.bar", lineno)`` AND
+      ``("foo.bar.baz", lineno)``. Emitting the fully-qualified
+      ``module.name`` form is essential — otherwise a forbidden
+      sub-package like ``google.adk`` slips past the check when the
+      import is written as ``from google import adk`` (the ``module``
+      field in that AST node is just ``"google"``, which is not on the
+      forbidden list).
     - Relative imports (``from . import X``) are ignored — they can
       never target a forbidden package by definition.
     """
@@ -90,7 +96,13 @@ def _imports_in(path: Path) -> list[tuple[str, int]]:
             # Relative imports have level > 0 and module may be None.
             if node.level > 0 or node.module is None:
                 continue
+            # Emit the base module (catches `from google.adk import X`)
+            # AND every `module.alias` combination (catches the
+            # `from google import adk` form). Both shapes must be on
+            # the list so `_is_forbidden` can match against either.
             results.append((node.module, node.lineno))
+            for alias in node.names:
+                results.append((f"{node.module}.{alias.name}", node.lineno))
     return results
 
 
@@ -139,3 +151,76 @@ def test_no_forbidden_imports_in_core() -> None:
             + "\n\nThe core library must NEVER depend on LLM or agent-framework "
             "packages. See .specify/memory/constitution.md §Principle I."
         )
+
+
+# ---------------------------------------------------------------------------
+# Detector self-tests — feed the walker synthetic code samples and verify
+# every forbidden-import shape is caught. These are the regression guards
+# for the AST walker itself.
+# ---------------------------------------------------------------------------
+
+
+class TestDetectorCatchesEveryShape:
+    """Lock in that ``_imports_in`` + ``_is_forbidden`` catch every
+    syntactic form of a forbidden import, including edge cases like
+    ``from google import adk`` where the AST's ``module`` field only
+    holds the parent package name.
+    """
+
+    @staticmethod
+    def _scan_source(source: str, tmp_path: Path) -> list[str]:
+        """Write ``source`` to a temp .py file and return the list of
+        forbidden package names the walker detects in it."""
+        tmp_file = tmp_path / "sample.py"
+        tmp_file.write_text(source)
+        return [hit for name, _ in _imports_in(tmp_file) if (hit := _is_forbidden(name))]
+
+    def test_catches_bare_import(self, tmp_path: Path) -> None:
+        assert self._scan_source("import openai", tmp_path) == ["openai"]
+
+    def test_catches_dotted_import(self, tmp_path: Path) -> None:
+        hits = self._scan_source("import google.adk", tmp_path)
+        assert "google.adk" in hits
+
+    def test_catches_dotted_deeper_import(self, tmp_path: Path) -> None:
+        hits = self._scan_source("import google.adk.agents", tmp_path)
+        assert "google.adk" in hits
+
+    def test_catches_from_dotted_import(self, tmp_path: Path) -> None:
+        hits = self._scan_source("from google.adk import Agent", tmp_path)
+        assert "google.adk" in hits
+
+    def test_catches_from_google_import_adk(self, tmp_path: Path) -> None:
+        """Regression: the previous version of `_imports_in` missed
+        ``from google import adk`` because the AST ``module`` field
+        was just ``"google"``, which is not on the forbidden list.
+        The fix emits ``module.alias`` combinations to cover this shape.
+        """
+        hits = self._scan_source("from google import adk", tmp_path)
+        assert "google.adk" in hits
+
+    def test_catches_multi_alias_import(self, tmp_path: Path) -> None:
+        hits = self._scan_source("import os, openai, sys", tmp_path)
+        assert "openai" in hits
+
+    def test_catches_import_inside_function(self, tmp_path: Path) -> None:
+        src = "def f():\n    import anthropic\n    return anthropic.Client()"
+        hits = self._scan_source(src, tmp_path)
+        assert "anthropic" in hits
+
+    def test_catches_import_inside_if_type_checking(self, tmp_path: Path) -> None:
+        src = "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import langchain\n"
+        hits = self._scan_source(src, tmp_path)
+        assert "langchain" in hits
+
+    def test_relative_imports_ignored(self, tmp_path: Path) -> None:
+        """``from . import foo`` can never target a forbidden package."""
+        src = "from . import openai_helper"
+        hits = self._scan_source(src, tmp_path)
+        assert hits == []
+
+    def test_non_forbidden_imports_pass(self, tmp_path: Path) -> None:
+        """Sanity: the detector doesn't false-positive on allowed deps."""
+        src = "import numpy as np\nimport pandas as pd\nfrom pathlib import Path"
+        hits = self._scan_source(src, tmp_path)
+        assert hits == []

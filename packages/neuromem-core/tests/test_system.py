@@ -989,28 +989,25 @@ class TestDecayAndArchivalEndToEnd:
         self,
         memory_system: NeuroMemory,
     ) -> None:
-        """A consolidated memory with last_accessed 60 days past and
-        access_weight already low gets archived on the next dream cycle."""
+        """A consolidated memory with last_accessed 60 days past gets
+        archived on the next decay pass."""
         mem_id = self._seed_consolidated_memory(memory_system)
 
-        # Simulate age: set last_accessed to 60 days ago, weight already
-        # low from prior decay. Aggressive lambda so one decay pass
-        # pushes it below the archive_threshold.
-        sixty_days_ago = int(time.time()) - 60 * 86400
-        memory_system.storage._conn.execute(
-            "UPDATE memories SET last_accessed = ?, access_weight = 0.5 WHERE id = ?",
-            (sixty_days_ago, mem_id),
-        )
+        # Simulate age via the public ABC: spike_access_weight sets
+        # last_accessed to the supplied timestamp (and resets
+        # access_weight to 1.0) for consolidated memories. Handing it a
+        # 60-days-ago timestamp is the adapter-agnostic way to simulate
+        # an old last-accessed without touching a private `._conn`.
+        now = int(time.time())
+        sixty_days_ago = now - 60 * 86400
+        memory_system.storage.spike_access_weight([mem_id], sixty_days_ago)
 
-        # Use the system's configured decay_lambda via force_dream.
-        # Default 3e-7/s * 60 days = 0.0016 — too small. Override by
-        # directly calling apply_decay_and_archive with a lambda tuned
-        # to archive this memory.
-        lambda_for_test = 1e-6  # half-life ~8 days at 1e-6
+        # Aggressive lambda so 60 days of decay pushes the weight from
+        # 1.0 down to ~0.006, well below the 0.1 archive threshold.
         memory_system.storage.apply_decay_and_archive(
-            decay_lambda=lambda_for_test,
+            decay_lambda=1e-6,  # half-life ~8 days
             archive_threshold=0.1,
-            current_timestamp=int(time.time()),
+            current_timestamp=now,
         )
 
         # The memory must now be archived.
@@ -1026,16 +1023,14 @@ class TestDecayAndArchivalEndToEnd:
         slightly lower access_weight."""
         mem_id = self._seed_consolidated_memory(memory_system)
 
-        seven_days_ago = int(time.time()) - 7 * 86400
-        memory_system.storage._conn.execute(
-            "UPDATE memories SET last_accessed = ?, access_weight = 1.0 WHERE id = ?",
-            (seven_days_ago, mem_id),
-        )
+        now = int(time.time())
+        seven_days_ago = now - 7 * 86400
+        memory_system.storage.spike_access_weight([mem_id], seven_days_ago)
 
         memory_system.storage.apply_decay_and_archive(
             decay_lambda=3e-7,  # ~30-day half-life
             archive_threshold=0.1,
-            current_timestamp=int(time.time()),
+            current_timestamp=now,
         )
 
         row = memory_system.storage.get_memory_by_id(mem_id)
@@ -1051,38 +1046,41 @@ class TestDecayAndArchivalEndToEnd:
         """When a memory is archived, its has_tag edges must be
         removed from the active graph (but child_of edges between
         nodes must be preserved — the I-3 invariant from the T018
-        contract)."""
+        contract).
+
+        Verified through the public ABC by traversing the graph from
+        every node with ``get_subgraph(depth=2)``: the memory should
+        appear as a has_tag source pre-archival and should be gone
+        post-archival. This is adapter-agnostic — it works for any
+        ``StorageAdapter`` implementation, not just SQLite."""
         mem_id = self._seed_consolidated_memory(memory_system, "python")
 
-        # Confirm the memory has at least one has_tag edge before archival.
+        # Confirm the memory shows up via has_tag edges before archival.
         nodes = memory_system.storage.get_all_nodes()
-        assert nodes  # consolidation produced tag nodes
-        pre_has_tag = memory_system.storage._conn.execute(
-            "SELECT COUNT(*) AS n FROM edges WHERE source_id = ? AND relationship = 'has_tag'",
-            (mem_id,),
-        ).fetchone()
-        assert pre_has_tag["n"] >= 1
+        assert nodes, "consolidation should have produced tag nodes"
+        node_ids = [n["id"] for n in nodes]
 
-        # Force archival.
-        old = int(time.time()) - 365 * 86400
-        memory_system.storage._conn.execute(
-            "UPDATE memories SET last_accessed = ?, access_weight = 0.01 WHERE id = ?",
-            (old, mem_id),
-        )
+        def collect_has_tag_sources() -> set[str]:
+            """Return the set of memory IDs reachable via has_tag edges
+            from any currently-stored node. Uses only the public ABC."""
+            sub = memory_system.storage.get_subgraph(node_ids, depth=2)
+            return {e["source_id"] for e in sub["edges"] if e["relationship"] == "has_tag"}
+
+        assert mem_id in collect_has_tag_sources()
+
+        # Force archival through the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([mem_id], year_ago)
         memory_system.storage.apply_decay_and_archive(
             decay_lambda=1e-6,
             archive_threshold=0.1,
-            current_timestamp=int(time.time()),
+            current_timestamp=now,
         )
-
         assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "archived"
 
-        # has_tag edges for this memory must be gone.
-        post_has_tag = memory_system.storage._conn.execute(
-            "SELECT COUNT(*) AS n FROM edges WHERE source_id = ? AND relationship = 'has_tag'",
-            (mem_id,),
-        ).fetchone()
-        assert post_has_tag["n"] == 0
+        # The archived memory must no longer surface via has_tag edges.
+        assert mem_id not in collect_has_tag_sources()
 
     def test_retrieve_memories_on_archived_returns_content_no_resurrect(
         self,
@@ -1098,16 +1096,14 @@ class TestDecayAndArchivalEndToEnd:
             memory_system, "important knowledge about sqlite wal mode"
         )
 
-        # Archive it.
-        old = int(time.time()) - 365 * 86400
-        memory_system.storage._conn.execute(
-            "UPDATE memories SET last_accessed = ?, access_weight = 0.02 WHERE id = ?",
-            (old, mem_id),
-        )
+        # Archive it via the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([mem_id], year_ago)
         memory_system.storage.apply_decay_and_archive(
             decay_lambda=1e-6,
             archive_threshold=0.1,
-            current_timestamp=int(time.time()),
+            current_timestamp=now,
         )
         assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "archived"
 
@@ -1153,16 +1149,14 @@ class TestDecayAndArchivalEndToEnd:
         pre_result = search_memory("alpha", memory_system)
         assert archived_id in pre_result
 
-        # Archive it.
-        old = int(time.time()) - 365 * 86400
-        memory_system.storage._conn.execute(
-            "UPDATE memories SET last_accessed = ?, access_weight = 0.01 WHERE id = ?",
-            (old, archived_id),
-        )
+        # Archive it via the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([archived_id], year_ago)
         memory_system.storage.apply_decay_and_archive(
             decay_lambda=1e-6,
             archive_threshold=0.1,
-            current_timestamp=int(time.time()),
+            current_timestamp=now,
         )
 
         # The archived memory must NOT appear in the new search result.
@@ -1184,16 +1178,14 @@ class TestDecayAndArchivalEndToEnd:
 
         pre_summary = memory_system.storage.get_memory_by_id(mem_id)["summary"]
 
-        # Archive.
-        old = int(time.time()) - 365 * 86400
-        memory_system.storage._conn.execute(
-            "UPDATE memories SET last_accessed = ?, access_weight = 0.01 WHERE id = ?",
-            (old, mem_id),
-        )
+        # Archive via the public ABC.
+        now = int(time.time())
+        year_ago = now - 365 * 86400
+        memory_system.storage.spike_access_weight([mem_id], year_ago)
         memory_system.storage.apply_decay_and_archive(
             decay_lambda=1e-6,
             archive_threshold=0.1,
-            current_timestamp=int(time.time()),
+            current_timestamp=now,
         )
 
         # Content preserved across archival.

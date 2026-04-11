@@ -85,7 +85,7 @@ Everything runs against the `StorageAdapter` abstract base class (13 methods). T
 - **Framework-agnostic.** No `openai`, `anthropic`, `langchain`, `google.adk`, etc. imported anywhere in `src/`. Enforced at CI time by a tripwire test.
 - **Lean dependency set.** `numpy + pandas` is the entire runtime dep list. Enforced at CI time by a tripwire test.
 - **Pluggable.** Providers (LLM, embedder) and storage are all injected. 14-test contract suite exercises every `StorageAdapter` implementation identically.
-- **Test-first.** 193 tests (unit + integration + contract) cover every module. Mock providers in `tests/conftest.py` let you run the cognitive loop end-to-end with zero network calls.
+- **Test-first.** 200+ tests (unit + integration + contract) cover every module. Mock providers in `tests/conftest.py` let you run the cognitive loop end-to-end with zero network calls.
 - **Atomic commits.** Every change ≤500 lines, enforced by pre-commit hooks (ruff + pytest). Never `--no-verify`.
 
 ---
