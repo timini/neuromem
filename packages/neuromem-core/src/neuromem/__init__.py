@@ -1,10 +1,28 @@
 """neuromem — neuroscience-inspired long-term memory for AI agents.
 
-Public API surface is populated incrementally by downstream tasks.
-See specs/001-neuromem-core/tasks.md for the sequence.
+Public API surface. Importers can get everything they need from the
+top-level namespace::
+
+    from neuromem import (
+        NeuroMemory, ContextHelper, SQLiteAdapter,
+        StorageAdapter, StorageError,
+        search_memory, retrieve_memories,
+    )
+    from neuromem.providers import LLMProvider, EmbeddingProvider
+
+See ``packages/neuromem-core/README.md`` for the quickstart and
+``specs/001-neuromem-core/spec.md`` for the full feature specification.
 """
 
 import logging
+
+from neuromem.context import ContextHelper
+from neuromem.providers import EmbeddingProvider, LLMProvider
+from neuromem.storage.base import StorageAdapter, StorageError
+from neuromem.storage.sqlite import SQLiteAdapter
+from neuromem.system import NeuroMemory
+from neuromem.tools import retrieve_memories, search_memory
+from neuromem.vectors import batch_cosine_similarity, compute_centroid, cosine_similarity
 
 __version__ = "0.1.0"
 
@@ -31,4 +49,19 @@ __version__ = "0.1.0"
 logger = logging.getLogger("neuromem")
 logger.addHandler(logging.NullHandler())
 
-__all__ = ["__version__", "logger"]
+__all__ = [
+    "ContextHelper",
+    "EmbeddingProvider",
+    "LLMProvider",
+    "NeuroMemory",
+    "SQLiteAdapter",
+    "StorageAdapter",
+    "StorageError",
+    "__version__",
+    "batch_cosine_similarity",
+    "compute_centroid",
+    "cosine_similarity",
+    "logger",
+    "retrieve_memories",
+    "search_memory",
+]
