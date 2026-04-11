@@ -118,10 +118,17 @@ class SQLiteAdapter(StorageAdapter):
         try:
             # isolation_level=None → autocommit; we manage transactions
             # explicitly with `with conn:` blocks.
+            # check_same_thread=False lets the background dreaming
+            # thread (spawned by T021) touch this connection. The
+            # real write serialisation primitive is
+            # NeuroMemory._dream_lock at the orchestration layer —
+            # check_same_thread would duplicate that lock's purpose
+            # and crash on every cross-thread call.
             self._conn = sqlite3.connect(
                 db_path,
                 isolation_level=None,
                 detect_types=sqlite3.PARSE_DECLTYPES,
+                check_same_thread=False,
             )
             self._conn.row_factory = sqlite3.Row
         except sqlite3.Error as exc:
@@ -618,10 +625,15 @@ def _row_to_node_dict(row: sqlite3.Row) -> dict[str, Any]:
     """
     blob = row["embedding"]
     expected_dim = int(row["embedding_dim"])
-    if len(blob) // 4 != expected_dim:
+    # float32 → 4 bytes per element. Exact comparison (not `// 4`)
+    # is essential: integer division rounds down, so a blob of
+    # `expected_dim * 4 + r` for r ∈ {1, 2, 3} would pass the check
+    # and produce a silently-truncated embedding at read time.
+    if len(blob) != expected_dim * 4:
         raise StorageError(
             f"corrupt embedding for node {row['id']}: "
-            f"blob size {len(blob)} does not match embedding_dim {expected_dim}"
+            f"blob size {len(blob)} does not match expected "
+            f"{expected_dim} × 4 = {expected_dim * 4} bytes"
         )
     embedding = np.frombuffer(blob, dtype=np.float32).copy()  # .copy() makes it writable
     return {
