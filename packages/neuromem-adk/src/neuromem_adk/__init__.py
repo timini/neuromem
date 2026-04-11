@@ -11,11 +11,12 @@ See `packages/neuromem-adk/README.md` and
 from __future__ import annotations
 
 from neuromem_adk.enable import enable_memory
+from neuromem_adk.memory_service import NeuromemMemoryService
 
 __version__ = "0.1.0"
 
-# NeuromemMemoryService lands in T013 (US5).
-#
-# from neuromem_adk.memory_service import NeuromemMemoryService
-
-__all__ = ["__version__", "enable_memory"]
+__all__ = [
+    "NeuromemMemoryService",
+    "__version__",
+    "enable_memory",
+]
