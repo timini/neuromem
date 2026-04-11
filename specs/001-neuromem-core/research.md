@@ -88,6 +88,12 @@ def compute_centroid(vectors) -> NDArray[np.float64]:
 
 ## Decision 3: Agglomerative clustering — numpy pairwise similarity matrix + greedy merge
 
+> **Cross-reference**: this decision has a full ADR at
+> [`docs/decisions/ADR-001-clustering-library-choice.md`](../../docs/decisions/ADR-001-clustering-library-choice.md).
+> The ADR details the alternatives (scipy / sklearn / HDBSCAN) and the
+> revisit criteria for swapping. Read that before proposing a dependency
+> amendment; this brief is the summary.
+
 **Decision**: Implement agglomerative clustering in `NeuroMemory._run_dream_cycle()` (private method in `system.py`) using a numpy pairwise cosine similarity matrix as the base data structure, plus a greedy max-similarity merge loop. Use pandas `DataFrame` for the merge bookkeeping (which rows are still "live", which have been merged into which centroid) because that's exactly the kind of indexed tabular transform pandas is good at.
 
 ```python

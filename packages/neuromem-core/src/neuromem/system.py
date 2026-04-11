@@ -311,6 +311,21 @@ class NeuroMemory:
 
         Safety bound: the loop runs at most ``2 * len(candidates)``
         iterations so a pathological similarity matrix cannot hang.
+
+        Design rationale — why hand-rolled numpy and not scipy /
+        sklearn / HDBSCAN: see ``docs/decisions/ADR-001-clustering-
+        library-choice.md``. TL;DR: numpy is already a mandatory
+        runtime dep (Principle II); the per-merge
+        ``llm.generate_category_name`` callback is the reason the
+        loop is custom (libraries expose dendrograms, not merge
+        hooks); and at k ≤ 5000 the dense pairwise matrix is
+        single-digit milliseconds — the libraries would add install
+        surface without changing the hot-path cost. Revisit when any
+        of (a) k > 5000 hits SC-003, (b) LongMemEval shows cluster-
+        quality regressions vs. a library baseline, or (c) a
+        downstream wrapper needs Ward linkage / soft clustering /
+        noise labels. See the ADR for the full trade-off analysis
+        and the amendment procedure required to swap.
         """
         # Copy the starting nodes into a working list. Appending
         # centroids to this list grows the pool — a centroid can
