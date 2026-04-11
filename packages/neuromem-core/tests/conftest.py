@@ -93,19 +93,51 @@ def mock_llm() -> MockLLMProvider:
 STORAGE_ADAPTER_FACTORIES: list[Callable[[], StorageAdapter]] = []
 
 
+# Skip-sentinel used when STORAGE_ADAPTER_FACTORIES is empty. Without it,
+# pytest collects the contract tests with 0 parameterisations and they
+# disappear silently from the run output — a broken registration (e.g.,
+# T013 or T025's append dropped in a merge conflict) would be
+# indistinguishable from "adapters not yet implemented." With the sentinel,
+# the tests always appear, marked clearly SKIPPED with an actionable reason.
+_SKIP_SENTINEL = object()
+
+
+def _fixture_id(factory_or_sentinel: object) -> str:
+    if factory_or_sentinel is _SKIP_SENTINEL:
+        return "no-adapters-registered"
+    return getattr(factory_or_sentinel, "__name__", "anon").replace("_factory", "")
+
+
 @pytest.fixture(
-    params=STORAGE_ADAPTER_FACTORIES,
-    ids=lambda f: f.__name__.replace("_factory", ""),
+    params=STORAGE_ADAPTER_FACTORIES or [_SKIP_SENTINEL],
+    ids=_fixture_id,
 )
 def storage_adapter(request: pytest.FixtureRequest) -> StorageAdapter:
     """Parametrised fixture over every concrete StorageAdapter.
 
     Used by test_storage_adapter_contract.py to run the 13-item
     contract test suite against every implementation in a single
-    pytest run. Starts empty (no adapters registered); tasks T013
-    and T025 append SQLiteAdapter and DictStorageAdapter factories
-    respectively. With an empty params list, every contract test
-    is collected with 0 parameterisations and skipped silently.
+    pytest run.
+
+    Registration lifecycle:
+      - Starts empty (no adapters registered).
+      - T013 appends ``SQLiteAdapter`` factory.
+      - T025 appends ``DictStorageAdapter`` factory.
+
+    When the factory list is empty, this fixture yields a single
+    skipped test instance per contract test function (via the
+    ``_SKIP_SENTINEL``) with a clear reason, rather than silently
+    omitting the tests from collection entirely. This makes a broken
+    registration visible at CI time: ``pytest -v`` shows the skipped
+    tests, and ``pytest --collect-only`` makes it clear that the
+    contract suite exists.
     """
+    if request.param is _SKIP_SENTINEL:
+        pytest.skip(
+            "No StorageAdapter factories registered in "
+            "STORAGE_ADAPTER_FACTORIES. This is expected during "
+            "T008-T012. Once T013 lands, SQLiteAdapter should be "
+            "appended and this skip should disappear."
+        )
     factory: Callable[[], StorageAdapter] = request.param
     return factory()
