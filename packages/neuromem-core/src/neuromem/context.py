@@ -166,15 +166,16 @@ def _render_ascii_tree(subgraph: dict[str, Any]) -> str:
     lines: list[str] = ["Relevant Memory Context:"]
     # Tracks which nodes have already been fully rendered (so their
     # second/later appearances become compact "(also under: ...)"
-    # references). Maps node_id → label of the first parent we
-    # rendered it under. Mutated by _render_root / _render_descendant.
-    first_parent_label: dict[str, str] = {}
+    # references). Maps node_id → parent label under which the node
+    # was FIRST rendered. A value of ``None`` means the first render
+    # was as a top-level root (no parent). Mutated by _render_root
+    # and _render_descendant.
+    first_parent_label: dict[str, str | None] = {}
 
-    # Render every root node. Roots have no parent so they sit at the
-    # top level with no connector — the connector logic only kicks in
-    # for descendants.
-    for i, root_id in enumerate(root_ids):
-        is_last_root = i == len(root_ids) - 1
+    # Render every root node. Roots have no parent so they sit at
+    # the top level with no connector — the connector logic only
+    # kicks in for descendants.
+    for root_id in root_ids:
         _render_root(
             nodes_by_id=nodes_by_id,
             node_id=root_id,
@@ -183,21 +184,31 @@ def _render_ascii_tree(subgraph: dict[str, Any]) -> str:
             children_of=children_of,
             memories_of=memories_of,
             memories_by_id=memories_by_id,
-            is_last_root=is_last_root,
         )
 
     return "\n".join(lines) + "\n"
+
+
+def _format_also_under(first_parent_label_value: str | None) -> str:
+    """Format the '(also under: X)' suffix for a node seen a second time.
+
+    A value of ``None`` in ``first_parent_label`` means the node was
+    first rendered as a top-level root. Both branches produce
+    human-readable output — no nonsensical ``(also under: NodeOwnLabel)``.
+    """
+    if first_parent_label_value is None:
+        return " (also under: top level)"
+    return f" (also under: {first_parent_label_value})"
 
 
 def _render_root(
     nodes_by_id: dict[str, dict],
     node_id: str,
     lines: list[str],
-    first_parent_label: dict[str, str],
+    first_parent_label: dict[str, str | None],
     children_of: dict[str, list[str]],
     memories_of: dict[str, list[str]],
     memories_by_id: dict[str, dict],
-    is_last_root: bool,
 ) -> None:
     """Render a root node (no indent) and recursively descend."""
     node = nodes_by_id.get(node_id)
@@ -205,11 +216,14 @@ def _render_root(
         return
 
     if node_id in first_parent_label:
-        also_under = first_parent_label[node_id]
-        lines.append(f"📁 {node['label']} (also under: {also_under})")
+        # Already rendered elsewhere — compact reference only.
+        suffix = _format_also_under(first_parent_label[node_id])
+        lines.append(f"📁 {node['label']}{suffix}")
         return
 
-    first_parent_label[node_id] = node["label"]
+    # First time we render this node, and it's a root — no parent.
+    # Store ``None`` as the sentinel; _format_also_under handles it.
+    first_parent_label[node_id] = None
     lines.append(f"📁 {node['label']}")
 
     sub_children = children_of.get(node_id, [])
@@ -259,7 +273,7 @@ def _render_descendant(
     is_last_sibling: bool,
     parent_label: str,
     lines: list[str],
-    first_parent_label: dict[str, str],
+    first_parent_label: dict[str, str | None],
     children_of: dict[str, list[str]],
     memories_of: dict[str, list[str]],
     memories_by_id: dict[str, dict],
@@ -273,8 +287,8 @@ def _render_descendant(
 
     if node_id in first_parent_label:
         # Already rendered under a different parent — compact reference.
-        also_under = first_parent_label[node_id]
-        lines.append(f"{prefix}{connector}📁 {node['label']} (also under: {also_under})")
+        suffix = _format_also_under(first_parent_label[node_id])
+        lines.append(f"{prefix}{connector}📁 {node['label']}{suffix}")
         return
 
     first_parent_label[node_id] = parent_label
