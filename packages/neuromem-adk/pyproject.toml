@@ -1,0 +1,93 @@
+# Package manifest for neuromem-adk — the Google Agent Development
+# Kit integration for the neuromem long-term memory library. Published
+# to PyPI as `neuromem-adk`. Import name: `neuromem_adk`.
+#
+# This is the second sibling package under the workspace root (after
+# neuromem-gemini) and the first framework wrapper. It sets the
+# scaffolding pattern every future framework wrapper (neuromem-anthropic,
+# neuromem-langchain, neuromem-langgraph, ...) will follow.
+#
+# Runtime deps:
+#   - neuromem-core:   the cognitive-loop orchestrator and ABCs.
+#     Resolved from the workspace, NOT from PyPI — see [tool.uv.sources].
+#   - neuromem-gemini: default LLM + embedder provider pair. Workspace
+#                     resolution, same as above.
+#   - google-adk:     the framework this package wraps.
+#   - numpy:          transitive via core + gemini, imported directly
+#                     for any shape adjustments in callbacks.
+#
+# NOT added to neuromem-core deps — core stays framework-agnostic
+# (Principle I, II). Adding google-adk here is fine because the
+# SC-005 / SC-006 tripwires inside neuromem-core only scan its own
+# src tree and pyproject.
+
+[project]
+name = "neuromem-adk"
+version = "0.1.0"
+description = "Google Agent Development Kit integration for the neuromem long-term memory library. One-line memory attachment for ADK agents."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Tim Richardson" },
+]
+keywords = [
+    "memory",
+    "agents",
+    "llm",
+    "adk",
+    "google",
+    "neuromem",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neuromem-core",
+    "neuromem-gemini",
+    "google-adk>=1.29",
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/timini/neuromem"
+Repository = "https://github.com/timini/neuromem"
+Issues = "https://github.com/timini/neuromem/issues"
+Documentation = "https://github.com/timini/neuromem/blob/main/packages/neuromem-adk/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+# Resolve neuromem-core AND neuromem-gemini from the workspace siblings
+# instead of PyPI. `uv sync` links both at their local source trees in
+# editable mode. This is the monorepo-with-workspaces pattern uv
+# documents for sibling-package consumption.
+[tool.uv.sources]
+neuromem-core = { workspace = true }
+neuromem-gemini = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuromem_adk"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "README.md",
+    "pyproject.toml",
+]
