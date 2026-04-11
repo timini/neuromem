@@ -265,17 +265,211 @@ class TestEnqueueSync:
 
 
 # ---------------------------------------------------------------------------
-# force_dream (T020/T021 placeholder — tests land in those tasks)
+# force_dream (T020 Half A: block=True runs sync; block=False lands in T021)
 # ---------------------------------------------------------------------------
 
 
-class TestForceDreamPlaceholder:
-    def test_force_dream_raises_until_t020(
+class TestForceDream:
+    def test_block_true_runs_synchronously(
         self,
         memory_system: NeuroMemory,
     ) -> None:
-        with pytest.raises(NotImplementedError, match="T020"):
-            memory_system.force_dream()
+        """force_dream(block=True) runs _run_dream_cycle directly."""
+        for i in range(3):
+            memory_system.enqueue(f"memory {i}")
+        memory_system.force_dream(block=True)
+        # After dreaming, all memories must be consolidated.
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        assert memory_system.storage.count_memories_by_status("consolidated") == 3
+
+    def test_block_false_not_yet_implemented(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        with pytest.raises(NotImplementedError, match="T021"):
+            memory_system.force_dream(block=False)
+
+
+# ---------------------------------------------------------------------------
+# _run_dream_cycle (T020 Half A — pipeline skeleton, no clustering)
+# ---------------------------------------------------------------------------
+
+
+class TestRunDreamCycleHappyPath:
+    def test_three_memories_consolidate_through_pipeline(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        # MockLLMProvider.extract_tags returns the first 3 alpha tokens
+        # of the summary. MockEmbeddingProvider produces deterministic
+        # 16-dim float32 vectors.
+        ids = [
+            memory_system.enqueue("alpha beta gamma"),
+            memory_system.enqueue("delta epsilon zeta"),
+            memory_system.enqueue("eta theta iota"),
+        ]
+        memory_system.force_dream()
+
+        # 1. All 3 memories are now consolidated.
+        for mid in ids:
+            row = memory_system.storage.get_memory_by_id(mid)
+            assert row is not None
+            assert row["status"] == "consolidated"
+
+        # 2. Nine distinct tag nodes (one per unique token) exist and
+        #    are leaf tags, not centroids (clustering lands in Half B).
+        nodes = memory_system.storage.get_all_nodes()
+        labels = {n["label"] for n in nodes}
+        expected = {
+            "alpha",
+            "beta",
+            "gamma",
+            "delta",
+            "epsilon",
+            "zeta",
+            "eta",
+            "theta",
+            "iota",
+        }
+        assert expected <= labels
+        for node in nodes:
+            assert node["is_centroid"] is False
+
+        # 3. has_tag edges wired from each memory to its 3 tags.
+        #    get_subgraph traverses from a node and collects reachable
+        #    memories — use alpha's node as the root.
+        alpha_id = next(n["id"] for n in nodes if n["label"] == "alpha")
+        sub = memory_system.storage.get_subgraph([alpha_id], depth=1)
+        reachable_memory_ids = {m["id"] for m in sub["memories"]}
+        assert ids[0] in reachable_memory_ids
+
+    def test_empty_inbox_is_no_op(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """_run_dream_cycle on empty inbox must not raise."""
+        memory_system.force_dream()
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        assert memory_system.storage.count_memories_by_status("consolidated") == 0
+        assert memory_system.is_dreaming is False
+
+    def test_is_dreaming_false_after_cycle(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        memory_system.enqueue("hello")
+        memory_system.force_dream()
+        assert memory_system.is_dreaming is False
+
+    def test_inbox_emptied_after_cycle(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        for i in range(5):
+            memory_system.enqueue(f"raw {i}")
+        assert memory_system.storage.count_memories_by_status("inbox") == 5
+        memory_system.force_dream()
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+
+
+class TestRunDreamCycleRollback:
+    def test_extract_tags_exception_rolls_back_batch(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        class BrokenLLM(LLMProvider):
+            def generate_summary(self, raw_text: str) -> str:
+                return raw_text[:40]
+
+            def extract_tags(self, summary: str) -> list[str]:
+                raise RuntimeError("provider boom")
+
+            def generate_category_name(self, concepts: list[str]) -> str:
+                return "Misc"
+
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=BrokenLLM(),
+            embedder=mock_embedder,
+        )
+        mem_ids = [system.enqueue(f"raw {i}") for i in range(3)]
+
+        with pytest.raises(RuntimeError, match="provider boom"):
+            system.force_dream()
+
+        # All 3 memories should be BACK in inbox, not stuck in dreaming.
+        assert system.storage.count_memories_by_status("inbox") == 3
+        assert system.storage.count_memories_by_status("dreaming") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 0
+        for mid in mem_ids:
+            assert system.storage.get_memory_by_id(mid)["status"] == "inbox"
+        # And is_dreaming is cleared even though we raised.
+        assert system.is_dreaming is False
+
+    def test_embedder_exception_rolls_back_batch(
+        self,
+        mock_llm: MockLLMProvider,
+    ) -> None:
+        class BrokenEmbedder(EmbeddingProvider):
+            def get_embeddings(self, texts):
+                raise RuntimeError("embed boom")
+
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=BrokenEmbedder(),
+        )
+        mem_id = system.enqueue("hello there")
+
+        with pytest.raises(RuntimeError, match="embed boom"):
+            system.force_dream()
+
+        assert system.storage.get_memory_by_id(mem_id)["status"] == "inbox"
+        assert system.is_dreaming is False
+
+
+class TestRunDreamCycleLocking:
+    def test_second_concurrent_call_returns_immediately(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """If the dream lock is held, a second call is a silent no-op.
+
+        We simulate a re-entrant call by manually grabbing the lock
+        before invoking _run_dream_cycle. The method must see the held
+        lock and return without touching any inbox memories.
+        """
+        mem_id = memory_system.enqueue("stays in inbox")
+        assert memory_system._dream_lock.acquire(blocking=False)
+        try:
+            memory_system._run_dream_cycle()
+            # Memory was NOT processed.
+            assert memory_system.storage.get_memory_by_id(mem_id)["status"] == "inbox"
+        finally:
+            memory_system._dream_lock.release()
+
+
+class TestEnsureTagNodes:
+    def test_reuses_existing_nodes_by_label(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """Second dream cycle reuses tag nodes created in the first.
+
+        After two dream cycles that both produce the tag 'shared',
+        there should be exactly ONE 'shared' node in storage, not two.
+        """
+        memory_system.enqueue("shared common tokens")
+        memory_system.force_dream()
+        nodes_after_first = memory_system.storage.get_all_nodes()
+        shared_count_1 = sum(1 for n in nodes_after_first if n["label"] == "shared")
+        assert shared_count_1 == 1
+
+        memory_system.enqueue("shared another thing")
+        memory_system.force_dream()
+        nodes_after_second = memory_system.storage.get_all_nodes()
+        shared_count_2 = sum(1 for n in nodes_after_second if n["label"] == "shared")
+        assert shared_count_2 == 1
 
 
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
