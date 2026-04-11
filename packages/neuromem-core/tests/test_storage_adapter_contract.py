@@ -150,6 +150,58 @@ def test_07_edge_insert_idempotent(storage_adapter: StorageAdapter) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 7b. remove_edges_for_memory preserves child_of edges
+# ---------------------------------------------------------------------------
+
+
+def test_07b_remove_edges_preserves_child_of(
+    storage_adapter: StorageAdapter,
+) -> None:
+    """``remove_edges_for_memory`` must only remove ``has_tag`` edges.
+
+    The docstring on ``StorageAdapter.remove_edges_for_memory``
+    explicitly says: *"Does NOT remove child_of edges."* A concrete
+    adapter that naively deletes all edges from a memory would pass
+    the other 13 contract tests while silently corrupting the concept
+    graph during the dreaming cycle's archival step.
+
+    This test sets up the exact topology the dreaming cycle produces
+    (``memory --has_tag--> tag <--child_of-- centroid``), archives
+    the memory, and asserts the ``child_of`` edge between the tag and
+    its centroid parent is still there.
+    """
+    emb = np.zeros(16, dtype=np.float32)
+    mem_id = storage_adapter.insert_memory("raw", "summary")
+
+    storage_adapter.upsert_node("tag_sqlite", "SQLite", emb, is_centroid=False)
+    storage_adapter.upsert_node("centroid_db", "Databases", emb, is_centroid=True)
+
+    # memory --has_tag--> tag
+    storage_adapter.insert_edge(mem_id, "tag_sqlite", 1.0, "has_tag")
+    # centroid --child_of--> tag
+    storage_adapter.insert_edge("centroid_db", "tag_sqlite", 0.9, "child_of")
+
+    # Pre-condition sanity: both edges exist.
+    pre = storage_adapter.get_subgraph(["centroid_db"], depth=2)
+    pre_keys = {(e["source_id"], e["target_id"], e["relationship"]) for e in pre["edges"]}
+    assert (mem_id, "tag_sqlite", "has_tag") in pre_keys
+    assert ("centroid_db", "tag_sqlite", "child_of") in pre_keys
+
+    # Action under test.
+    storage_adapter.remove_edges_for_memory(mem_id)
+
+    # Post-condition: child_of is preserved, has_tag is gone.
+    post = storage_adapter.get_subgraph(["centroid_db"], depth=2)
+    post_keys = {(e["source_id"], e["target_id"], e["relationship"]) for e in post["edges"]}
+    assert ("centroid_db", "tag_sqlite", "child_of") in post_keys, (
+        "remove_edges_for_memory must NOT delete child_of edges"
+    )
+    assert (mem_id, "tag_sqlite", "has_tag") not in post_keys, (
+        "remove_edges_for_memory must delete the memory's has_tag edge"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 8. get_nearest_nodes ranking
 # ---------------------------------------------------------------------------
 
