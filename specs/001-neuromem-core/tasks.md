@@ -41,7 +41,7 @@ This is a `uv` workspace monorepo (Constitution v2.0.0). All package code and te
 - [X] T004 [P] Create `packages/neuromem-core/src/neuromem/__init__.py` with `__version__ = "0.1.0"`. Leave re-exports commented out; they'll be uncommented as downstream modules land.
 - [X] T005 [P] Create `packages/neuromem-core/src/neuromem/storage/__init__.py` as an empty package marker. Create `packages/neuromem-core/tests/__init__.py` (empty) and `packages/neuromem-core/tests/conftest.py` with a single `pytest_plugins = []` line as a placeholder (fixtures added in T011).
 - [X] T006 Run `uv sync --dev` at the repo root. Verify both TOML files parse, the workspace is detected, `neuromem-core` installs in editable mode, and `uv tree packages/neuromem-core` shows `numpy` and `pandas` as the only non-stdlib runtime deps.
-- [ ] T007 Update `.pre-commit-config.yaml` pytest hook entry to run `uv run --package neuromem-core pytest -q -x packages/neuromem-core/tests/` (so the hook finds the monorepo test location and runs inside the workspace). Verify the hook still passes on a no-op commit (`git commit --allow-empty`).
+- [X] T007 Update `.pre-commit-config.yaml` pytest hook entry to run `uv run --package neuromem-core pytest -q -x packages/neuromem-core/tests/` (so the hook finds the monorepo test location and runs inside the workspace). Verify the hook still passes on a no-op commit (`git commit --allow-empty`).
 
 **Checkpoint**: Workspace is installable, pre-commit hooks active, empty package skeleton in place. Ready for Foundational phase.
 
