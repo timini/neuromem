@@ -11,6 +11,7 @@ Grown incrementally:
 
 from __future__ import annotations
 
+import threading
 import time
 
 import numpy as np
@@ -283,12 +284,283 @@ class TestForceDream:
         assert memory_system.storage.count_memories_by_status("inbox") == 0
         assert memory_system.storage.count_memories_by_status("consolidated") == 3
 
-    def test_block_false_not_yet_implemented(
+
+# ---------------------------------------------------------------------------
+# T021: Concurrency — threshold-spawned threads, block=False, double buffer
+# ---------------------------------------------------------------------------
+
+
+class BlockingLLM(LLMProvider):
+    """LLM that blocks inside ``extract_tags`` until released by a test.
+
+    Used to pause the dreaming cycle mid-flight so tests can observe
+    in-progress state (``is_dreaming``, dreaming-status memories) and
+    time-sensitive behaviour (non-blocking return of ``force_dream``,
+    double-buffer correctness).
+
+    Workflow:
+      1. Test enqueues memories, triggers a background dream cycle.
+      2. Dream thread enters ``extract_tags`` → sets ``entered_event``.
+      3. Test waits on ``entered_event`` to know the cycle is live.
+      4. Test observes intermediate state (dreaming status, lock held).
+      5. Test sets ``proceed_event`` to release the dream thread.
+      6. Dream thread finishes; test joins ``_dream_thread`` for cleanup.
+    """
+
+    def __init__(self) -> None:
+        self.entered_event = threading.Event()
+        self.proceed_event = threading.Event()
+        self.extract_tags_call_count = 0
+
+    def generate_summary(self, raw_text: str) -> str:
+        return raw_text[:40]
+
+    def extract_tags(self, summary: str) -> list[str]:
+        self.extract_tags_call_count += 1
+        self.entered_event.set()
+        if not self.proceed_event.wait(timeout=5.0):
+            raise RuntimeError("BlockingLLM timeout — test forgot to set proceed_event")
+        return [w for w in summary.split() if w.isalpha()][:3]
+
+    def generate_category_name(self, concepts: list[str]) -> str:
+        return "Cat"
+
+
+class TestEnqueueThresholdSpawnsThread:
+    def test_enqueue_past_threshold_spawns_background_thread(
+        self,
+        mock_llm: MockLLMProvider,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """Enqueuing past ``dream_threshold`` spawns a daemon thread
+        that runs ``_run_dream_cycle`` and consolidates the memories.
+        """
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=mock_embedder,
+            dream_threshold=3,
+        )
+        for i in range(3):
+            system.enqueue(f"memory {i}")
+
+        # A thread was spawned. Join it to avoid races in the assertion.
+        assert system._dream_thread is not None
+        system._dream_thread.join(timeout=5.0)
+        assert not system._dream_thread.is_alive()
+
+        # All 3 memories consolidated via the background cycle.
+        assert system.storage.count_memories_by_status("consolidated") == 3
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.is_dreaming is False
+
+    def test_enqueue_below_threshold_does_not_spawn(
         self,
         memory_system: NeuroMemory,
     ) -> None:
-        with pytest.raises(NotImplementedError, match="T021"):
-            memory_system.force_dream(block=False)
+        """Default threshold is 10; 5 enqueues should NOT spawn a thread."""
+        for i in range(5):
+            memory_system.enqueue(f"memory {i}")
+        assert memory_system._dream_thread is None
+        assert memory_system.is_dreaming is False
+        assert memory_system.storage.count_memories_by_status("inbox") == 5
+
+
+class TestForceDreamNonBlocking:
+    def test_block_false_returns_immediately(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """force_dream(block=False) spawns a thread and returns fast,
+        while the thread is still inside extract_tags."""
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("alpha beta gamma")
+
+        start = time.perf_counter()
+        system.force_dream(block=False)
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        assert elapsed_ms < 500.0, f"block=False returned in {elapsed_ms:.1f} ms"
+
+        # Wait for the dream thread to enter extract_tags.
+        assert blocking_llm.entered_event.wait(timeout=2.0), (
+            "dream thread never entered extract_tags"
+        )
+
+        # Right now the cycle is live: the memory is in 'dreaming' status,
+        # is_dreaming is True, and the spawned thread is still alive.
+        dreaming_rows = system.storage.get_memories_by_status("dreaming")
+        assert len(dreaming_rows) == 1
+        assert system.is_dreaming is True
+        assert system._dream_thread is not None
+        assert system._dream_thread.is_alive()
+
+        # Release the dream cycle and join the thread.
+        blocking_llm.proceed_event.set()
+        system._dream_thread.join(timeout=5.0)
+        assert not system._dream_thread.is_alive()
+        assert system.is_dreaming is False
+        assert system.storage.count_memories_by_status("consolidated") == 1
+
+    def test_block_false_noop_while_thread_already_running(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """A second force_dream(block=False) while the first is running
+        does NOT spawn another thread — it's a silent no-op."""
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("first memory")
+        system.force_dream(block=False)
+        assert blocking_llm.entered_event.wait(timeout=2.0)
+
+        first_thread = system._dream_thread
+        assert first_thread is not None and first_thread.is_alive()
+
+        # Second block=False call — should NOT spawn a new thread.
+        system.force_dream(block=False)
+        assert system._dream_thread is first_thread
+
+        # Clean up.
+        blocking_llm.proceed_event.set()
+        first_thread.join(timeout=5.0)
+
+
+class TestForceDreamBlockingJoinsExistingThread:
+    def test_block_true_waits_for_in_flight_background_thread(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """force_dream(block=True) while a background thread is running
+        joins the existing thread before running its own cycle."""
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        system.enqueue("first")
+        system.force_dream(block=False)
+        assert blocking_llm.entered_event.wait(timeout=2.0)
+
+        existing_thread = system._dream_thread
+        assert existing_thread is not None and existing_thread.is_alive()
+
+        # Release the BlockingLLM from another thread so the background
+        # cycle can finish while the main thread is inside force_dream.
+        releaser = threading.Thread(
+            target=lambda: blocking_llm.proceed_event.set(),
+            name="releaser",
+        )
+        releaser.start()
+
+        # block=True should join existing_thread, then run its own cycle
+        # (which is a no-op if the inbox is empty). Returns only after
+        # everything is consolidated.
+        system.force_dream(block=True)
+        releaser.join(timeout=5.0)
+
+        assert not existing_thread.is_alive()
+        assert system.storage.count_memories_by_status("consolidated") == 1
+        assert system.is_dreaming is False
+
+
+class TestDoubleBuffer:
+    def test_memories_enqueued_during_dreaming_land_in_next_cycle(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """The double-buffer invariant: memories arriving during an
+        active dream cycle stay in 'inbox' and are processed by a
+        LATER cycle, not the current one."""
+        blocking_llm = BlockingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=blocking_llm,
+            embedder=mock_embedder,
+        )
+        first_id = system.enqueue("first memory")
+        system.force_dream(block=False)
+        assert blocking_llm.entered_event.wait(timeout=2.0)
+
+        # Cycle is live and inside extract_tags. Enqueue another memory.
+        second_id = system.enqueue("second memory")
+
+        # First memory is in 'dreaming'; second is in 'inbox'.
+        assert system.storage.get_memory_by_id(first_id)["status"] == "dreaming"
+        assert system.storage.get_memory_by_id(second_id)["status"] == "inbox"
+
+        # Release the cycle and wait for it to finish.
+        blocking_llm.proceed_event.set()
+        assert system._dream_thread is not None
+        system._dream_thread.join(timeout=5.0)
+
+        # First is now consolidated. Second is still in inbox (not
+        # processed by the cycle that was running when it arrived).
+        assert system.storage.get_memory_by_id(first_id)["status"] == "consolidated"
+        assert system.storage.get_memory_by_id(second_id)["status"] == "inbox"
+
+        # A fresh force_dream processes the second memory.
+        system.force_dream(block=True)
+        assert system.storage.get_memory_by_id(second_id)["status"] == "consolidated"
+
+
+class TestGenuineConcurrency:
+    def test_two_threads_cannot_both_enter_dream_cycle(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """Real two-thread test (per PR #36 review finding I-3).
+
+        Two worker threads call ``_run_dream_cycle`` simultaneously via
+        a ``threading.Barrier``. Only one of them can acquire the lock
+        and run the pipeline; the other must see the lock held and
+        return immediately without touching any state.
+
+        This is the cross-thread exclusion test that
+        ``test_held_lock_causes_immediate_return`` deliberately does
+        not cover (it exercises only the lock-skip logic branch via
+        same-thread re-entry).
+        """
+        memory_system.enqueue("the quick brown fox")
+
+        barrier = threading.Barrier(2)
+        results: list[Exception | None] = []
+
+        def worker() -> None:
+            try:
+                barrier.wait(timeout=2.0)
+                memory_system._run_dream_cycle()
+                results.append(None)
+            except Exception as exc:  # pragma: no cover — guarded against lock bugs
+                results.append(exc)
+
+        t1 = threading.Thread(target=worker, name="race-1")
+        t2 = threading.Thread(target=worker, name="race-2")
+        t1.start()
+        t2.start()
+        t1.join(timeout=5.0)
+        t2.join(timeout=5.0)
+
+        # Neither thread raised.
+        assert all(r is None for r in results), f"worker raised: {results}"
+        # Exactly one thread did the work: the memory is consolidated
+        # (not doubled, not stuck in dreaming).
+        assert memory_system.storage.count_memories_by_status("consolidated") == 1
+        assert memory_system.storage.count_memories_by_status("dreaming") == 0
+        assert memory_system.storage.count_memories_by_status("inbox") == 0
+        # Lock and state flag are both clean after both threads exit.
+        assert memory_system.is_dreaming is False
+        assert memory_system._dream_lock.acquire(blocking=False)
+        memory_system._dream_lock.release()
 
 
 # ---------------------------------------------------------------------------

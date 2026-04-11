@@ -94,10 +94,18 @@ class NeuroMemory:
 
         # Single lock gating the dreaming cycle. _is_dreaming is the
         # authoritative "is a cycle in flight" flag; _dream_lock is
-        # only used to make the check-and-set of that flag atomic.
-        # Threading support is wired up in T021.
+        # acquired non-blockingly inside _run_dream_cycle to make
+        # concurrent cycles impossible — a second acquire attempt
+        # returns immediately and the attempted cycle is a no-op.
         self._dream_lock = threading.Lock()
         self._is_dreaming = False
+
+        # Most recent background dreaming thread, or None if no
+        # background cycle has ever been spawned. Tests can join()
+        # this to wait for completion; orchestration uses it for the
+        # "join existing thread before running my own cycle" path in
+        # force_dream(block=True).
+        self._dream_thread: threading.Thread | None = None
 
     @property
     def is_dreaming(self) -> bool:
@@ -108,13 +116,23 @@ class NeuroMemory:
         """Insert ``raw_text`` into the inbox and return its memory id.
 
         Calls ``llm.generate_summary`` synchronously on the caller's
-        thread (per Resolved Design Decision #3 — KISS). If the
-        post-insert inbox count meets ``dream_threshold``, T021 will
-        spawn a background thread here to run the dreaming cycle; for
-        now T019 lands just the synchronous path.
+        thread (per Resolved Design Decision #3 — KISS), inserts the
+        memory with ``status='inbox'`` via the storage adapter, and
+        then — if the post-insert inbox count meets ``dream_threshold``
+        AND no dream cycle is currently in flight — spawns a daemon
+        background thread to run ``_run_dream_cycle``.
 
-        Raises ``ValueError`` on empty ``raw_text`` or non-JSON
-        metadata. Propagates any provider or storage exceptions.
+        The ``and not self._is_dreaming`` guard is a cheap optimisation
+        to avoid creating a thread that will immediately no-op. It is
+        a soft check (there's a small race between the test and the
+        spawn), but the authoritative serialisation is
+        ``_run_dream_cycle``'s own non-blocking lock acquire — a second
+        thread sees the lock held and returns immediately. Correctness
+        comes from the lock, not from this check.
+
+        Raises ``ValueError`` on empty ``raw_text`` or non-JSON-
+        serialisable metadata. Propagates any provider or storage
+        exceptions.
         """
         if not raw_text:
             raise ValueError("raw_text must be non-empty")
@@ -126,32 +144,70 @@ class NeuroMemory:
             metadata=metadata,
         )
 
-        # T021 will wire up the background thread trigger here. For now
-        # we just check the count so the instrumentation is in place.
         inbox_count = self.storage.count_memories_by_status("inbox")
-        if inbox_count >= self.dream_threshold:
+        if inbox_count >= self.dream_threshold and not self._is_dreaming:
             logger.debug(
-                "enqueue: inbox count %d >= threshold %d (dreaming spawn lands in T021)",
+                "enqueue: inbox count %d >= threshold %d — spawning dream thread",
                 inbox_count,
                 self.dream_threshold,
             )
+            self._spawn_dream_thread()
 
         return memory_id
+
+    def _spawn_dream_thread(self) -> threading.Thread:
+        """Start a daemon thread running ``_run_dream_cycle``.
+
+        Stores a reference to the thread on ``self._dream_thread`` so
+        tests can ``join()`` it and ``force_dream`` can wait for it.
+        Returns the thread object for convenience.
+
+        Safe to call even when a cycle is already in flight: the new
+        thread's ``_run_dream_cycle`` call sees the lock held and
+        returns immediately without touching any memories.
+        """
+        thread = threading.Thread(
+            target=self._run_dream_cycle,
+            name="neuromem-dream",
+            daemon=True,
+        )
+        self._dream_thread = thread
+        thread.start()
+        return thread
 
     def force_dream(self, block: bool = True) -> None:
         """Manually trigger a dreaming cycle.
 
-        T020 Half A: ``block=True`` runs the cycle synchronously on
-        the caller's thread. ``block=False`` is not yet supported —
-        the background-thread plumbing lands in T021 alongside the
-        ``enqueue`` threshold-triggered spawn.
+        Two modes:
+
+        - ``block=True`` (default): if a background cycle is already
+          in flight, join it first, then run ``_run_dream_cycle``
+          synchronously on the caller's thread to process any memories
+          that arrived during (or were enqueued immediately after) the
+          background cycle. Returns when everything has been
+          consolidated.
+        - ``block=False``: if a background cycle is already in flight,
+          do nothing (it will eventually finish and there is no point
+          spawning another). Otherwise spawn a fresh daemon thread and
+          return immediately.
+
+        Tests that need a block=False call to have actually finished
+        can retrieve the spawned thread via ``system._dream_thread``
+        and call ``.join()`` on it.
         """
-        if not block:
-            raise NotImplementedError(
-                "force_dream(block=False) lands in T021 — background "
-                "thread support not implemented yet"
-            )
-        self._run_dream_cycle()
+        existing = self._dream_thread
+        if existing is not None and existing.is_alive():
+            if block:
+                existing.join()
+            else:
+                # Another thread is already running — the caller's
+                # request for "start a cycle" is already satisfied.
+                return
+
+        if block:
+            self._run_dream_cycle()
+        else:
+            self._spawn_dream_thread()
 
     # ------------------------------------------------------------------
     # Dreaming cycle (Neocortex) — T020
