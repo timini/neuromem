@@ -1203,6 +1203,80 @@ class TestDecayAndArchivalEndToEnd:
         assert post["summary"] == pre_summary
 
 
+# ---------------------------------------------------------------------------
+# T025 — full-loop parity against DictStorageAdapter
+# ---------------------------------------------------------------------------
+
+
+def test_dict_adapter_full_loop(
+    mock_embedder: MockEmbeddingProvider,
+    mock_llm: MockLLMProvider,
+) -> None:
+    """Run the US1 enqueue → force_dream → build_prompt_context flow
+    against ``DictStorageAdapter`` and assert it produces the same
+    shape of output as the SQLite path.
+
+    This is the behavioural end-to-end proof that
+    ``NeuroMemory``/``ContextHelper`` couple only to the
+    ``StorageAdapter`` ABC — not to any sqlite-specific quirk. The 14
+    contract tests already assert method-by-method parity at the
+    adapter boundary; this test does so at the orchestration boundary,
+    which is where Principle III actually pays off.
+    """
+    from neuromem.context import ContextHelper
+
+    from tests.conftest import DictStorageAdapter
+
+    dict_system = NeuroMemory(
+        storage=DictStorageAdapter(),
+        llm=mock_llm,
+        embedder=mock_embedder,
+    )
+
+    sqlite_system = NeuroMemory(
+        storage=SQLiteAdapter(":memory:"),
+        llm=mock_llm,
+        embedder=mock_embedder,
+    )
+
+    # Identical content into both systems.
+    raw_texts = [
+        "python sqlite async",
+        "python numpy vectorized",
+        "rust tokio async",
+    ]
+    for system in (dict_system, sqlite_system):
+        for t in raw_texts:
+            system.enqueue(t)
+        system.force_dream(block=True)
+
+    # Both systems must end up with 3 consolidated memories and at
+    # least one concept node each.
+    for system in (dict_system, sqlite_system):
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 3
+        assert len(system.storage.get_all_nodes()) >= 1
+
+    # ContextHelper.build_prompt_context must produce a non-empty ASCII
+    # tree containing the memory markers for both backends.
+    dict_tree = ContextHelper(dict_system).build_prompt_context("python")
+    sqlite_tree = ContextHelper(sqlite_system).build_prompt_context("python")
+
+    assert dict_tree != ""
+    assert sqlite_tree != ""
+    assert "📁" in dict_tree and "📁" in sqlite_tree
+    assert "📄" in dict_tree and "📄" in sqlite_tree
+
+    # Structural parity check: both trees should reference the same
+    # number of memory markers, since the two adapters were fed
+    # identical input and the MockEmbeddingProvider is deterministic.
+    # (The exact node labels can differ because the dream clustering
+    # depends on MockLLMProvider.generate_category_name, which is also
+    # deterministic — so the trees should in fact be structurally
+    # identical.)
+    assert dict_tree.count("📄") == sqlite_tree.count("📄")
+
+
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
     """Referenced for type-checker compatibility."""
     # EmbeddingProvider is referenced by type annotations in test fixtures.
