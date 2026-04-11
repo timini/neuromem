@@ -102,7 +102,7 @@ In a testing or CLI context, a developer wants to consolidate inbox memories imm
 - What happens when `enqueue()` is called while a dreaming thread is already running? New arrivals MUST be written as `status='inbox'` without interference (double-buffer pattern prevents collision). The running thread only processes rows it already flipped to `status='dreaming'`.
 - What happens when the embedding provider returns an error (network timeout, rate limit)? The dreaming cycle MUST catch the exception, log it, and roll back the status of the batch from `'dreaming'` back to `'inbox'` so those memories are retried on the next cycle.
 - What happens when the LLM provider returns a category name longer than a configured maximum (e.g., a sentence instead of one word)? The system MUST truncate or fall back to a safe default label such as `"Category_<short_hash>"`.
-- What happens when `search_memory` is called with a query that has zero cosine similarity to every node in the graph? See the Resolved Design Decisions appendix (commit F02): return empty string immediately (KISS).
+- What happens when `search_memory` is called with a query that has zero cosine similarity to every node in the graph? See Resolved Design Decisions #2 below: return an empty string immediately (KISS).
 - What happens when `retrieve_memories` is called before any dreaming cycle has run (all memories still in inbox)? The method MUST still return raw content for valid IDs (reading from the `memories` table directly) but MUST NOT trigger LTP weight changes since the memory has not yet been consolidated.
 - What happens when two dreaming threads are triggered in rapid succession before the first has started? The system MUST ensure only one dreaming thread runs at a time (use a threading lock or check for in-progress status before spawning).
 - What happens when the SQLite database file is on a read-only filesystem? `NeuroMemory.__init__` MUST raise a clear `StorageError` with an actionable message.
@@ -193,10 +193,492 @@ In a testing or CLI context, a developer wants to consolidate inbox memories imm
 - The core library uses a **single** `LLMProvider` instance for all LLM calls (summary, tag extraction, category naming). A second "cheap" provider slot may be added in a future minor version as a non-breaking addition; it is NOT in v1 scope.
 - FUSE (filesystem in userspace) mounting is explicitly out of scope for v1. The conversation evolved away from FUSE toward `ContextHelper`/`search_memory` rendering. FUSE remains a future possibility.
 
-<!--
-  The engineering appendix (Architecture Overview, Package Layout, Public API
-  Surface, Storage Adapter Interface, Provider Interfaces, Data Model,
-  Subsystem Workflows, Concurrency Model, Resolved Design Decisions) is
-  landed in a follow-up commit to keep each commit under the 500-line cap
-  mandated by Constitution Principle VI.
--->
+---
+
+## Architecture Overview
+
+### Neuroscience Mapping
+
+| Cognitive System | neuromem Subsystem | Key Mechanism |
+|---|---|---|
+| Hippocampus | Acquisition / Inbox | Fast write, deferred processing, `status='inbox'` |
+| Neocortex | Consolidation / Dreaming | Async background thread, agglomerative clustering, centroid naming |
+| Synaptic Pruning | Forgetting / Decay | Exponential decay of `access_weight`, archival below threshold |
+| Long-Term Potentiation | Retrieval Reinforcement | `access_weight` reset to 1.0 on `retrieve_memories()` |
+| Prefrontal Cortex | Contextual Recall | Embedding-based sub-graph traversal, ASCII tree rendering |
+
+### Architectural Principles
+
+**Dependency Inversion.** The core never depends on storage or provider implementations. `NeuroMemory` holds references to `StorageAdapter`, `LLMProvider`, and `EmbeddingProvider` interfaces only.
+
+**Double-Buffer Concurrency.** The `inbox` → `dreaming` → `consolidated` status flip is the sole concurrency primitive. The calling thread always writes to `inbox`; the background thread exclusively touches `dreaming` rows. No explicit database-level locking beyond SQLite's built-in serialisation is needed for v1.
+
+**Knowledge Graph, Not Pure Tree.** The underlying data structure is a directed weighted graph (nodes + edges). It is projected as a tree for rendering using a depth-limited traversal from the nearest matching nodes, with multi-parent relationships expressed via repeated subtree inclusion (mimicking symlinks semantically).
+
+**Local Math, Remote Embeddings.** Embedding generation is remote (provider API). All similarity computation, centroid arithmetic, and clustering are local using Python stdlib `math`. numpy is an optional future optimisation.
+
+---
+
+## Package Layout
+
+```
+neuromem/
+├── pyproject.toml                  # uv-managed, stdlib-only runtime deps
+├── README.md
+├── src/
+│   └── neuromem/
+│       ├── __init__.py             # __version__, re-exports of public surface
+│       ├── system.py               # NeuroMemory class — orchestration engine
+│       ├── context.py              # ContextHelper — prompt injection helper
+│       ├── tools.py                # search_memory(), retrieve_memories()
+│       ├── math.py                 # cosine_similarity(), compute_centroid()
+│       ├── providers.py            # EmbeddingProvider ABC, LLMProvider ABC
+│       └── storage/
+│           ├── __init__.py
+│           ├── base.py             # StorageAdapter ABC
+│           └── sqlite.py           # SQLiteAdapter (stdlib sqlite3)
+└── tests/
+    ├── conftest.py                 # shared fixtures, MockStorageAdapter,
+    │                               # MockLLMProvider, MockEmbeddingProvider
+    ├── test_system.py
+    ├── test_context.py
+    ├── test_tools.py
+    ├── test_math.py
+    └── test_storage_sqlite.py
+```
+
+---
+
+## Public API Surface
+
+### `neuromem.system`
+
+```python
+class NeuroMemory:
+    def __init__(
+        self,
+        storage: StorageAdapter,
+        llm: LLMProvider,
+        embedder: EmbeddingProvider,
+        dream_threshold: int = 10,
+        decay_lambda: float = 0.01,
+        archive_threshold: float = 0.1,
+    ) -> None: ...
+
+    def enqueue(self, raw_text: str, metadata: dict | None = None) -> str:
+        """Insert raw_text into inbox. Returns the new memory UUID.
+        Triggers background dreaming when inbox count >= dream_threshold."""
+
+    def force_dream(self, block: bool = True) -> None:
+        """Manually trigger the dreaming/consolidation pipeline.
+        If block=True, waits for completion before returning."""
+
+    @property
+    def is_dreaming(self) -> bool:
+        """True if a dreaming thread is currently running."""
+```
+
+### `neuromem.context`
+
+```python
+class ContextHelper:
+    def __init__(self, memory_system: NeuroMemory) -> None: ...
+
+    def build_prompt_context(
+        self,
+        current_task_description: str,
+        top_k: int = 5,
+        depth: int = 2,
+    ) -> str:
+        """Embed task description, find nearest nodes, traverse sub-graph,
+        return formatted ASCII tree string for system prompt injection.
+        Returns empty string if no relevant nodes found."""
+```
+
+### `neuromem.tools`
+
+```python
+def search_memory(
+    query: str,
+    system: NeuroMemory,
+    top_k: int = 5,
+    depth: int = 2,
+) -> str:
+    """Embed query, find nearest graph nodes, render ASCII sub-graph.
+    Returns formatted string with node labels and memory IDs.
+    Returns empty string if graph contains no nodes."""
+
+def retrieve_memories(
+    memory_ids: list[str],
+    system: NeuroMemory,
+) -> list[dict]:
+    """Fetch full memory records by ID. Triggers LTP (access_weight=1.0)
+    for each consolidated memory found. Silently skips missing IDs.
+
+    Each returned dict contains:
+      id: str
+      raw_content: str
+      summary: str
+      status: str
+      access_weight: float
+      created_at: int      # Unix timestamp
+      last_accessed: int   # Unix timestamp
+      metadata: dict | None
+    """
+```
+
+### `neuromem.math`
+
+```python
+def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    """Cosine similarity in [0.0, 1.0]. Uses stdlib math only.
+    Returns 0.0 if either vector has zero magnitude."""
+
+def compute_centroid(vectors: list[list[float]]) -> list[float]:
+    """Element-wise mean of a list of equal-length vectors.
+    Raises ValueError if vectors is empty or lengths differ."""
+```
+
+### `neuromem.providers`
+
+```python
+from abc import ABC, abstractmethod
+
+class EmbeddingProvider(ABC):
+    @abstractmethod
+    def get_embeddings(self, texts: list[str]) -> list[list[float]]:
+        """Return one embedding vector per input text, in the same order."""
+
+class LLMProvider(ABC):
+    @abstractmethod
+    def generate_summary(self, raw_text: str) -> str:
+        """Return a 1–2 sentence episodic summary of raw_text."""
+
+    @abstractmethod
+    def extract_tags(self, summary: str) -> list[str]:
+        """Return a list of discrete concept label strings from summary."""
+
+    @abstractmethod
+    def generate_category_name(self, concepts: list[str]) -> str:
+        """Given a list of concept labels, return a single one-word
+        category name that encompasses them (e.g., ['SQLite','Neo4j'] -> 'Databases')."""
+```
+
+---
+
+## Storage Adapter Interface
+
+All storage backends MUST implement the following ABC. Method contracts are binding; implementations MAY add vendor-specific configuration in their `__init__` but MUST NOT require callers to use it.
+
+```python
+# neuromem/storage/base.py
+from abc import ABC, abstractmethod
+from typing import Any
+
+class StorageAdapter(ABC):
+
+    # --- Acquisition (Hippocampus) ---
+
+    @abstractmethod
+    def insert_memory(
+        self,
+        raw_content: str,
+        summary: str,
+        metadata: dict | None = None,
+    ) -> str:
+        """Persist a new memory with status='inbox', access_weight=1.0.
+        Returns the new memory UUID."""
+
+    @abstractmethod
+    def count_memories_by_status(self, status: str) -> int:
+        """Return the count of memories with the given status."""
+
+    @abstractmethod
+    def get_memories_by_status(
+        self,
+        status: str,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return memory records matching status, up to limit rows."""
+
+    @abstractmethod
+    def update_memory_status(
+        self,
+        memory_ids: list[str],
+        new_status: str,
+    ) -> None:
+        """Atomically flip the status of the given memory IDs."""
+
+    @abstractmethod
+    def get_memory_by_id(self, memory_id: str) -> dict[str, Any] | None:
+        """Return a single memory record, or None if not found."""
+
+    # --- Consolidation (Neocortex / Graph) ---
+
+    @abstractmethod
+    def upsert_node(
+        self,
+        node_id: str,
+        label: str,
+        embedding: list[float],
+        is_centroid: bool,
+    ) -> None:
+        """Insert or update a concept node."""
+
+    @abstractmethod
+    def get_all_nodes(self) -> list[dict[str, Any]]:
+        """Return all active (non-archived) nodes with their embeddings."""
+
+    @abstractmethod
+    def insert_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        weight: float,
+        relationship: str,
+    ) -> None:
+        """Insert a directed edge between two entities."""
+
+    @abstractmethod
+    def remove_edges_for_memory(self, memory_id: str) -> None:
+        """Remove all edges connected to memory_id (used on archival)."""
+
+    # --- Recall (Prefrontal Cortex) ---
+
+    @abstractmethod
+    def get_nearest_nodes(
+        self,
+        query_embedding: list[float],
+        top_k: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Return the top_k nodes closest to query_embedding.
+        SQLite adapter: fetches all nodes, computes cosine similarity locally.
+        Native-vector adapters: delegate to DB-level ANN search."""
+
+    @abstractmethod
+    def get_subgraph(
+        self,
+        root_node_ids: list[str],
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        """Traverse edges from root_node_ids up to depth hops.
+        Returns a dict with 'nodes' (list) and 'edges' (list) keys,
+        plus 'memories' (list) for memories attached via has_tag edges."""
+
+    # --- Forgetting (Synaptic Pruning) ---
+
+    @abstractmethod
+    def apply_decay_and_archive(
+        self,
+        decay_lambda: float,
+        archive_threshold: float,
+        current_timestamp: int,
+    ) -> list[str]:
+        """For every consolidated memory, compute W_new = W_old * exp(-λ * t)
+        where t = current_timestamp - last_accessed.
+        Update access_weight. Archive (set status='archived', remove edges)
+        any memory where W_new < archive_threshold.
+        Returns list of archived memory IDs."""
+
+    @abstractmethod
+    def spike_access_weight(
+        self,
+        memory_ids: list[str],
+        timestamp: int,
+    ) -> None:
+        """Set access_weight=1.0 and last_accessed=timestamp for each ID
+        (Long-Term Potentiation)."""
+```
+
+---
+
+## Provider Interfaces
+
+Detailed in the Public API Surface section above. Additional design notes:
+
+- `LLMProvider.extract_tags()` is a separate method from `generate_summary()` because different use cases may want to combine these into one API call or keep them separate, and because framework wrappers (e.g., structured output providers) may implement them differently.
+- `generate_category_name()` MUST return a single string of at most one word (no spaces). If the LLM returns multiple words, `NeuroMemory` will take the first word and log a warning.
+- `EmbeddingProvider.get_embeddings()` accepts a batch of texts and returns a batch of vectors. Callers always pass lists, even for single texts, to reduce API round-trips during dreaming.
+- Providers are not required to be thread-safe by the contract; `NeuroMemory` calls providers only from the dreaming thread, not from the `enqueue()` call path.
+
+---
+
+## Data Model
+
+### SQLite Schema (canonical — SQLiteAdapter MUST implement exactly this)
+
+```sql
+CREATE TABLE IF NOT EXISTS memories (
+    id           TEXT PRIMARY KEY,          -- UUID v4
+    raw_content  TEXT NOT NULL,
+    summary      TEXT,                      -- populated after LLM summary call
+    status       TEXT NOT NULL DEFAULT 'inbox',
+                                            -- 'inbox' | 'dreaming' |
+                                            -- 'consolidated' | 'archived'
+    access_weight REAL NOT NULL DEFAULT 1.0,
+    last_accessed INTEGER,                  -- Unix epoch seconds
+    created_at   INTEGER NOT NULL,          -- Unix epoch seconds
+    metadata     TEXT                       -- JSON string or NULL
+);
+
+CREATE TABLE IF NOT EXISTS nodes (
+    id           TEXT PRIMARY KEY,          -- UUID v4
+    label        TEXT NOT NULL,             -- human-readable concept name
+    embedding    BLOB NOT NULL,             -- JSON-serialised list[float]
+    is_centroid  INTEGER NOT NULL DEFAULT 0 -- 0=leaf tag, 1=centroid parent
+);
+
+CREATE TABLE IF NOT EXISTS edges (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id    TEXT NOT NULL,
+    target_id    TEXT NOT NULL,
+    weight       REAL NOT NULL DEFAULT 1.0, -- cosine similarity
+    relationship TEXT NOT NULL,             -- 'has_tag' | 'child_of'
+    UNIQUE(source_id, target_id, relationship)
+);
+```
+
+**Embedding storage in SQLiteAdapter.** Embeddings are stored as JSON-serialised `list[float]` in a `BLOB` / `TEXT` column. On read, they are deserialised back to `list[float]` for cosine math. This is intentionally simple; no SQLite vector extension is required.
+
+**Status state machine.**
+
+```
+inbox -> dreaming -> consolidated -> archived
+  ^                        |
+  |_____ (rollback on error)
+```
+
+New arrivals during an active dream cycle are always inserted as `inbox` and processed in a subsequent cycle.
+
+**Index recommendations for SQLiteAdapter.**
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+CREATE INDEX IF NOT EXISTS idx_edges_source    ON edges(source_id);
+CREATE INDEX IF NOT EXISTS idx_edges_target    ON edges(target_id);
+```
+
+---
+
+## Subsystem Workflows
+
+### Phase A — Acquisition
+
+```
+Caller thread:
+  enqueue(raw_text, metadata)
+    -> llm.generate_summary(raw_text)           # LLM call (blocking, in caller thread)
+    -> storage.insert_memory(raw_content, summary, metadata)
+       status='inbox', access_weight=1.0, created_at=now()
+    -> storage.count_memories_by_status('inbox')
+    -> if count >= dream_threshold and not is_dreaming:
+         spawn background thread -> _run_dream_cycle()
+    -> return memory_id
+```
+
+Note: The LLM summary call happens in the caller thread per Resolved Design Decision #3 (KISS). Callers requiring low latency must inject a fast or no-op `generate_summary` provider.
+
+### Phase B — Consolidation / Dreaming
+
+```
+Background thread: _run_dream_cycle()
+  1. Acquire dreaming lock (return immediately if already locked)
+  2. storage.update_memory_status(inbox_ids -> 'dreaming')   # atomic flip
+  3. For each dreaming memory:
+       tags = llm.extract_tags(memory.summary)
+  4. all_new_tags = deduplicated union of all extracted tags
+  5. new_embeddings = embedder.get_embeddings(all_new_tags)  # batched API call
+  6. existing_nodes = storage.get_all_nodes()
+  7. merged_tags = existing_nodes + new_tags_with_embeddings
+  8. Run agglomerative clustering on merged_tags:
+       a. Build similarity matrix (pairwise cosine_similarity)
+       b. Find pair with highest similarity above cluster_threshold
+       c. Merge pair -> compute centroid via compute_centroid()
+       d. Call llm.generate_category_name(member_labels) -> parent_label
+       e. storage.upsert_node(centroid) with is_centroid=True
+       f. storage.insert_edge(centroid -> each_member, 'child_of')
+       g. Repeat until no pair exceeds threshold
+  9. For each (memory, tags) pair:
+       storage.insert_edge(memory_id -> tag_node_id, 'has_tag')
+  10. storage.apply_decay_and_archive(decay_lambda, archive_threshold, now())
+  11. storage.update_memory_status(dreaming_ids -> 'consolidated')
+  12. Release dreaming lock
+
+  On any exception in steps 3-11:
+    storage.update_memory_status(dreaming_ids -> 'inbox')  # rollback
+    log error
+    release dreaming lock
+```
+
+### Phase C — Synaptic Pruning (integrated into Phase B, step 10)
+
+The decay-and-archive operation is called at the end of every dreaming cycle, not on a separate timer. This ensures pruning only consumes compute when the system is already doing background work.
+
+Formula: `W_new = W_old * exp(-λ * t)` where `t` is seconds since `last_accessed`.
+
+If `W_new < archive_threshold`:
+- Set `status = 'archived'`
+- Call `storage.remove_edges_for_memory(memory_id)`
+- The memory row itself is preserved (raw_content, summary remain intact)
+
+### Phase D — Contextual Recall
+
+```
+ContextHelper.build_prompt_context(task_description):
+  1. query_vec = embedder.get_embeddings([task_description])[0]
+  2. nearest = storage.get_nearest_nodes(query_vec, top_k)
+  3. if nearest is empty: return ""
+  4. subgraph = storage.get_subgraph([n['id'] for n in nearest], depth)
+  5. return _render_ascii_tree(subgraph)
+
+_render_ascii_tree(subgraph) -> str:
+  Produces output of the form:
+    Relevant Memory Context:
+    📁 Databases
+    ├── 📁 SQLite
+    │   ├── 📄 mem_7732: "WAL mode discussion..."
+    │   └── 📄 mem_9104: "Massive inserts perf..."
+    └── 📁 Indexing
+        └── 📄 mem_4421: "Composite indexes..."
+```
+
+The graph is NOT a pure tree: a node may appear under multiple parents. The renderer handles this by including the node under each parent that appears in the traversal result, with a note `(also under: ...)` on subsequent appearances to avoid full subtree duplication.
+
+---
+
+## Concurrency Model
+
+- `enqueue()` is called from the **agent's main thread** (or event loop). It must never block on I/O beyond the LLM summary call and a fast SQLite write.
+- The dreaming pipeline runs in a single **background daemon thread** spawned via `threading.Thread(daemon=True)`.
+- A `threading.Lock` (`_dream_lock`) on the `NeuroMemory` instance prevents concurrent dreaming cycles.
+- The double-buffer pattern (status flip from `inbox` to `dreaming`) is the only inter-thread synchronisation mechanism needed for data safety; SQLite handles write serialisation at the DB level.
+- `force_dream(block=True)` joins the spawned thread before returning.
+- `force_dream(block=False)` spawns the thread and returns immediately.
+- The library does not use `asyncio`. Async compatibility is left to framework wrapper packages (which can run `enqueue()` via `asyncio.to_thread()` or a thread pool executor).
+- Multi-process safety (multiple processes writing to the same SQLite file) is out of scope for v1.
+
+---
+
+## Resolved Design Decisions
+
+All design questions raised during source discussions are now resolved. The following decisions are binding for v1 and MUST NOT be revisited without a spec amendment.
+
+1. **Library name: `neuromem`.** Confirmed as the canonical PyPI package name. Alternatives (`engram`, `synaptree`, `cortex-db`, `hippocamp`, `onto-mem`, `mem-fs`) proposed in the Gemini design conversation are rejected for v1.
+
+2. **Zero-similarity recall: return empty string.** When `search_memory()` or `ContextHelper.build_prompt_context()` is called with a query whose embedding has no meaningful cosine similarity to any node in the active graph, the system MUST return an empty string immediately. No on-demand dreaming cycle is triggered; no warning is logged. The agent is responsible for interpreting an empty result as "no relevant memory".
+
+   **Rationale**: Simplicity. Search calls stay deterministic and fast. If the inbox is genuinely important, the next `enqueue()` will trigger dreaming via the threshold mechanism anyway.
+
+3. **Summary generation: caller thread (KISS).** `LLMProvider.generate_summary()` is called synchronously inside `enqueue()` on the caller thread. If the agent's latency budget cannot afford a real LLM call at every conversation turn, the caller MUST supply a fast summary provider (mock, local model, or no-op that passes `raw_text` through as the summary). No configurable sync/async mode is exposed in v1 — keep it simple.
+
+   **Rationale**: A configurable `summary_mode` argument doubles the test matrix and introduces a state (`summary=NULL` until dreaming) that the rest of the pipeline would have to handle. Pushing the choice back to the caller's provider implementation is the simplest contract.
+
+4. **Dream threshold N** → default 10 (configurable via `NeuroMemory(dream_threshold=…)`).
+
+5. **Decay rate λ** → default 3e-7 per second (~30-day half-life, configurable via `NeuroMemory(decay_lambda=…)`).
+
+6. **Embedding dimensionality** → no enforced limit; `SQLiteAdapter` MUST log a performance warning above 4096 dimensions.
+
+7. **LLM provider multiplicity** → single `LLMProvider` instance handles all LLM calls (summary, tag extraction, category naming) in v1. A second "cheap-model" provider slot MAY be added in a future minor version as a non-breaking addition.
+
+8. **Clustering merge threshold** → default 0.82 cosine similarity (from the Gemini conversation's edge-creation example, configurable).
