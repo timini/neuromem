@@ -599,13 +599,60 @@ class SQLiteAdapter(StorageAdapter):
         return int(row["embedding_dim"])
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Lifecycle — close, context manager protocol, GC fallback
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """Close the underlying connection. Idempotent."""
+        """Close the underlying connection. Idempotent and safe to call
+        multiple times. Does nothing if the connection was never opened
+        or has already been closed.
+
+        Prefer calling this explicitly (or using the adapter as a
+        context manager) over relying on ``__del__``, which runs on
+        garbage collection — timing is non-deterministic and on
+        Python 3.13+ pytest's unraisable-exception plugin escalates
+        any missed cleanups into test failures.
+        """
+        conn = getattr(self, "_conn", None)
+        if conn is None:
+            return
         with contextlib.suppress(sqlite3.Error):
-            self._conn.close()
+            conn.close()
+        self._conn = None  # type: ignore[assignment]
+
+    def __enter__(self) -> SQLiteAdapter:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        """Best-effort cleanup on garbage collection.
+
+        Required for Python 3.13 + pytest: the stdlib ``sqlite3``
+        module emits ``ResourceWarning: unclosed database`` when a
+        connection is GC'd without an explicit close, and pytest's
+        unraisable-exception plugin turns that warning into a test
+        failure (attributed to whichever unrelated test happened to
+        be running when GC fired). Adding ``__del__`` silences the
+        warning by closing the connection before it gets a chance
+        to complain.
+
+        This is a fallback, not a replacement for explicit cleanup.
+        Tests and production code SHOULD use ``close()`` or the
+        context-manager protocol. See ``packages/neuromem-core/tests/
+        test_sqlite_adapter.py::TestLifecycle`` for regression tests.
+        """
+        # __del__ must never raise. Swallow any cleanup failure —
+        # Python would silently swallow it with a cryptic warning
+        # anyway. contextlib.suppress makes the intent explicit.
+        with contextlib.suppress(Exception):
+            self.close()
 
 
 def _row_to_memory_dict(row: sqlite3.Row) -> dict[str, Any]:
