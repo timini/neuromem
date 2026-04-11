@@ -53,6 +53,11 @@ addopts = [
     "-q",
     "--strict-markers",
     "--strict-config",
+    # Coverage gate — see [tool.coverage] below. `--cov` with no value
+    # picks up the source list from [tool.coverage.run] and the
+    # fail-under threshold from [tool.coverage.report].
+    "--cov",
+    "--cov-report=term-missing",
 ]
 filterwarnings = [
     "error",
@@ -61,3 +66,32 @@ filterwarnings = [
     "ignore::DeprecationWarning:numpy.*",
     "ignore::DeprecationWarning:pandas.*",
 ]
+
+# --- Coverage gate (T030 / SC-007) ---
+#
+# SC-007 requires ≥90% line coverage on the four "core" modules —
+# `system.py`, `context.py`, `tools.py`, `vectors.py`. The storage
+# adapter subtree is intentionally excluded from this gate because most
+# of its uncovered lines are `except sqlite3.Error` re-raise branches
+# that require process-level faults to trigger. Those paths are
+# defensive and don't need unit-test coverage to be correct.
+#
+# The `fail_under = 90` threshold below is the CI tripwire; pytest will
+# exit non-zero if the filtered coverage drops below 90%. Current
+# baseline: ~94% (see the term-missing report on every run).
+
+[tool.coverage.run]
+source = [
+    "packages/neuromem-core/src/neuromem",
+]
+branch = false
+
+[tool.coverage.report]
+include = [
+    "*/neuromem/system.py",
+    "*/neuromem/context.py",
+    "*/neuromem/tools.py",
+    "*/neuromem/vectors.py",
+]
+show_missing = true
+fail_under = 90
