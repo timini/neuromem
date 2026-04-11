@@ -223,6 +223,119 @@ class TestBlobCorruptionDetection:
         assert "32" in msg  # expected byte count (8 * 4)
 
 
+# ---------------------------------------------------------------------------
+# Lifecycle regression (Python 3.13 CI failure)
+# ---------------------------------------------------------------------------
+
+
+class TestLifecycle:
+    """Regression for the Python 3.13 CI failure.
+
+    Before the fix, SQLiteAdapter had no __del__ method. On Python
+    3.13, pytest's unraisable-exception plugin escalates
+    ``ResourceWarning: unclosed database`` into test failures
+    attributed to whichever test happened to be running when GC
+    collected the leaked connection. The fix adds __del__,
+    close(), and context-manager protocol.
+    """
+
+    def test_close_is_idempotent(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        adapter.close()
+        adapter.close()  # second call must not raise
+        adapter.close()  # nor third
+
+    def test_close_then_use_raises_storage_error(self) -> None:
+        """Calling methods on a closed adapter raises ``StorageError``
+        with an actionable ``"closed"`` message.
+
+        Before the I-1 fix, post-close method calls raised an opaque
+        ``TypeError: 'NoneType' object does not support the context
+        manager protocol`` from ``with self._conn:``. The fix adds a
+        ``_check_open()`` guard at the top of every public method
+        that raises ``StorageError("SQLiteAdapter is closed")`` for a
+        clear caller signal.
+        """
+        adapter = SQLiteAdapter(":memory:")
+        adapter.insert_memory("raw", "summary")
+        adapter.close()
+
+        with pytest.raises(StorageError, match="closed"):
+            adapter.insert_memory("raw2", "summary2")
+
+    def test_close_then_every_public_method_raises_storage_error(self) -> None:
+        """Defence in depth: every public method on a closed adapter
+        must raise StorageError, not just insert_memory.
+
+        This smoke-tests the _check_open() guard was added to every
+        method, not just the one exercised by the test above.
+        """
+        import numpy as np
+
+        adapter = SQLiteAdapter(":memory:")
+        # Seed some state while the adapter is open so methods have
+        # something to operate on.
+        mem_id = adapter.insert_memory("raw", "summary")
+        adapter.upsert_node("n1", "tag", np.zeros(4, dtype=np.float32), False)
+        adapter.close()
+
+        # Every public method must raise StorageError with "closed".
+        checks = [
+            lambda: adapter.insert_memory("r", "s"),
+            lambda: adapter.count_memories_by_status("inbox"),
+            lambda: adapter.get_memories_by_status("inbox"),
+            lambda: adapter.update_memory_status([mem_id], "dreaming"),
+            lambda: adapter.get_memory_by_id(mem_id),
+            lambda: adapter.upsert_node("n2", "x", np.zeros(4, dtype=np.float32), False),
+            lambda: adapter.get_all_nodes(),
+            lambda: adapter.insert_edge("a", "b", 1.0, "has_tag"),
+            lambda: adapter.remove_edges_for_memory(mem_id),
+            lambda: adapter.get_nearest_nodes(np.zeros(4, dtype=np.float32), 1),
+            lambda: adapter.get_subgraph(["n1"], 1),
+            lambda: adapter.apply_decay_and_archive(1e-9, 0.01, 100),
+            lambda: adapter.spike_access_weight([mem_id], 100),
+        ]
+        for fn in checks:
+            with pytest.raises(StorageError, match="closed"):
+                fn()
+
+    def test_context_manager_closes_on_exit(self) -> None:
+        with SQLiteAdapter(":memory:") as adapter:
+            mem_id = adapter.insert_memory("raw", "summary")
+            assert adapter.get_memory_by_id(mem_id) is not None
+        # After the with-block, the connection must be closed.
+        assert adapter._conn is None
+
+    def test_context_manager_closes_on_exception(self) -> None:
+        class Boom(RuntimeError):
+            pass
+
+        adapter_ref: SQLiteAdapter | None = None
+        with pytest.raises(Boom):
+            with SQLiteAdapter(":memory:") as adapter:
+                adapter_ref = adapter
+                adapter.insert_memory("raw", "summary")
+                raise Boom("test exception")
+        assert adapter_ref is not None
+        assert adapter_ref._conn is None
+
+    def test_del_closes_connection_silently(self) -> None:
+        """Allow the adapter to fall out of scope WITHOUT explicit close.
+
+        __del__ should run during GC and close the connection so no
+        ResourceWarning escapes. With ``filterwarnings = ['error']``
+        in pyproject.toml, a missed ResourceWarning would turn this
+        test into a hard failure.
+        """
+        import gc
+
+        adapter: SQLiteAdapter | None = SQLiteAdapter(":memory:")
+        adapter.insert_memory("raw", "summary")  # type: ignore[union-attr]
+        adapter = None  # drop reference
+        gc.collect()  # force __del__ to run
+
+
 # Silence unused-import lint rule on sqlite3 — it's imported above for
-# the type context but only used transitively through SQLiteAdapter.
+# the type context and used directly in TestLifecycle for the
+# ProgrammingError assertion.
 _ = sqlite3
