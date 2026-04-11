@@ -18,9 +18,14 @@ public-API contract and stability guarantees.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from neuromem import NeuroMemory, SQLiteAdapter
+
+from neuromem_adk.callbacks import (
+    build_after_agent_turn_capturer,
+    build_before_model_context_injector,
+)
 
 if TYPE_CHECKING:
     from google.adk.agents import Agent
@@ -148,11 +153,23 @@ def enable_memory(
         embedder=embedder,
     )
 
-    # TODO(T010-T014): wire callbacks + tools + MemoryService here.
-    # For T008 (US1 happy path) we just mark the agent as enabled and
-    # return the memory handle. Subsequent tasks extend this function
-    # body to attach the two callbacks, register the two function
-    # tools, and wire the NeuromemMemoryService.
+    # Attach the two callbacks (T010 + T011). ADK's callback fields
+    # accept either a single callable or a list of callables — when
+    # a list is provided, ADK invokes them in order. Chain-preserving
+    # assignment: if the agent already has a callback in the slot,
+    # keep it AND add ours by wrapping both in a list.
+    _chain_callback(
+        agent,
+        "before_model_callback",
+        build_before_model_context_injector(memory),
+    )
+    _chain_callback(
+        agent,
+        "after_agent_callback",
+        build_after_agent_turn_capturer(memory),
+    )
+
+    # TODO(T012-T013): register function tools + wire MemoryService.
 
     # Set the marker LAST so a mid-wiring failure doesn't leave the
     # agent in a half-attached state where double-attachment detection
@@ -160,3 +177,31 @@ def enable_memory(
     setattr(agent, _ENABLED_MARKER, True)
 
     return memory
+
+
+def _chain_callback(agent: Agent, slot_name: str, new_cb: Any) -> None:
+    """Append ``new_cb`` to the agent's named callback slot, preserving
+    any existing callback.
+
+    ADK 1.29's callback slots (``before_model_callback``,
+    ``after_agent_callback``, etc.) accept three shapes:
+    - ``None`` — no callback
+    - ``callable`` — a single callback
+    - ``list[callable]`` — multiple callbacks invoked in order
+
+    This helper normalises the shape to a list and appends the new
+    callback to the end, so user-registered callbacks fire BEFORE
+    neuromem's capture/injection. That ordering matters if the user
+    has, e.g., a before_model_callback that mutates the system
+    instruction — we want our memory injection to run last so it
+    can see the final instruction text the user wanted.
+    """
+    existing = getattr(agent, slot_name, None)
+    if existing is None:
+        new_value: Any = new_cb
+    elif isinstance(existing, list):
+        new_value = [*existing, new_cb]
+    else:
+        # Single callable; wrap into a two-element list.
+        new_value = [existing, new_cb]
+    setattr(agent, slot_name, new_value)
