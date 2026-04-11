@@ -45,10 +45,12 @@ on:
     branches: [main]
     # Only trigger when the integration-relevant parts of the tree
     # actually changed. Saves API budget when the merge only
-    # touched docs or core-internal code the Gemini provider
-    # doesn't exercise.
+    # touched docs or core-internal code the integrations
+    # don't exercise. Covers both the Gemini provider sibling and
+    # the ADK wrapper sibling.
     paths:
       - "packages/neuromem-gemini/**"
+      - "packages/neuromem-adk/**"
       - "packages/neuromem-core/src/neuromem/providers.py"
       - "packages/neuromem-core/src/neuromem/system.py"
       - "packages/neuromem-core/src/neuromem/context.py"
@@ -121,6 +123,59 @@ jobs:
         # calls inside the integration tests surface in real time.
         run: |
           uv run pytest packages/neuromem-gemini/tests/ \
+            -m integration \
+            --no-cov \
+            -v \
+            -s
+
+  # ------------------------------------------------------------------
+  # ADK integration tests — neuromem-adk wrapper against real ADK +
+  # real Gemini. Independent from the gemini job so API hiccups or
+  # ADK breaking changes don't mask each other's failures.
+  # ------------------------------------------------------------------
+  adk-integration:
+    name: neuromem-adk real-API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      - name: Verify GEMINI_API_KEY secret is configured
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::GEMINI_API_KEY secret is not configured in repository settings."
+            echo "::error::Set it at: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            echo "::error::See packages/neuromem-adk/README.md for context."
+            exit 1
+          fi
+          echo "GEMINI_API_KEY secret is present (length: ${#GEMINI_API_KEY})."
+
+      - name: Run neuromem-adk integration tests
+        env:
+          # ADK reads GOOGLE_API_KEY by default. The stored secret
+          # is GEMINI_API_KEY (to match the gemini sibling); we
+          # export it under BOTH names so ADK and the
+          # neuromem-gemini provider pair both find it.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          uv run pytest packages/neuromem-adk/tests/ \
             -m integration \
             --no-cov \
             -v \
