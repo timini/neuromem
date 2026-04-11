@@ -27,7 +27,14 @@ import warnings
 from pathlib import Path
 
 # Suppress the experimental-feature UserWarning google-adk 1.29
-# emits at import time ("FeatureName.PLUGGABLE_AUTH is enabled").
+# emits at import time. The exact message shape differs across
+# Python versions:
+#   py3.10: "[EXPERIMENTAL] feature PLUGGABLE_AUTH is enabled."
+#   py3.11+: "[EXPERIMENTAL] feature FeatureName.PLUGGABLE_AUTH is enabled."
+# Match both shapes via the stable `[EXPERIMENTAL] ... is enabled`
+# prefix/suffix pair. This also futureproofs against ADK adding
+# other experimental features with the same warning template.
+#
 # Must happen BEFORE the `from google.adk.agents import Agent` line
 # below — otherwise the workspace-root ``filterwarnings = ['error']``
 # config escalates the warning into a hard failure during conftest
@@ -35,7 +42,7 @@ from pathlib import Path
 # warnings from our own code or from neuromem-core.
 warnings.filterwarnings(
     "ignore",
-    message=r".*FeatureName\..*is enabled",
+    message=r".*\[EXPERIMENTAL\].*is enabled",
     category=UserWarning,
     module=r"google\.adk\..*",
 )
