@@ -9,7 +9,7 @@ trigger a network call. Opt in with::
     uv run pytest packages/neuromem-gemini/tests/ -m integration -v
 
 Cost per run: roughly 5000 tokens through ``gemini-2.0-flash-001`` +
-a handful of 768-dim ``text-embedding-004`` calls. <$0.01 total.
+a handful of 3072-dim ``gemini-embedding-001`` calls. <$0.01 total.
 
 Scope is deliberately tight (3 tests):
 

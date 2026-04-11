@@ -129,6 +129,11 @@ class GeminiLLMProvider(LLMProvider):
         raw = (resp.text or "").strip()
         if not raw:
             # Fall back to a deterministic synthesis so the dream cycle
-            # never crashes on an empty model response.
-            return concepts[0].split()[0]
+            # never crashes on an empty model response. Guard against
+            # the pathological case where ``concepts[0]`` is whitespace-
+            # only (unlikely in practice — the tag extractor filters
+            # empty strings — but ``"   ".split()`` is ``[]`` and would
+            # otherwise raise IndexError here).
+            tokens = concepts[0].split() if concepts[0] else []
+            return tokens[0] if tokens else "concept"
         return raw.split()[0].strip(".,!?:;\"'").lower()

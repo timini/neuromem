@@ -1,6 +1,6 @@
 # neuromem-gemini
 
-> Google Gemini provider pair for [`neuromem-core`](../neuromem-core/). Wraps `gemini-2.0-flash` for summary/tag/category-name calls and `text-embedding-004` for embeddings.
+> Google Gemini provider pair for [`neuromem-core`](../neuromem-core/). Wraps `gemini-2.0-flash-001` for summary/tag/category-name calls and `gemini-embedding-001` for embeddings.
 
 This is the first sibling package in the `neuromem` monorepo. It implements the `LLMProvider` and `EmbeddingProvider` abstract base classes from `neuromem-core` and hands `NeuroMemory` a drop-in way to run its cognitive loop against real Google Gemini models.
 
