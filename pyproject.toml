@@ -1,0 +1,63 @@
+# Workspace root for the neuromem monorepo.
+#
+# This file declares uv workspace membership and shared tool config.
+# It is NOT a package itself — there is no [project] table. Publishable
+# packages live under packages/, each with its own pyproject.toml.
+#
+# Mandated by Constitution v2.0.0 Additional Constraints — Repository
+# Structure. See .specify/memory/constitution.md.
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# --- Shared formatting & linting (ruff) ---
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# The vendored speckit-git extension package is not our code.
+extend-exclude = [".specify/extensions"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C90",  # mccabe complexity
+]
+ignore = [
+    "E501",   # line length handled by formatter
+    "SIM108", # allow if/else over ternary when clearer
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = [
+    "B011",   # allow `assert False` in tests
+    "SIM117", # allow nested `with` in tests
+    "C901",   # test stub classes can be complex (e.g. 13-method ABCs)
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+# --- Shared test config (pytest) ---
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["packages/neuromem-core/tests"]
+addopts = [
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "error",
+    # numpy and pandas sometimes emit DeprecationWarnings from upstream
+    # libraries during import. These are upstream noise, not our bug.
+    "ignore::DeprecationWarning:numpy.*",
+    "ignore::DeprecationWarning:pandas.*",
+]

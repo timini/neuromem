@@ -1,45 +1,70 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.0 → 1.1.0
-Rationale: MINOR bump. Added Principle VI (Atomic Commits with Enforced
-Pre-Commit Gates) and materially expanded Principles III and V.
+Version change: 1.1.0 → 2.0.0
+Rationale: MAJOR bump. Principle II's guidance is REVERSED — numpy and
+pandas are now IN the default dependency set, not opt-in extras. This
+breaks the "stdlib-only math" stance that the v1.1.0 plan was written
+against, which is the definition of a MAJOR change per this document's
+own versioning rules. Also adds a new constraints section mandating a
+`uv` workspace monorepo layout for the repository, and a handful of
+stale references ("five principles" → "six", `src/neuromem/` →
+`packages/neuromem-core/src/neuromem/`) are corrected in passing.
 
 Modified principles:
-  - III. Dependency Inversion via Adapters
-    → III. Layered, Modular, Pluggable Architecture
-    (expanded to name the layering explicitly and make one-way dependency
-     direction a binding rule; original adapter requirements preserved)
-  - V. Test-First with Injected Mocks
-    → V. Test-First with Injected Mocks (red-green-refactor cycle now
-    enumerated step-by-step as binding process; non-negotiable status
-    unchanged)
+  - I. Library-First, Framework-Agnostic Core
+    (no semantic change; path reference updated to reflect the new
+    monorepo layout: `src/neuromem/` → `packages/neuromem-core/src/neuromem/`)
+  - II. Minimal Dependency Footprint → II. Lean Dependency Set
+    (title updated; body reversed to permit numpy + pandas as default
+    tools; rationale rewritten to explicitly call out the v1.1.0
+    interpretation as "ideology, not engineering" so future amendments
+    don't repeat it)
 
 Added sections:
-  - Principle VI: Atomic Commits with Enforced Pre-Commit Gates
-    (max 500-line commits including tests; mandatory lint/format/test
-    pre-commit hooks; --no-verify forbidden)
+  - Additional Constraints — Repository Structure
+    (mandates uv workspace monorepo layout with packages/ subdirectory;
+    neuromem-core is the first package; future framework wrappers land
+    as siblings under packages/)
 
 Removed sections: none
 
-Templates requiring updates:
-  - ✅ .specify/templates/plan-template.md — Constitution Check gate
-    dynamically references principles at runtime; new Principle VI
-    picked up without a template edit.
-  - ✅ .specify/templates/spec-template.md — compatible as-is.
-  - ✅ .specify/templates/tasks-template.md — compatible as-is; task
-    decomposition should now respect the 500-line commit cap.
-  - ⚠  Repository has no pre-commit configuration yet. Principle VI is
-     prescriptive: a `.pre-commit-config.yaml` MUST be added before the
-     first /speckit.implement run.
+Also corrected (stale from v1.1.0):
+  - "five core principles" / "five principles" references in Development
+    Workflow and Compliance Review now say "six" to reflect Principle VI.
+
+Templates / artefacts requiring updates:
+  - ⚠ specs/001-neuromem-core/spec.md — FR-024, FR-026, SC-005, SC-006,
+    Assumptions, Package Layout, Public API Surface, Data Model all
+    reference the numpy ban or the flat src/ layout. Must be revised.
+  - ⚠ specs/001-neuromem-core/plan.md — Technical Context, Project
+    Structure, Constitution Check table all need refresh.
+  - ⚠ specs/001-neuromem-core/research.md — Decisions 1, 2, 3, 5 need
+    rewriting. Add a new decision on monorepo layout.
+  - ⚠ specs/001-neuromem-core/data-model.md — embedding serialisation
+    section changes from JSON-text to numpy float32 binary.
+  - ⚠ specs/001-neuromem-core/contracts/public-api.md,
+    storage-adapter.md, providers.md — type signatures change to use
+    np.ndarray.
+  - ⚠ specs/001-neuromem-core/quickstart.md — install command (package
+    name) and provider examples change.
+  - ⚠ CLAUDE.md — must be re-generated via update-agent-context.sh
+    after plan.md is revised.
+  - ✅ .specify/templates/* — no change; templates reference principles
+    dynamically at runtime, so the revised Principle II and new section
+    are picked up without template edits.
 
 Follow-up TODOs:
-  - Add `.pre-commit-config.yaml` with ruff format, ruff check, and
-    pytest (fast unit tests) as the three mandatory hooks.
-  - Add `pre-commit` to dev dependencies in `pyproject.toml` once it is
-    created.
+  - Workspace-root pyproject.toml with `[tool.uv.workspace] members = ["packages/*"]`
+  - packages/neuromem-core/pyproject.toml declaring `numpy` and `pandas`
+    as runtime dependencies
+  - Physical directory move of any already-committed source into
+    packages/neuromem-core/ (n/a in practice — no source code exists yet)
 
 Previous amendments:
+  - 1.1.0 (2026-04-11): MINOR bump. Added Principle VI (Atomic Commits
+    with Enforced Pre-Commit Gates) and materially expanded Principles
+    III and V.
   - 1.0.0 (2026-04-11): Initial ratification. MAJOR bump from placeholder
     template. Established Principles I–V, Additional Constraints
     (Concurrency & Data Safety), Development Workflow (Spec-Kit
@@ -52,30 +77,50 @@ Previous amendments:
 
 ### I. Library-First, Framework-Agnostic Core
 
-`neuromem` is delivered as a pure Python library. The core package (`src/neuromem/`)
-MUST NOT import any agent-framework SDK (Google ADK, Anthropic SDK, LangChain, LlamaIndex,
-etc.) and MUST NOT import any vendor LLM or embedding SDK (`openai`, `anthropic`,
-`google-genai`, `cohere`, etc.). All framework wiring lives in separate, optional
-downstream packages that depend on `neuromem`, never the reverse.
+`neuromem` is delivered as a Python library. The core package
+(`packages/neuromem-core/src/neuromem/`) MUST NOT import any agent-framework SDK
+(Google ADK, Anthropic SDK, LangChain, LlamaIndex, etc.) and MUST NOT import any
+vendor LLM or embedding SDK (`openai`, `anthropic`, `google-genai`, `cohere`, etc.).
+All framework wiring lives in separate, optional sibling packages under
+`packages/` that depend on `neuromem-core`, never the reverse.
 
 **Rationale**: The library must be reusable across every agent runtime without forcing
 downstream users to install or pin SDKs they do not use. Coupling the core to any
 framework collapses the value proposition to a single ecosystem.
 
-### II. Minimal Dependency Footprint
+### II. Lean Dependency Set
 
-The core library MUST run on the Python 3 standard library alone whenever possible.
-Numerical work (cosine similarity, centroid computation) MUST use `math` and built-in
-sequence operations. Graph storage MUST default to stdlib `sqlite3`. The only
-non-stdlib runtime dependency permitted is a lightweight HTTP client (`requests` or
-`httpx`), and only when an optional transport is required. `numpy`, `pandas`,
-`networkx`, `neo4j`, and any vector-DB client library MUST be opt-in extras installed
-via `pyproject.toml` optional-dependency groups, never required for a baseline
-install.
+The core library ships with a small, intentional dependency set: the Python 3.10+
+standard library, **numpy**, and **pandas**. These three are the default toolkit —
+reach for them freely where they make code correct, clear, or measurably faster.
+Numerical work (cosine similarity, centroid computation, bulk vector operations) uses
+`numpy`. Tabular transformations (dreaming-cycle memory/node batches, graph traversal
+result sets) use `pandas` where the clarity gain is real. Graph storage defaults to
+stdlib `sqlite3`.
 
-**Rationale**: Install time, container size, and transitive CVE surface are proxies for
-how painful the library is to adopt. A library that pulls `numpy` and `torch` by
-default is not lightweight, regardless of how its code reads.
+Beyond numpy, pandas, and the standard library, every additional runtime dependency
+in the `neuromem-core` package requires a documented justification in the feature
+spec **and** a constitutional amendment (MINOR bump at minimum). "We might want it
+later" is never a sufficient justification. "Writing this in pure Python is 3× the
+code and 20× slower, and numpy/pandas cannot express it" is a sufficient
+justification. A narrow-use dependency (e.g., a vector-DB client, a specific graph
+backend) MUST live in an optional-dependency group, or preferably in a downstream
+sibling package under `packages/`, not in core.
+
+Vendor LLM/embedding SDKs (`openai`, `anthropic`, `google-genai`, `cohere`, etc.)
+and agent-framework SDKs (Google ADK, Anthropic SDK agent scaffolding, LangChain,
+LlamaIndex, LangGraph) remain **forbidden** in `neuromem-core`. That ban is
+**Principle I**, and it is unchanged by this principle. The Lean Dependency Set is
+about what `neuromem-core` depends on; the Framework-Agnostic rule is about what
+`neuromem-core` couples to. Keep them separate in your head.
+
+**Rationale**: The goal is not zero dependencies — it is a dependency set that
+every user's laptop already has, every CI system resolves in seconds, and every
+reviewer understands without looking up an obscure package. numpy and pandas are
+de facto standard library for numerical Python. Forbidding them produced dense,
+unreadable pure-Python loops that nobody would write voluntarily and that everyone
+would reimplement with numpy the moment they cared about performance. The v1.1.0
+ban was ideology, not engineering; this revision is the correction.
 
 ### III. Layered, Modular, Pluggable Architecture
 
@@ -182,6 +227,43 @@ hooks renders all three disciplines ornamental: either they are enforced on ever
 commit or they may as well not exist. A single `--no-verify` normalises skipping,
 and skipping becomes the default.
 
+## Additional Constraints — Repository Structure
+
+The repository is organised as a **`uv` workspace monorepo**. All publishable
+Python packages live under `packages/`, one directory per package, each with its
+own `pyproject.toml`. A single workspace `pyproject.toml` at the repo root
+declares `[tool.uv.workspace] members = ["packages/*"]` and owns the shared
+`uv.lock`.
+
+For v1, the monorepo contains exactly one package:
+
+- **`packages/neuromem-core/`** — the core library. Published to PyPI as
+  `neuromem-core`. Import name: `neuromem`. This is the package the whole
+  001-neuromem-core feature targets.
+
+Future framework wrapper packages MUST land as siblings under `packages/`, with
+their own dedicated directories and `pyproject.toml` files. Planned (but not in
+v1 scope) examples:
+
+- `packages/neuromem-adk/` — Google ADK hook. Import: `neuromem_adk`. Depends
+  on `neuromem-core` as a workspace dependency.
+- `packages/neuromem-anthropic/` — Anthropic SDK hook. Import: `neuromem_anthropic`.
+- `packages/neuromem-langchain/` — LangChain hook. Import: `neuromem_langchain`.
+- `packages/neuromem-fastembed/` — a built-in local-embedding provider. Import:
+  `neuromem_fastembed`.
+
+Each sibling package MUST declare its dependency on `neuromem-core` using the
+`uv` workspace dependency syntax so the lockfile is shared across the whole
+repo, and MUST use a distinct top-level import namespace (`neuromem_adk`,
+`neuromem_anthropic`, etc. — underscores, not hyphens) to avoid implicit
+namespace package complexity. The `neuromem` top-level import is reserved
+exclusively for `neuromem-core`.
+
+**Rationale**: The project was always going to have multiple sibling packages.
+Retrofitting a monorepo structure after the first package ships is painful —
+import paths change, CI reconfigures, publish scripts break. Starting with the
+workspace layout costs ~20 lines of TOML on day one and zero lines later.
+
 ## Additional Constraints — Concurrency & Data Safety
 
 The dreaming pipeline MUST run in a single background thread. Concurrent dreaming
@@ -214,11 +296,11 @@ Every non-trivial feature MUST flow through the speckit pipeline in order:
 5. `/speckit.implement` → code, with each task's tests landing before its
    implementation
 
-The Constitution Check gate in `/speckit.plan` MUST verify each of the five core
-principles explicitly. A plan that violates any principle MUST either justify the
-violation in a Complexity Tracking entry (with a concrete reason why the simpler
-alternative was rejected) or be sent back for redesign. An unjustified violation is
-a blocker, not a warning.
+The Constitution Check gate in `/speckit.plan` MUST verify each of the six core
+principles explicitly (I–VI). A plan that violates any principle MUST either
+justify the violation in a Complexity Tracking entry (with a concrete reason why
+the simpler alternative was rejected) or be sent back for redesign. An unjustified
+violation is a blocker, not a warning.
 
 Pull requests MUST reference the spec file they implement and MUST include the tests
 required by Principle V. Commits that skip the speckit pipeline are permitted only
@@ -246,13 +328,13 @@ at the top of this file) listing modified principles, added/removed sections, an
 templates requiring downstream updates.
 
 **Compliance review**: Every `/speckit.plan` run performs an automatic Constitution
-Check against all five principles. Every code review MUST verify that tests were
-written first and that adapter boundaries were not breached. Complexity MUST be
-justified in the Complexity Tracking table of the relevant plan; unjustified
+Check against all six principles (I–VI). Every code review MUST verify that tests
+were written first and that adapter boundaries were not breached. Complexity MUST
+be justified in the Complexity Tracking table of the relevant plan; unjustified
 complexity is grounds for rejection.
 
 Runtime development guidance for contributors lives in `AGENTS.md`, `CLAUDE.md`,
 and `GEMINI.md`. Those files are subordinate to this constitution; where they
 diverge, this constitution wins and those files MUST be updated.
 
-**Version**: 1.1.0 | **Ratified**: 2026-04-11 | **Last Amended**: 2026-04-11
+**Version**: 2.0.0 | **Ratified**: 2026-04-11 | **Last Amended**: 2026-04-11

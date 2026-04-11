@@ -30,11 +30,14 @@ repos:
         require_serial: true
 
       # 3. Test suite — Constitution Principle VI.3
-      # Fires on any Python file change. Gracefully skips when no tests
-      # have been written yet (pytest exit code 5 = no tests collected).
+      # Fires on any Python file change. Runs pytest inside the uv
+      # workspace so it picks up packages/neuromem-core/src and
+      # packages/neuromem-core/tests without PYTHONPATH surgery.
+      # Gracefully skips when no tests exist yet (pytest exit code 5
+      # = no tests collected).
       - id: pytest
         name: pytest (fast unit tests)
-        entry: bash -c 'if find tests -type f -name "test_*.py" 2>/dev/null | grep -q .; then pytest -q -x tests/; else echo "(no tests collected yet — skipping pytest)"; fi'
+        entry: bash -c 'if find packages/neuromem-core/tests -type f -name "test_*.py" 2>/dev/null | grep -q .; then uv run --package neuromem-core pytest -q -x; else echo "(no tests collected yet — skipping pytest)"; fi'
         language: system
         pass_filenames: false
         files: \.py$
