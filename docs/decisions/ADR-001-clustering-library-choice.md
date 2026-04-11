@@ -68,9 +68,18 @@ Total implementation: ~100 lines of Python, plus a 6-line
 Full academic-grade hierarchical clustering with single, complete, average, and
 Ward linkage options.
 
-**Pros**: robust, well-tested, O(k² log k) instead of the hand-rolled
-O(k²·merges). Ward linkage in particular produces empirically tighter clusters
-on well-separated data.
+**Pros**: robust, well-tested. The nearest-neighbour-chain optimisation used by
+scipy for Ward linkage achieves O(k²) time complexity and O(k²) memory, versus
+the hand-rolled O(k³) worst-case here (O(k²) per iteration × up to O(k)
+iterations before the threshold cuts us off). Single / complete / average
+linkage in scipy's default code path is slower, ranging from O(k²) to O(k³)
+depending on the linkage variant and the input distribution. See Müllner,
+*"Modern hierarchical, agglomerative clustering algorithms"* (arXiv:1109.2378,
+2011) for the standard analysis of nn-chain and its variants.
+
+Ward linkage also produces empirically tighter clusters on well-separated data
+because it minimises variance increase on each merge rather than just picking
+the highest similarity.
 
 **Cons rejected for v1**:
 

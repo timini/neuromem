@@ -430,15 +430,25 @@ class TestRunDreamCycleRollback:
 
 
 class TestRunDreamCycleLocking:
-    def test_second_concurrent_call_returns_immediately(
+    def test_held_lock_causes_immediate_return(
         self,
         memory_system: NeuroMemory,
     ) -> None:
-        """If the dream lock is held, a second call is a silent no-op.
+        """Validates the lock-skip branch of ``_run_dream_cycle``.
 
-        We simulate a re-entrant call by manually grabbing the lock
-        before invoking _run_dream_cycle. The method must see the held
-        lock and return without touching any inbox memories.
+        Acquires ``_dream_lock`` on the test thread, then calls
+        ``_run_dream_cycle`` from the SAME thread. Because
+        ``threading.Lock`` is not re-entrant, the non-blocking
+        ``acquire(blocking=False)`` inside ``_run_dream_cycle``
+        returns ``False`` and the method returns immediately without
+        touching any inbox memories.
+
+        Note: this test exercises the lock-skip **logic branch**, not
+        actual cross-thread concurrency. A genuine two-thread test
+        (spawning two workers hitting ``_run_dream_cycle`` simultaneously
+        with a ``threading.Barrier``) is a T021 deliverable and will
+        cover the cross-thread exclusion path. See PR #36 review
+        finding I-3 for the reasoning behind the split.
         """
         mem_id = memory_system.enqueue("stays in inbox")
         assert memory_system._dream_lock.acquire(blocking=False)
