@@ -1,0 +1,41 @@
+# Pre-commit hooks enforcing neuromem Constitution Principle VI
+# (Atomic Commits with Enforced Pre-Commit Gates).
+#
+# Hooks use `language: system` — tools must be installed on the developer's
+# machine (install via `uv tool install ruff` and `uv tool install pre-commit`,
+# or pip equivalents). Install the git hook locally with:
+#
+#     pre-commit install
+#
+# Per Constitution Principle VI: `git commit --no-verify` is FORBIDDEN.
+# If a hook fails, fix the underlying issue; do not bypass the hook.
+
+repos:
+  - repo: local
+    hooks:
+      # 1. Formatter — Constitution Principle VI.1
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # 2. Linter — Constitution Principle VI.2
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # 3. Test suite — Constitution Principle VI.3
+      # Fires on any Python file change. Gracefully skips when no tests
+      # have been written yet (pytest exit code 5 = no tests collected).
+      - id: pytest
+        name: pytest (fast unit tests)
+        entry: bash -c 'if find tests -type f -name "test_*.py" 2>/dev/null | grep -q .; then pytest -q -x tests/; else echo "(no tests collected yet — skipping pytest)"; fi'
+        language: system
+        pass_filenames: false
+        files: \.py$
+        stages: [pre-commit]
