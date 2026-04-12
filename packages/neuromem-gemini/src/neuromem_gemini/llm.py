@@ -145,9 +145,20 @@ class GeminiLLMProvider(LLMProvider):
         Uses a tight prompt that suppresses preambles like "Here's a
         summary:" — the docstring on the ABC says this is on the hot
         path inside ``enqueue``, so fewer tokens is always better.
+
+        **Entity preservation**: the prompt explicitly instructs the
+        model to preserve proper nouns (brand names, places, people,
+        organisations) and specific numeric values from the source.
+        Without this, the 1–2 sentence compression tends to drop
+        named entities in favour of abstract nouns — see the Instance
+        3 investigation at ``docs/investigations/instance3-target-loss.md``
+        for a concrete failure mode.
         """
         prompt = (
             "Summarise the following text in one or two sentences. "
+            "Preserve all proper nouns — brand names, places, people, "
+            "organisations — and specific numeric values exactly as "
+            "they appear in the text. "
             "Respond with ONLY the summary — no preamble, no markdown, "
             "no quotation marks.\n\n"
             f"Text: {raw_text}"
@@ -165,12 +176,20 @@ class GeminiLLMProvider(LLMProvider):
         Prompt explicitly excludes stopwords and articles — this is
         the direct fix for the "how can `is` / `a` be a tag?" issue
         the deterministic MockLLMProvider shows in unit tests.
+
+        Also positively instructs the model to prioritise proper nouns
+        (brand names, places, people, organisations) when present, so
+        that an entity-preserving summary doesn't then get its
+        entities discarded at the tag stage.
         """
         prompt = (
             "Extract between 3 and 5 key concepts from the following text "
             "and return them as a comma-separated list. "
             "Exclude stopwords, articles, prepositions, and generic words "
             '(e.g. "the", "is", "a", "of", "to", "for"). '
+            "When the text mentions proper nouns — brand names, places, "
+            "people, organisations — include them as concepts; prefer "
+            "specific entities over the abstract category they belong to. "
             "Respond with ONLY the concepts, no numbering, no explanation, "
             "no bullet points, no markdown.\n\n"
             f"Text: {summary}"
@@ -232,8 +251,12 @@ class GeminiLLMProvider(LLMProvider):
             "order: the first inner array for text [1], the second "
             "for text [2], and so on. Each inner array contains only "
             "the concept strings. Exclude stopwords, articles, "
-            "prepositions, and generic words. No preamble, no "
-            "markdown fences, no explanation — ONLY the JSON.\n\n"
+            "prepositions, and generic words. When a text mentions "
+            "proper nouns — brand names, places, people, "
+            "organisations — include them as concepts; prefer "
+            "specific entities over the abstract category they "
+            "belong to. No preamble, no markdown fences, no "
+            "explanation — ONLY the JSON.\n\n"
             f"{numbered}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt)
