@@ -21,9 +21,42 @@ are overridable via constructor args.
 from __future__ import annotations
 
 import json
+import time as _time
 
 from google import genai
+from google.genai.errors import ServerError
 from neuromem.providers import LLMProvider
+
+
+def _generate_with_retry(
+    client: genai.Client,
+    model: str,
+    contents: str,
+    *,
+    max_attempts: int = 5,
+    base_delay: float = 2.0,
+) -> object:
+    """Call ``models.generate_content`` with retry on transient 5xx.
+
+    Same retry pattern as the embedder's ``_embed_chunk_with_retry``:
+    exponential backoff (2/4/8/16/32s), catches ``ServerError``
+    only. ``ClientError`` (4xx) is not retried.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return client.models.generate_content(
+                model=model,
+                contents=contents,
+            )
+        except ServerError as exc:
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                break
+            delay = base_delay * (2**attempt)
+            _time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
 
 
 def _strip_markdown_fence(text: str) -> str:
@@ -97,10 +130,7 @@ class GeminiLLMProvider(LLMProvider):
             "no quotation marks.\n\n"
             f"Text: {raw_text}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         return (resp.text or "").strip()
 
     # ------------------------------------------------------------------
@@ -123,10 +153,7 @@ class GeminiLLMProvider(LLMProvider):
             "no bullet points, no markdown.\n\n"
             f"Text: {summary}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         raw = (resp.text or "").strip()
         # Robust split: strip each token, drop empties, cap at 5.
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
@@ -187,10 +214,7 @@ class GeminiLLMProvider(LLMProvider):
             "markdown fences, no explanation — ONLY the JSON.\n\n"
             f"{numbered}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         raw = (resp.text or "").strip()
 
         # Strip common markdown fence patterns. Gemini usually
@@ -239,10 +263,7 @@ class GeminiLLMProvider(LLMProvider):
             "No explanation, no punctuation, no markdown. One word only.\n\n"
             f"Concepts: {', '.join(concepts)}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         raw = (resp.text or "").strip()
         if not raw:
             # Fall back to a deterministic synthesis so the dream cycle

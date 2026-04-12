@@ -88,6 +88,12 @@ class _FastSummaryGeminiLLMProvider(LLMProvider):
     def extract_tags(self, summary: str) -> list[str]:
         return self._inner.extract_tags(summary)
 
+    def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
+        # Delegate to the inner GeminiLLMProvider's batched override
+        # so we actually use the one-call path from #45 instead of
+        # falling through to LLMProvider's default serial loop.
+        return self._inner.extract_tags_batch(summaries)
+
     def generate_category_name(self, concepts: list[str]) -> str:
         return self._inner.generate_category_name(concepts)
 
