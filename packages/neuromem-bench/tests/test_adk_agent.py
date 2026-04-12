@@ -1,0 +1,234 @@
+"""Unit tests for ``NeuromemAdkAgent``.
+
+Full end-to-end coverage of the ADK + enable_memory path already lives
+in ``neuromem-adk``'s own integration test (``test_adk_integration.py``)
+against real Gemini. These tests here cover the ``BaseAgent``-shaped
+wiring we put on TOP of that: process_turn ingestion bypassing the
+Runner, reset rebuilding state, answer dispatching through an ADK
+Runner-shaped mock.
+
+No real Gemini, no real ADK — everything below ``enable_memory`` is
+patched out.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+# The google-adk package emits an "EXPERIMENTAL feature ... is enabled"
+# UserWarning on first construction of several of its classes. The
+# workspace-root ``filterwarnings=['error']`` would otherwise escalate
+# this to a test failure even though it's upstream noise we can't
+# meaningfully suppress at import time. Scope the filter to this module
+# only — core unit tests stay strict.
+pytestmark = [
+    pytest.mark.filterwarnings(r"ignore:.*\[EXPERIMENTAL\].*is enabled:UserWarning"),
+    pytest.mark.filterwarnings("ignore::DeprecationWarning"),
+    pytest.mark.filterwarnings("ignore::ResourceWarning"),
+]
+
+
+class _FakeMemory:
+    """Stand-in for NeuroMemory. Records ``enqueue`` calls + a flag
+    that confirms ``force_dream`` fired before the first answer."""
+
+    def __init__(self) -> None:
+        self.enqueues: list[tuple[str, dict]] = []
+        self.force_dream_count = 0
+        self.cluster_threshold = 0.0
+        self.dream_threshold = 0
+
+    def enqueue(self, text: str, metadata: dict | None = None) -> str:
+        self.enqueues.append((text, metadata or {}))
+        return f"mem_{len(self.enqueues)}"
+
+    def force_dream(self, block: bool = True) -> None:
+        self.force_dream_count += 1
+
+
+def _fake_event(text: str):
+    """Build an ADK-event-shaped SimpleNamespace with a single
+    text-bearing part. NeuromemAdkAgent.answer walks ``events[*]
+    .content.parts[*].text`` so this shape is the minimum."""
+    return SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text=text)]))
+
+
+@pytest.fixture
+def patched_adk():
+    """Patch every external dep NeuromemAdkAgent._build reaches for.
+
+    Yields a dict of mocks so individual tests can assert on how the
+    agent interacted with each.
+    """
+    with (
+        patch("google.adk.agents.Agent") as agent_cls,
+        patch("google.adk.runners.Runner") as runner_cls,
+        patch("google.adk.sessions.InMemorySessionService") as sess_cls,
+        patch("neuromem_adk.enable_memory") as enable_memory,
+        patch("neuromem_gemini.GeminiLLMProvider") as llm_cls,
+        patch("neuromem_gemini.GeminiEmbeddingProvider") as embed_cls,
+    ):
+        fake_agent = MagicMock(name="agent_instance")
+        agent_cls.return_value = fake_agent
+
+        fake_runner = MagicMock(name="runner_instance")
+        runner_cls.return_value = fake_runner
+
+        fake_memory = _FakeMemory()
+        enable_memory.return_value = fake_memory
+
+        yield {
+            "agent_cls": agent_cls,
+            "runner_cls": runner_cls,
+            "session_service_cls": sess_cls,
+            "enable_memory": enable_memory,
+            "llm_cls": llm_cls,
+            "embed_cls": embed_cls,
+            "fake_agent": fake_agent,
+            "fake_runner": fake_runner,
+            "fake_memory": fake_memory,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
+
+
+class TestConstruction:
+    def test_constructor_builds_memory_and_runner(self, patched_adk) -> None:
+        """Post-__init__, all wiring should be in place: enable_memory
+        called once, a Runner built, the cluster_threshold and
+        dream_threshold tuned on the returned memory."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        agent = NeuromemAdkAgent(api_key="fake-key", model="gemini-flash-latest")
+
+        assert patched_adk["enable_memory"].call_count == 1
+        assert patched_adk["runner_cls"].call_count == 1
+
+        # cluster_threshold + dream_threshold mutated to match the
+        # tuning NeuromemAgent uses — lets apples-to-apples comparison.
+        assert patched_adk["fake_memory"].cluster_threshold == 0.55
+        assert patched_adk["fake_memory"].dream_threshold == 9999
+
+        # Session id is populated and has the expected prefix.
+        assert agent._session_id.startswith("instance-")
+
+    def test_custom_cluster_threshold_passes_through(self, patched_adk) -> None:
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        NeuromemAdkAgent(api_key="fake-key", cluster_threshold=0.7)
+        assert patched_adk["fake_memory"].cluster_threshold == 0.7
+
+
+# ---------------------------------------------------------------------------
+# process_turn
+# ---------------------------------------------------------------------------
+
+
+class TestProcessTurn:
+    def test_enqueues_text_with_role_metadata(self, patched_adk) -> None:
+        """Ingestion bypasses ADK — process_turn goes straight to
+        memory.enqueue with role metadata. No Runner calls should
+        fire during the ingestion phase."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        agent.process_turn("hello", role="user")
+        agent.process_turn("hi there", role="assistant")
+
+        enqueues = patched_adk["fake_memory"].enqueues
+        assert enqueues == [
+            ("hello", {"role": "user"}),
+            ("hi there", {"role": "assistant"}),
+        ]
+
+        # Runner was constructed in __init__ but never invoked during
+        # ingestion — that's the whole point of the bypass.
+        patched_adk["fake_runner"].run_debug.assert_not_called()
+
+    def test_many_turns_all_flow_through(self, patched_adk) -> None:
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        for i in range(50):
+            agent.process_turn(f"turn {i}", role="user" if i % 2 == 0 else "assistant")
+
+        assert len(patched_adk["fake_memory"].enqueues) == 50
+
+
+# ---------------------------------------------------------------------------
+# answer
+# ---------------------------------------------------------------------------
+
+
+class TestAnswer:
+    def test_answer_forces_dream_then_drives_runner(self, patched_adk) -> None:
+        """The answer path:
+        1. Forces a dream cycle so the graph is ready for injection.
+        2. Calls runner.run_debug with the correct user_id + session_id.
+        3. Returns the last text part from the event list."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [
+                _fake_event("tool call noise"),
+                _fake_event("Final answer with the gold detail."),
+            ]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        agent.process_turn("prior turn", role="user")
+        result = agent.answer("What did I say?")
+
+        # Dream cycle fired before the runner's first turn.
+        assert patched_adk["fake_memory"].force_dream_count == 1
+
+        # Last text-bearing part is what we return.
+        assert result == "Final answer with the gold detail."
+
+    def test_answer_returns_empty_string_on_no_text_parts(self, patched_adk) -> None:
+        """Defensive: an event list with no text-bearing parts (e.g.
+        only tool-call events) yields an empty string rather than
+        crashing. The benchmark metric treats empty strings as 0-score."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [SimpleNamespace(content=None)]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        assert agent.answer("Q?") == ""
+
+
+# ---------------------------------------------------------------------------
+# reset
+# ---------------------------------------------------------------------------
+
+
+class TestReset:
+    def test_reset_rebuilds_memory_and_rolls_session_id(self, patched_adk) -> None:
+        """reset() must:
+        1. Call enable_memory a second time (fresh memory).
+        2. Construct a second Runner.
+        3. Produce a different session_id so prior session events
+           don't leak into the new instance.
+        """
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        first_session_id = agent._session_id
+        first_enable_count = patched_adk["enable_memory"].call_count
+
+        agent.reset()
+
+        assert patched_adk["enable_memory"].call_count == first_enable_count + 1
+        assert patched_adk["runner_cls"].call_count >= 2
+        assert agent._session_id != first_session_id
+        assert agent._session_id.startswith("instance-")

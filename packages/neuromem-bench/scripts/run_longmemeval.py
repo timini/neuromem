@@ -97,22 +97,31 @@ def _resolve_api_key() -> str:
 
 def _build_agent(name: str, api_key: str, model: str):
     """Construct an agent by name. Imports lazily so baselines that
-    don't need ADK don't pay the import cost."""
-    from neuromem_bench.agent import (  # noqa: PLC0415
-        NaiveRagAgent,
-        NeuromemAgent,
-        NullAgent,
-    )
-
+    don't need the google-adk stack don't pay its import cost."""
     if name == "null":
+        from neuromem_bench.agent import NullAgent  # noqa: PLC0415
+
         return NullAgent(api_key=api_key, model=model)
     if name == "naive-rag":
+        from neuromem_bench.agent import NaiveRagAgent  # noqa: PLC0415
+
         return NaiveRagAgent(api_key=api_key, model=model)
-    if name in ("neuromem", "neuromem-adk"):
-        # Accept the legacy --agent neuromem-adk name too so any
-        # docs or scripts referencing the pre-rename CLI keep working.
+    if name == "neuromem":
+        from neuromem_bench.agent import NeuromemAgent  # noqa: PLC0415
+
         return NeuromemAgent(api_key=api_key, model=model)
-    raise ValueError(f"unknown agent name: {name!r}. Valid: null / naive-rag / neuromem")
+    if name == "neuromem-adk":
+        # The real ADK-backed variant — constructs a google.adk.agents.Agent
+        # with neuromem_adk.enable_memory, giving the answer LLM
+        # search_memory + retrieve_memories as function tools. Slower
+        # per answer than --agent neuromem but measures the full
+        # product rather than the handicapped one-shot path.
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        return NeuromemAdkAgent(api_key=api_key, model=model)
+    raise ValueError(
+        f"unknown agent name: {name!r}. Valid: null / naive-rag / neuromem / neuromem-adk"
+    )
 
 
 def _build_metric(name: str, api_key: str):
@@ -156,7 +165,12 @@ def main() -> None:
         "--agent",
         action="append",
         default=None,
-        help="Agent backend (repeatable). null / naive-rag / neuromem. Default: neuromem. Legacy 'neuromem-adk' still accepted.",
+        help=(
+            "Agent backend (repeatable). One of: null, naive-rag, "
+            "neuromem, neuromem-adk. Default: neuromem. "
+            "neuromem-adk is the real ADK-backed variant with tools "
+            "and is significantly slower per answer."
+        ),
     )
     parser.add_argument(
         "--output",
