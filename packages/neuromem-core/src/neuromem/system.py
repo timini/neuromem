@@ -259,8 +259,16 @@ class NeuroMemory:
             dreaming_ids = [m["id"] for m in inbox_memories]
             self.storage.update_memory_status(dreaming_ids, "dreaming")
 
-            # 2. Extract tag labels per memory.
-            memories_with_tags = [(m, self.llm.extract_tags(m["summary"])) for m in inbox_memories]
+            # 2. Extract tag labels per memory in one batched call.
+            # Providers that override LLMProvider.extract_tags_batch
+            # with a real batched LLM call (GeminiLLMProvider, etc.)
+            # turn this from N serial requests into O(1). Providers
+            # that don't override get a default implementation that
+            # loops over extract_tags — correctness-identical to
+            # the pre-#44 behaviour, just slower. See issue #44.
+            summaries = [m["summary"] for m in inbox_memories]
+            tag_lists = self.llm.extract_tags_batch(summaries)
+            memories_with_tags = list(zip(inbox_memories, tag_lists, strict=True))
 
             # 3-5. Resolve labels → node records, creating nodes for any
             #      label that isn't already in storage.
