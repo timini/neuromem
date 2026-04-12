@@ -191,3 +191,108 @@ class TestExtractTagsBatchDefault:
         assert result[2] == ["batched", "tag2"]
         assert stub.batch_call_count == 1
         assert stub.per_call_count == 0  # override bypassed per-call entirely
+
+
+# ---------------------------------------------------------------------------
+# extract_named_entities default implementations
+# ---------------------------------------------------------------------------
+
+
+class TestExtractNamedEntitiesDefaults:
+    """``extract_named_entities`` and its batch variant are NOT
+    abstract — they ship with default implementations so providers
+    that don't care about NER (mocks, simple offline stubs)
+    degrade gracefully to empty-list output rather than forcing
+    every downstream to know about them.
+
+    These tests lock in:
+    1. A minimal provider (implementing only the abstract methods)
+       can still be instantiated — the new methods are non-abstract.
+    2. The default ``extract_named_entities`` returns ``[]`` — the
+       "no entities" signal the dream cycle accepts.
+    3. ``extract_named_entities_batch`` default = per-call loop,
+       preserves length invariant.
+    4. A provider that overrides the batch method gets its override
+       called directly (same pattern as extract_tags_batch).
+    """
+
+    class _MinimalStub(LLMProvider):
+        """Implements ONLY the abstract methods.
+
+        Deliberately does NOT implement extract_named_entities or
+        its batch variant — so we're exercising the ABC's default
+        implementations directly.
+        """
+
+        def generate_summary(self, raw_text: str) -> str:
+            return raw_text
+
+        def extract_tags(self, summary: str) -> list[str]:
+            return ["tag"]
+
+        def generate_category_name(self, concepts: list[str]) -> str:
+            return "cat"
+
+    def test_minimal_provider_instantiates_without_implementing_ner(self) -> None:
+        """Providers that don't know about named entities MUST NOT
+        be forced to implement them. Instantiation alone proves the
+        methods have default bodies (non-abstract)."""
+        stub = self._MinimalStub()
+        assert isinstance(stub, LLMProvider)
+
+    def test_default_extract_named_entities_returns_empty_list(self) -> None:
+        """The graceful-degradation contract. The dream cycle stores
+        whatever this returns — empty list ≡ 'this memory has no
+        entities', which is a valid state."""
+        stub = self._MinimalStub()
+        assert stub.extract_named_entities("Some summary text.") == []
+
+    def test_default_batch_returns_empty_lists_per_input(self) -> None:
+        """Length invariant applies just as strictly as the tags
+        variant — the dream cycle uses zip(strict=True)."""
+        stub = self._MinimalStub()
+        result = stub.extract_named_entities_batch(["a", "b", "c"])
+        assert result == [[], [], []]
+
+    def test_empty_batch_input_returns_empty_batch_output(self) -> None:
+        stub = self._MinimalStub()
+        assert stub.extract_named_entities_batch([]) == []
+
+    def test_overridden_single_method_is_picked_up_by_batch_loop(self) -> None:
+        """A provider that overrides extract_named_entities but NOT
+        the batch variant gets its override called per-item via the
+        default loop."""
+
+        class NerStub(self._MinimalStub):
+            def extract_named_entities(self, summary: str) -> list[str]:
+                # Capitalised words = "entities" for this stub.
+                return [w for w in summary.split() if w and w[0].isupper()]
+
+        stub = NerStub()
+        result = stub.extract_named_entities_batch(
+            ["Target sells Cartwheel coupons", "no entities here", "just Paris"]
+        )
+        assert result == [["Target", "Cartwheel"], [], ["Paris"]]
+
+    def test_overridden_batch_is_used_directly(self) -> None:
+        """Mirror of TestExtractTagsBatchDefault — a batched override
+        must not fall through to per-item calls."""
+
+        class BatchedNerStub(self._MinimalStub):
+            def __init__(self) -> None:
+                self.per_call_count = 0
+                self.batch_call_count = 0
+
+            def extract_named_entities(self, summary: str) -> list[str]:
+                self.per_call_count += 1
+                return ["from-per-call"]
+
+            def extract_named_entities_batch(self, summaries: list[str]) -> list[list[str]]:
+                self.batch_call_count += 1
+                return [[f"batched{i}"] for i in range(len(summaries))]
+
+        stub = BatchedNerStub()
+        result = stub.extract_named_entities_batch(["a", "b"])
+        assert result == [["batched0"], ["batched1"]]
+        assert stub.batch_call_count == 1
+        assert stub.per_call_count == 0

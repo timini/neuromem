@@ -1517,6 +1517,110 @@ class TestDreamCycleUsesExtractTagsBatch:
         assert system.storage.count_memories_by_status("consolidated") == 4
 
 
+# ---------------------------------------------------------------------------
+# Named-entity extraction integration (dream cycle)
+# ---------------------------------------------------------------------------
+
+
+class TestNamedEntityExtractionInDreamCycle:
+    """The dream cycle was extended to call
+    ``LLMProvider.extract_named_entities_batch`` after tag extraction
+    and persist the result via ``StorageAdapter.set_named_entities``.
+
+    These tests lock in:
+    1. Providers that don't override extract_named_entities (i.e.
+       inherit the ABC default returning ``[]``) cause no regressions —
+       consolidated memories come out with ``named_entities == []``.
+    2. A provider that DOES override extract_named_entities_batch has
+       its return value persisted onto each memory — readable via
+       both ``get_memory_by_id`` and ``get_memories_by_status``.
+    3. The length invariant enforced by ``zip(..., strict=True)`` is
+       respected: a batch response of wrong length surfaces as a
+       ``ValueError`` inside the dream cycle rather than silently
+       mis-pairing entities with memories.
+    """
+
+    def test_default_provider_persists_empty_entities(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """MockLLMProvider doesn't override NER — after consolidation
+        each memory still has ``named_entities == []``."""
+        for i in range(3):
+            memory_system.enqueue(f"memory {i} alpha beta")
+        memory_system.force_dream(block=True)
+
+        memories = memory_system.storage.get_memories_by_status("consolidated")
+        assert len(memories) == 3
+        for mem in memories:
+            assert mem["named_entities"] == []
+
+    def test_overridden_provider_populates_entities(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """A provider that overrides extract_named_entities_batch drives
+        per-memory entity persistence through to storage."""
+
+        class NamingLLM(MockLLMProvider):
+            """Returns a deterministic entity list per summary — the
+            first word of each summary, so we can assert ordering."""
+
+            def extract_named_entities_batch(self, summaries: list[str]) -> list[list[str]]:
+                return [[s.split()[0]] if s else [] for s in summaries]
+
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=NamingLLM(),
+            embedder=mock_embedder,
+        )
+        # MockLLMProvider.generate_summary returns raw_text truncated —
+        # the first word is therefore the first word of the raw_text.
+        system.enqueue("Target sells creamer")
+        system.enqueue("Cartwheel saves money")
+        system.enqueue("coupon expiring soon")
+        system.force_dream(block=True)
+
+        memories = sorted(
+            system.storage.get_memories_by_status("consolidated"),
+            key=lambda m: m["raw_content"],
+        )
+        assert [m["named_entities"] for m in memories] == [
+            ["Cartwheel"],
+            ["Target"],
+            ["coupon"],
+        ]
+
+    def test_batch_length_mismatch_raises(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """A misbehaving provider that returns a list of the wrong
+        length fails loudly via zip(strict=True). Silent mis-pairing
+        would corrupt the entity→memory mapping, which is far worse
+        than a dream-cycle failure."""
+
+        class BrokenNERLLM(MockLLMProvider):
+            def extract_named_entities_batch(self, summaries: list[str]) -> list[list[str]]:
+                # Deliberately wrong length: one item for two summaries.
+                return [["oops"]]
+
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=BrokenNERLLM(),
+            embedder=mock_embedder,
+        )
+        system.enqueue("first memory")
+        system.enqueue("second memory")
+        # _run_dream_cycle swallows errors and logs; but the broken
+        # invariant means memories don't make it to consolidated.
+        # Either the dream cycle raises, or it fails silently and
+        # leaves the memories in 'dreaming'. Assert on the observable
+        # outcome: zero consolidated memories.
+        with pytest.raises(ValueError, match="shorter than argument"):
+            system.force_dream(block=True)
+
+
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
     """Referenced for type-checker compatibility."""
     # EmbeddingProvider is referenced by type annotations in test fixtures.

@@ -123,6 +123,12 @@ def retrieve_memories(
                 "created_at": int,   # Unix timestamp
                 "last_accessed": int | None,
                 "metadata": dict | None,
+                "named_entities": list[str],  # proper nouns extracted
+                                              # during the dream cycle;
+                                              # empty list when NER
+                                              # produced no hits or the
+                                              # provider doesn't implement
+                                              # extract_named_entities.
             }
 
     Raises:

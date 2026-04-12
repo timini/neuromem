@@ -69,15 +69,16 @@ _VALID_RELATIONSHIPS = frozenset(("has_tag", "child_of"))
 # reference them and so initialisation is a straight script.
 _SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS memories (
-    id            TEXT PRIMARY KEY,
-    raw_content   TEXT NOT NULL,
-    summary       TEXT,
-    status        TEXT NOT NULL DEFAULT 'inbox'
-                    CHECK (status IN ('inbox','dreaming','consolidated','archived')),
-    access_weight REAL NOT NULL DEFAULT 1.0,
-    last_accessed INTEGER,
-    created_at    INTEGER NOT NULL,
-    metadata      TEXT
+    id              TEXT PRIMARY KEY,
+    raw_content     TEXT NOT NULL,
+    summary         TEXT,
+    status          TEXT NOT NULL DEFAULT 'inbox'
+                      CHECK (status IN ('inbox','dreaming','consolidated','archived')),
+    access_weight   REAL NOT NULL DEFAULT 1.0,
+    last_accessed   INTEGER,
+    created_at      INTEGER NOT NULL,
+    metadata        TEXT,
+    named_entities  TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -102,6 +103,39 @@ CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_edges_source    ON edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target    ON edges(target_id);
 """
+
+
+# Additive migrations for columns added after the initial v0.1.0 schema.
+# Each entry is (table, column, DDL for ADD COLUMN). Running against a
+# fresh database is a no-op because CREATE TABLE in _SCHEMA_DDL already
+# includes these columns; running against a pre-migration database
+# applies the missing column and sets the default for existing rows.
+# The OperationalError "duplicate column name" is the only exception we
+# silently tolerate — every other error propagates as a real failure.
+_ADDITIVE_MIGRATIONS: list[tuple[str, str]] = [
+    # (column, full ADD COLUMN statement)
+    ("named_entities", "ALTER TABLE memories ADD COLUMN named_entities TEXT NOT NULL DEFAULT '[]'"),
+]
+
+
+def _run_additive_migrations(conn: sqlite3.Connection) -> None:
+    """Apply ``ALTER TABLE ADD COLUMN`` statements that were introduced
+    after v0.1.0, idempotently.
+
+    SQLite has no ``IF NOT EXISTS`` clause for ``ADD COLUMN``, so we
+    attempt each and suppress the specific "duplicate column name"
+    OperationalError. Any other error surfaces normally — a corrupt
+    database is a real problem, not something to mask.
+    """
+    for _column, ddl in _ADDITIVE_MIGRATIONS:
+        try:
+            conn.execute(ddl)
+        except sqlite3.OperationalError as exc:
+            # The message text varies slightly between SQLite versions,
+            # but always includes "duplicate column name" for this case.
+            if "duplicate column name" in str(exc).lower():
+                continue
+            raise
 
 
 class SQLiteAdapter(StorageAdapter):
@@ -140,6 +174,10 @@ class SQLiteAdapter(StorageAdapter):
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=OFF")
             self._conn.executescript(_SCHEMA_DDL)
+            # Idempotent migrations for columns added after v0.1.0.
+            # Each ADD COLUMN raises OperationalError when the column
+            # already exists — we swallow exactly that one case.
+            _run_additive_migrations(self._conn)
         except sqlite3.Error as exc:
             raise StorageError(f"schema init failed: {exc}") from exc
 
@@ -209,7 +247,7 @@ class SQLiteAdapter(StorageAdapter):
 
         sql = """
             SELECT id, raw_content, summary, status, access_weight,
-                   last_accessed, created_at, metadata
+                   last_accessed, created_at, metadata, named_entities
             FROM memories
             WHERE status = ?
             ORDER BY created_at ASC, id ASC
@@ -252,7 +290,7 @@ class SQLiteAdapter(StorageAdapter):
             row = self._conn.execute(
                 """
                 SELECT id, raw_content, summary, status, access_weight,
-                       last_accessed, created_at, metadata
+                       last_accessed, created_at, metadata, named_entities
                 FROM memories WHERE id = ?
                 """,
                 (memory_id,),
@@ -262,6 +300,38 @@ class SQLiteAdapter(StorageAdapter):
         if row is None:
             return None
         return _row_to_memory_dict(row)
+
+    def set_named_entities(self, updates: dict[str, list[str]]) -> None:
+        """Batch-write named-entity lists onto existing memory rows.
+
+        ``updates`` maps ``memory_id`` → list of entity strings. The
+        dream cycle calls this once per cycle with every memory that
+        was just consolidated, avoiding per-memory round-trips.
+
+        Contract:
+        - Empty ``updates`` → no-op (returns immediately).
+        - IDs not present in the ``memories`` table are silently
+          skipped (SQLite ``UPDATE`` against a missing id is a zero-
+          row no-op — matches ``update_memory_status`` semantics).
+        - Each list is JSON-serialised and stored in the
+          ``named_entities`` TEXT column. Non-string elements are
+          coerced via ``str()`` to stay consistent with
+          ``_row_to_memory_dict``'s read-side coercion.
+        - Runs all updates in a single transaction.
+        """
+        self._check_open()
+        if not updates:
+            return
+        try:
+            with self._conn:
+                for mem_id, entities in updates.items():
+                    serialised = json.dumps([str(e) for e in entities])
+                    self._conn.execute(
+                        "UPDATE memories SET named_entities = ? WHERE id = ?",
+                        (serialised, mem_id),
+                    )
+        except sqlite3.Error as exc:
+            raise StorageError(f"set_named_entities failed: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Consolidation / Recall / Pruning — stubs land in T015–T018.
@@ -507,7 +577,7 @@ class SQLiteAdapter(StorageAdapter):
             mem_rows = self._conn.execute(
                 f"""
                 SELECT id, raw_content, summary, status, access_weight,
-                       last_accessed, created_at, metadata
+                       last_accessed, created_at, metadata, named_entities
                 FROM memories WHERE id IN ({placeholders})
                 """,
                 tuple(memory_ids),
@@ -698,6 +768,30 @@ def _row_to_memory_dict(row: sqlite3.Row) -> dict[str, Any]:
             metadata = json.loads(row["metadata"])
         except json.JSONDecodeError as exc:
             raise StorageError(f"corrupt metadata for memory {row['id']}: {exc}") from exc
+
+    # named_entities was added post-v0.1.0 as a dedicated column. The
+    # migration back-fills existing rows to '[]' and the CREATE TABLE
+    # has NOT NULL DEFAULT '[]', so a missing/NULL value in practice
+    # would only come from hand-crafted test rows — we tolerate it
+    # here to keep those simple.
+    # sqlite3.Row's __contains__ checks values (not keys) unlike a dict,
+    # so .keys() is required here — ruff SIM118 is a false positive.
+    raw_entities = (
+        row["named_entities"] if "named_entities" in row.keys() else None  # noqa: SIM118
+    )
+    named_entities: list[str]
+    if raw_entities is None or raw_entities == "":
+        named_entities = []
+    else:
+        try:
+            parsed = json.loads(raw_entities)
+        except json.JSONDecodeError as exc:
+            raise StorageError(f"corrupt named_entities for memory {row['id']}: {exc}") from exc
+        if not isinstance(parsed, list):
+            raise StorageError(f"named_entities for memory {row['id']} is not a JSON list")
+        # Coerce to list[str]; non-string elements are a contract violation.
+        named_entities = [str(e) for e in parsed]
+
     return {
         "id": row["id"],
         "raw_content": row["raw_content"],
@@ -707,6 +801,7 @@ def _row_to_memory_dict(row: sqlite3.Row) -> dict[str, Any]:
         "last_accessed": int(row["last_accessed"]) if row["last_accessed"] is not None else None,
         "created_at": int(row["created_at"]),
         "metadata": metadata,
+        "named_entities": named_entities,
     }
 
 
