@@ -118,6 +118,33 @@ class StorageAdapter(ABC):
         rely on silent skip.
         """
 
+    def set_named_entities(self, updates: dict[str, list[str]]) -> None:
+        """Batch-write named-entity lists onto existing memory rows.
+
+        ``updates`` maps memory_id → list of entity strings. Called
+        from the dream cycle once per cycle, after NER extraction.
+
+        NON-abstract with a safe default ``raise NotImplementedError``-
+        free no-op fallback in the ABC: the dream cycle is defensive
+        about providers that don't support entity storage, so an
+        adapter that doesn't implement this (e.g., an in-memory dict
+        adapter used in unit tests) simply skips entity persistence
+        without breaking the cycle. Persistent adapters (SQLite,
+        future Postgres) MUST override.
+
+        Contract for overrides:
+        - Empty ``updates`` → no-op.
+        - Missing memory IDs are silently skipped.
+        - Implementation is atomic per call (single transaction).
+
+        Added post-v0.1.0 to support named-entity rendering in the
+        context tree without forcing every existing adapter to
+        implement it simultaneously.
+        """
+        # Default: do nothing. Test-only adapters may rely on this.
+        _ = updates  # avoid unused-argument lint when overridden later
+        return
+
     # ------------------------------------------------------------------
     # Consolidation (Neocortex / Graph)
     # ------------------------------------------------------------------

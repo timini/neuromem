@@ -170,6 +170,9 @@ class DictStorageAdapter(StorageAdapter):
             "last_accessed": m["last_accessed"],
             "created_at": m["created_at"],
             "metadata": copy.deepcopy(m["metadata"]),
+            # named_entities was added post-v0.1.0; tolerate older
+            # hand-crafted rows in tests that never set it.
+            "named_entities": list(m.get("named_entities") or []),
         }
 
     @staticmethod
@@ -206,6 +209,7 @@ class DictStorageAdapter(StorageAdapter):
             "last_accessed": None,
             "created_at": int(time.time()),
             "metadata": copy.deepcopy(metadata),
+            "named_entities": [],
         }
         return memory_id
 
@@ -258,6 +262,14 @@ class DictStorageAdapter(StorageAdapter):
         if row is None:
             return None
         return self._copy_memory(row)
+
+    def set_named_entities(self, updates: dict[str, list[str]]) -> None:
+        """In-memory override of the ABC default so tests can assert
+        that the dream cycle actually persisted entities."""
+        self._check_open()
+        for mem_id, entities in updates.items():
+            if mem_id in self._memories:
+                self._memories[mem_id]["named_entities"] = [str(e) for e in entities]
 
     # ------------------------------------------------------------------
     # Consolidation (Neocortex / Graph)

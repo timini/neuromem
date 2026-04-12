@@ -335,6 +335,159 @@ class TestLifecycle:
         gc.collect()  # force __del__ to run
 
 
+# ---------------------------------------------------------------------------
+# named_entities column + set_named_entities method
+# ---------------------------------------------------------------------------
+
+
+class TestNamedEntitiesStorage:
+    """The ``named_entities`` column is the on-disk home for per-memory
+    NER output. These tests lock in:
+
+    - The column exists in fresh in-memory databases (from _SCHEMA_DDL)
+      AND in databases that predate the column (via _run_additive_migrations).
+    - ``_row_to_memory_dict`` surfaces it as ``named_entities: list[str]``
+      with a sane default of ``[]`` when the column was never written.
+    - ``set_named_entities`` writes JSON-serialised lists; round-trip
+      deserialisation preserves the content.
+    - Missing memory IDs are silently no-op'd (matches ``update_memory_status``
+      semantics).
+    - Empty updates dict is a cheap no-op.
+    """
+
+    def test_column_present_on_fresh_db(self) -> None:
+        """A fresh ``:memory:`` database gets ``named_entities`` from
+        the CREATE TABLE DDL. Read it back via PRAGMA table_info."""
+        adapter = SQLiteAdapter(":memory:")
+        cols = adapter._conn.execute("PRAGMA table_info(memories)").fetchall()
+        col_names = {row["name"] for row in cols}
+        assert "named_entities" in col_names
+
+    def test_fresh_memory_has_empty_entities_by_default(self) -> None:
+        """New rows inserted via ``insert_memory`` default to ``[]``
+        (via the column's ``DEFAULT '[]'`` clause)."""
+        adapter = SQLiteAdapter(":memory:")
+        mem_id = adapter.insert_memory("raw", "summary")
+        record = adapter.get_memory_by_id(mem_id)
+        assert record is not None
+        assert record["named_entities"] == []
+
+    def test_set_named_entities_round_trips(self) -> None:
+        """Write a couple of entities, read back via both
+        ``get_memory_by_id`` and ``get_memories_by_status``."""
+        adapter = SQLiteAdapter(":memory:")
+        mem_id = adapter.insert_memory("raw", "summary")
+        adapter.set_named_entities({mem_id: ["Target", "Cartwheel"]})
+
+        single = adapter.get_memory_by_id(mem_id)
+        assert single is not None
+        assert single["named_entities"] == ["Target", "Cartwheel"]
+
+        from_list = adapter.get_memories_by_status("inbox")
+        assert len(from_list) == 1
+        assert from_list[0]["named_entities"] == ["Target", "Cartwheel"]
+
+    def test_set_named_entities_empty_dict_is_noop(self) -> None:
+        """Contract: empty updates returns immediately without a
+        round-trip. Verify by asserting no exception on closed
+        connection path — here, just assert no error."""
+        adapter = SQLiteAdapter(":memory:")
+        # Does not raise.
+        adapter.set_named_entities({})
+
+    def test_set_named_entities_missing_ids_silently_skipped(self) -> None:
+        """UPDATE ... WHERE id IN (...) against missing IDs is a
+        zero-row no-op in SQLite — verify we don't raise."""
+        adapter = SQLiteAdapter(":memory:")
+        adapter.set_named_entities({"mem_does_not_exist": ["X"]})
+        # Nothing to assert beyond "did not raise". Absence of entry.
+        assert adapter.get_memory_by_id("mem_does_not_exist") is None
+
+    def test_set_named_entities_overwrites_prior_write(self) -> None:
+        """Repeated writes update in place; the column stores only
+        the latest value."""
+        adapter = SQLiteAdapter(":memory:")
+        mem_id = adapter.insert_memory("raw", "summary")
+        adapter.set_named_entities({mem_id: ["Alpha"]})
+        adapter.set_named_entities({mem_id: ["Beta", "Gamma"]})
+        record = adapter.get_memory_by_id(mem_id)
+        assert record is not None
+        assert record["named_entities"] == ["Beta", "Gamma"]
+
+    def test_set_named_entities_coerces_nonstring_elements(self) -> None:
+        """Defensive: non-string items in the input list are coerced
+        to ``str`` on write, matching the read-side coercion in
+        ``_row_to_memory_dict``."""
+        adapter = SQLiteAdapter(":memory:")
+        mem_id = adapter.insert_memory("raw", "summary")
+        adapter.set_named_entities({mem_id: [42, "Text", 3.14]})  # type: ignore[list-item]
+        record = adapter.get_memory_by_id(mem_id)
+        assert record is not None
+        assert record["named_entities"] == ["42", "Text", "3.14"]
+
+    def test_migration_applied_to_preexisting_db(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        """Simulate a database created by a pre-named_entities version
+        of the schema: drop the column (via table rebuild) and verify
+        reopening through SQLiteAdapter runs the ADD COLUMN migration.
+
+        We use a file-backed DB so the schema survives the drop-and-reopen.
+        """
+        db_path = str(tmp_path / "legacy.db")
+
+        # Create the adapter once to get a fresh DB, then manually
+        # rebuild the memories table without named_entities to simulate
+        # an older schema.
+        adapter = SQLiteAdapter(db_path)
+        mem_id = adapter.insert_memory("raw", "summary")
+        adapter.close()
+
+        # Rebuild the memories table WITHOUT named_entities (simulate
+        # pre-migration schema). SQLite doesn't support DROP COLUMN
+        # historically, so we rename-copy-drop-rename to get there.
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            ALTER TABLE memories RENAME TO memories_new;
+            CREATE TABLE memories (
+                id            TEXT PRIMARY KEY,
+                raw_content   TEXT NOT NULL,
+                summary       TEXT,
+                status        TEXT NOT NULL DEFAULT 'inbox'
+                                CHECK (status IN ('inbox','dreaming','consolidated','archived')),
+                access_weight REAL NOT NULL DEFAULT 1.0,
+                last_accessed INTEGER,
+                created_at    INTEGER NOT NULL,
+                metadata      TEXT
+            );
+            INSERT INTO memories
+                (id, raw_content, summary, status, access_weight,
+                 last_accessed, created_at, metadata)
+            SELECT id, raw_content, summary, status, access_weight,
+                   last_accessed, created_at, metadata
+            FROM memories_new;
+            DROP TABLE memories_new;
+            """
+        )
+        conn.commit()
+        # Confirm the column really is gone before reopening.
+        cols_before = {r["name"] for r in conn.execute("PRAGMA table_info(memories)").fetchall()}
+        assert "named_entities" not in cols_before
+        conn.close()
+
+        # Reopen via the adapter — migration should add the column.
+        adapter2 = SQLiteAdapter(db_path)
+        cols_after = {
+            r["name"] for r in adapter2._conn.execute("PRAGMA table_info(memories)").fetchall()
+        }
+        assert "named_entities" in cols_after
+
+        # And the pre-existing memory should have the column defaulted to [].
+        record = adapter2.get_memory_by_id(mem_id)
+        assert record is not None
+        assert record["named_entities"] == []
+
+
 # Silence unused-import lint rule on sqlite3 — it's imported above for
 # the type context and used directly in TestLifecycle for the
 # ProgrammingError assertion.
