@@ -80,10 +80,17 @@ class _FastSummaryGeminiLLMProvider(LLMProvider):
         self._inner = GeminiLLMProvider(api_key=api_key, model=model)
 
     def generate_summary(self, raw_text: str) -> str:
-        # Raw-text truncation. 200 chars is roughly the length of
-        # one conversational turn; longer turns get clipped but
-        # the memory still contains the full raw_content.
-        return raw_text[:200]
+        # Use the real Gemini summary — the 200-char truncation
+        # was cutting off factual details that tag extraction
+        # needs to build a useful concept graph. The first
+        # benchmark run (instance e47becba) scored 0.0 because
+        # "Business Administration" was past position 200 and
+        # never entered the graph.
+        #
+        # This adds ~1s per enqueue call (160 calls for a
+        # LongMemEval_s instance = ~3 min extra) but preserves
+        # the semantic content that makes the cognitive loop work.
+        return self._inner.generate_summary(raw_text)
 
     def extract_tags(self, summary: str) -> list[str]:
         return self._inner.extract_tags(summary)
