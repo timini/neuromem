@@ -25,6 +25,23 @@ from google.genai.errors import ServerError
 from neuromem.providers import EmbeddingProvider
 from numpy.typing import NDArray
 
+# Same retryable-exceptions tuple as the LLM provider — transport-
+# level connection drops + Gemini 5xx.
+_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ServerError,)
+try:
+    import httpx  # noqa: PLC0415
+
+    _RETRYABLE_EXCEPTIONS = (
+        ServerError,
+        httpx.RemoteProtocolError,
+        httpx.ConnectError,
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+        httpx.PoolTimeout,
+    )
+except ImportError:
+    pass
+
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
     """Google Gemini-backed ``EmbeddingProvider``.
@@ -111,7 +128,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
                     model=self._model,
                     contents=chunk,
                 )
-            except ServerError as exc:
+            except _RETRYABLE_EXCEPTIONS as exc:
                 last_exc = exc
                 if attempt == max_attempts - 1:
                     break

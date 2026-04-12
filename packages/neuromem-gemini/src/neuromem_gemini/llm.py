@@ -27,6 +27,27 @@ from google import genai
 from google.genai.errors import ServerError
 from neuromem.providers import LLMProvider
 
+# Transient errors we retry on. ServerError covers 5xx from the Gemini API.
+# The remaining entries cover transport-level connection issues (server
+# dropped the TCP connection, SSL handshake failure, DNS timeout, etc.)
+# that surface as httpx exceptions through the google-genai SDK. We import
+# them defensively — if httpx isn't installed (shouldn't happen, since
+# google-genai depends on it) we just catch fewer exception types.
+_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ServerError,)
+try:
+    import httpx  # noqa: PLC0415
+
+    _RETRYABLE_EXCEPTIONS = (
+        ServerError,
+        httpx.RemoteProtocolError,
+        httpx.ConnectError,
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+        httpx.PoolTimeout,
+    )
+except ImportError:
+    pass
+
 
 def _generate_with_retry(
     client: genai.Client,
@@ -36,11 +57,12 @@ def _generate_with_retry(
     max_attempts: int = 5,
     base_delay: float = 2.0,
 ) -> object:
-    """Call ``models.generate_content`` with retry on transient 5xx.
+    """Call ``models.generate_content`` with retry on transient errors.
 
-    Same retry pattern as the embedder's ``_embed_chunk_with_retry``:
-    exponential backoff (2/4/8/16/32s), catches ``ServerError``
-    only. ``ClientError`` (4xx) is not retried.
+    Catches both Gemini-level ``ServerError`` (5xx) and transport-
+    level connection drops (``httpx.RemoteProtocolError``, etc.).
+    Exponential backoff: 2/4/8/16/32s. ``ClientError`` (4xx) is
+    never retried — those are deterministic failures.
     """
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
@@ -49,7 +71,7 @@ def _generate_with_retry(
                 model=model,
                 contents=contents,
             )
-        except ServerError as exc:
+        except _RETRYABLE_EXCEPTIONS as exc:
             last_exc = exc
             if attempt == max_attempts - 1:
                 break
