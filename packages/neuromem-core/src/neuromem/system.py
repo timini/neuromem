@@ -259,7 +259,7 @@ class NeuroMemory:
             dreaming_ids = [m["id"] for m in inbox_memories]
             self.storage.update_memory_status(dreaming_ids, "dreaming")
 
-            # 2. Extract tag labels per memory in one batched call.
+            # 2a. Extract tag labels per memory in one batched call.
             # Providers that override LLMProvider.extract_tags_batch
             # with a real batched LLM call (GeminiLLMProvider, etc.)
             # turn this from N serial requests into O(1). Providers
@@ -269,6 +269,20 @@ class NeuroMemory:
             summaries = [m["summary"] for m in inbox_memories]
             tag_lists = self.llm.extract_tags_batch(summaries)
             memories_with_tags = list(zip(inbox_memories, tag_lists, strict=True))
+
+            # 2b. Extract named entities per memory (also in one batch).
+            # Unlike tags (which feed clustering), entities are purely
+            # annotative — stored on the memory row for rendering in
+            # the context tree later. Providers that don't implement
+            # NER get the ABC default which returns empty lists for
+            # every summary, so the code path is correctness-safe
+            # whether or not the provider has been upgraded.
+            entity_lists = self.llm.extract_named_entities_batch(summaries)
+            entity_updates = {
+                mem["id"]: entities
+                for mem, entities in zip(inbox_memories, entity_lists, strict=True)
+            }
+            self.storage.set_named_entities(entity_updates)
 
             # 3-5. Resolve labels → node records, creating nodes for any
             #      label that isn't already in storage.
