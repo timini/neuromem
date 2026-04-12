@@ -130,6 +130,56 @@ class LLMProvider(ABC):
         """
         return [self.extract_tags(s) for s in summaries]
 
+    def extract_named_entities(self, summary: str) -> list[str]:
+        """Extract named entities (proper nouns) from a memory summary.
+
+        Named entities are things the text specifically *refers to* —
+        brand names, places, people, organisations, products — as
+        opposed to the *concepts* that :meth:`extract_tags` returns.
+        For a summary like "The user redeemed a Target coupon on
+        coffee creamer", tags would be something like
+        ``["coupon", "redemption", "savings"]`` and named entities
+        would be ``["Target"]`` (coffee creamer is a product category,
+        not a specific branded entity).
+
+        The two lists are deliberately allowed to overlap at the edges
+        — e.g., the Target brand may show up in both — because the
+        clustering machinery uses tags and the context-tree renderer
+        uses named entities, and it's fine for a salient proper noun
+        to do double duty.
+
+        **Default implementation**: returns ``[]``. Providers that
+        don't implement NER (mocks, simple offline providers) get
+        graceful degradation — the dream cycle still runs, the tree
+        just renders without an "Entities:" line. Concrete providers
+        that call out to an LLM SHOULD override this with a real
+        extraction.
+
+        Returns a list of strings; empty list is valid (the text
+        mentions no named entities, which is common for short
+        conceptual discussions).
+        """
+        return []
+
+    def extract_named_entities_batch(self, summaries: list[str]) -> list[list[str]]:
+        """Batched variant of :meth:`extract_named_entities`.
+
+        Same contract as :meth:`extract_tags_batch`:
+
+        - Returns a list of lists, one per input summary, in order.
+        - ``len(return_value) == len(summaries)`` — hard invariant.
+        - Empty input → empty output, no LLM call.
+        - Concrete providers SHOULD override with a batched LLM call
+          to collapse N serial requests into one per dream cycle.
+        - The batched override SHOULD fall back to the per-memory loop
+          on parse failure so the dream cycle still succeeds.
+
+        Default implementation loops over :meth:`extract_named_entities`
+        so providers without a batched override (or without NER at all)
+        keep working — they'll just return a list of empty lists.
+        """
+        return [self.extract_named_entities(s) for s in summaries]
+
     @abstractmethod
     def generate_category_name(self, concepts: list[str]) -> str:
         """Name the category that encompasses a cluster of concepts.
