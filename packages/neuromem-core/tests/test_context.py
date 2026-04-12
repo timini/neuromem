@@ -425,6 +425,141 @@ class TestContextHelperMultiTopK:
         assert large != ""
 
 
+# ---------------------------------------------------------------------------
+# Inline tag + named-entity annotation rendering
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryAnnotations:
+    """Below each ``📄 mem_xxx: "summary..."`` line, the renderer
+    emits an optional annotation line combining:
+
+    - ``tags:`` — labels of the tag-nodes this memory links to (built
+      by walking has_tag edges; de-duplicated, preserves first-seen
+      order for determinism).
+    - ``entities:`` — the memory's stored ``named_entities`` list.
+
+    Either half is omitted if empty. If BOTH are empty, no annotation
+    line is emitted at all (keeps the tree tight for memories with
+    no enrichment).
+    """
+
+    def _subgraph_with_tags(self, tags: list[str], entities: list[str] | None) -> dict:
+        """Build a one-memory subgraph where the memory has ``has_tag``
+        edges to one node per label in ``tags``. ``entities`` is set
+        on the memory dict (None → omitted key entirely)."""
+        if not tags:
+            raise ValueError("need at least one tag to anchor the memory in the tree")
+        nodes = [{"id": f"n_{t}", "label": t, "is_centroid": False} for t in tags]
+        edges = [
+            {
+                "source_id": "m1",
+                "target_id": f"n_{t}",
+                "weight": 1.0,
+                "relationship": "has_tag",
+            }
+            for t in tags
+        ]
+        mem: dict = {"id": "m1", "summary": "some summary"}
+        if entities is not None:
+            mem["named_entities"] = entities
+        return {"nodes": nodes, "edges": edges, "memories": [mem]}
+
+    def test_tags_only_renders_tags_half(self) -> None:
+        """Memory has tag edges but no entities → annotation line has
+        ``tags:`` half, no ``entities:`` half."""
+        subgraph = self._subgraph_with_tags(["coupon", "savings"], entities=[])
+        rendered = _render_ascii_tree(subgraph)
+        assert "tags:" in rendered
+        assert "coupon" in rendered
+        assert "savings" in rendered
+        # Entities line is omitted.
+        assert "entities:" not in rendered
+
+    def test_entities_rendered_when_present(self) -> None:
+        """Memory has both tags AND entities → annotation line has
+        both halves in the order ``tags: … · entities: …``."""
+        subgraph = self._subgraph_with_tags(["coupon"], entities=["Target", "Cartwheel"])
+        rendered = _render_ascii_tree(subgraph)
+        assert "entities: Target, Cartwheel" in rendered
+        assert "tags:" in rendered
+
+    def test_both_halves_separated_by_middle_dot(self) -> None:
+        """The ``·`` separator combines the two halves compactly."""
+        subgraph = self._subgraph_with_tags(["coupon"], entities=["Target"])
+        rendered = _render_ascii_tree(subgraph)
+        assert "tags: coupon · entities: Target" in rendered
+
+    def test_no_entities_key_on_memory_omits_entities_half(self) -> None:
+        """A memory dict that predates the named_entities field (no
+        key at all) must still render — just without the entities
+        half of the annotation. Backwards-compat for hand-crafted
+        subgraph inputs."""
+        subgraph = self._subgraph_with_tags(["coupon"], entities=None)
+        rendered = _render_ascii_tree(subgraph)
+        assert "entities:" not in rendered
+        assert "tags: coupon" in rendered
+
+    def test_duplicate_tag_edges_deduplicated_per_annotation(self) -> None:
+        """If the same memory→tag-node pair appears twice in the edge
+        list (shouldn't happen thanks to the UNIQUE constraint, but
+        the renderer is defensive), the tags: line contains the
+        label only once."""
+        subgraph = self._subgraph_with_tags(["coupon"], entities=[])
+        # Append a duplicate has_tag edge to exercise the dedupe path.
+        subgraph["edges"].append(
+            {
+                "source_id": "m1",
+                "target_id": "n_coupon",
+                "weight": 1.0,
+                "relationship": "has_tag",
+            }
+        )
+        rendered = _render_ascii_tree(subgraph)
+        # Find the tags: line and check 'coupon' appears once there.
+        tag_line = next((ln for ln in rendered.splitlines() if "tags:" in ln), None)
+        assert tag_line is not None
+        assert tag_line.count("coupon") == 1
+
+    def test_annotation_line_has_tree_continuation_prefix(self) -> None:
+        """The annotation line directly below a memory row must use
+        a valid tree continuation prefix — ``│`` under memories that
+        are NOT the last child, and spaces under the last child — so
+        downstream ASCII tree parsers don't see a broken tree."""
+        # Two memories under one root: first is "├──", second is "└──".
+        subgraph = {
+            "nodes": [{"id": "nroot", "label": "root", "is_centroid": False}],
+            "edges": [
+                {
+                    "source_id": "m1",
+                    "target_id": "nroot",
+                    "weight": 1.0,
+                    "relationship": "has_tag",
+                },
+                {
+                    "source_id": "m2",
+                    "target_id": "nroot",
+                    "weight": 1.0,
+                    "relationship": "has_tag",
+                },
+            ],
+            "memories": [
+                {"id": "m1", "summary": "first", "named_entities": ["Alpha"]},
+                {"id": "m2", "summary": "second", "named_entities": ["Beta"]},
+            ],
+        }
+        rendered = _render_ascii_tree(subgraph)
+        # m1 is not last → continuation uses '│   '
+        assert "│   tags:" in rendered or "│   entities: Alpha" in rendered
+        # m2 is last → continuation uses '    '
+        lines = rendered.splitlines()
+        # Find the line containing "entities: Beta" — it should start
+        # with four spaces (last-child continuation), not '│'.
+        beta_line = next(ln for ln in lines if "entities: Beta" in ln)
+        assert beta_line.startswith("    ")
+        assert not beta_line.startswith("│")
+
+
 # Silence unused-import: np and EmbeddingProvider are used in type
 # hints by ControlledEmbedder in sibling test files. Kept here for
 # readability and to guard against future imports breaking this file.
