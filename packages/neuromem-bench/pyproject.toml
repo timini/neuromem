@@ -1,0 +1,103 @@
+# Package manifest for neuromem-bench — benchmark harness for the
+# neuromem long-term memory library. Runs published memory-
+# evaluation benchmarks (LongMemEval, MemoryAgentBench, GraphRAG-
+# Bench) against real agents built with neuromem-adk (or other
+# framework wrappers once they exist) and publishes scored
+# results.
+#
+# This is the THIRD sibling package in the monorepo, following
+# neuromem-core (v0.1.0) and neuromem-gemini (v0.1.0) and
+# neuromem-adk (v0.1.0). Unlike the other siblings, neuromem-bench
+# is NOT expected to be publishable to PyPI as a general consumer
+# package — it's a development tool for the neuromem project
+# itself. The reason it lives under packages/ anyway is (a) so
+# it can use the workspace source resolution to depend on
+# neuromem-adk locally without needing PyPI releases, and (b)
+# future sibling benchmark packages for other agent backends
+# (neuromem-bench-anthropic, etc.) can follow the same pattern.
+#
+# Scope for v0.1:
+#   - Dataset loader for LongMemEval (ICLR 2025)
+#   - MemoryAgent wrapper around neuromem-adk's enable_memory
+#   - Runner that drives the agent through each dataset instance
+#   - Metrics (exact match, accuracy) + results writer (JSONL)
+#   - One baseline (NullAgent — no memory) for comparison
+#
+# Out of scope for v0.1:
+#   - MemoryAgentBench / GraphRAG-Bench (follow-ups)
+#   - GPT-4o-as-judge scoring (start with exact-match, add LLM
+#     judge later)
+#   - Multi-model sweeps
+#   - Distributed / parallel runs
+
+[project]
+name = "neuromem-bench"
+version = "0.1.0"
+description = "Benchmark harness for the neuromem long-term memory library. Runs published memory-evaluation benchmarks against agents built with neuromem-adk."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Tim Richardson" },
+]
+keywords = [
+    "benchmark",
+    "memory",
+    "agents",
+    "llm",
+    "evaluation",
+    "neuromem",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neuromem-core",
+    "neuromem-gemini",
+    "neuromem-adk",
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/timini/neuromem"
+Repository = "https://github.com/timini/neuromem"
+Issues = "https://github.com/timini/neuromem/issues"
+Documentation = "https://github.com/timini/neuromem/blob/main/packages/neuromem-bench/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+# Resolve all three neuromem sibling packages from the workspace
+# instead of from PyPI. uv sync links each at its local source
+# tree in editable mode.
+[tool.uv.sources]
+neuromem-core = { workspace = true }
+neuromem-gemini = { workspace = true }
+neuromem-adk = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuromem_bench"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "scripts/",
+    "README.md",
+    "pyproject.toml",
+]

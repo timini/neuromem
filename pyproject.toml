@@ -52,6 +52,7 @@ testpaths = [
     "packages/neuromem-core/tests",
     "packages/neuromem-gemini/tests",
     "packages/neuromem-adk/tests",
+    "packages/neuromem-bench/tests",
 ]
 markers = [
     # Integration tests that hit a live external API and require a

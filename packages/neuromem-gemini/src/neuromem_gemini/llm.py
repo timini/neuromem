@@ -21,9 +21,64 @@ are overridable via constructor args.
 from __future__ import annotations
 
 import json
+import time as _time
 
 from google import genai
+from google.genai.errors import ServerError
 from neuromem.providers import LLMProvider
+
+# Transient errors we retry on. ServerError covers 5xx from the Gemini API.
+# The remaining entries cover transport-level connection issues (server
+# dropped the TCP connection, SSL handshake failure, DNS timeout, etc.)
+# that surface as httpx exceptions through the google-genai SDK. We import
+# them defensively — if httpx isn't installed (shouldn't happen, since
+# google-genai depends on it) we just catch fewer exception types.
+_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ServerError,)
+try:
+    import httpx  # noqa: PLC0415
+
+    _RETRYABLE_EXCEPTIONS = (
+        ServerError,
+        httpx.RemoteProtocolError,
+        httpx.ConnectError,
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+        httpx.PoolTimeout,
+    )
+except ImportError:
+    pass
+
+
+def _generate_with_retry(
+    client: genai.Client,
+    model: str,
+    contents: str,
+    *,
+    max_attempts: int = 5,
+    base_delay: float = 2.0,
+) -> object:
+    """Call ``models.generate_content`` with retry on transient errors.
+
+    Catches both Gemini-level ``ServerError`` (5xx) and transport-
+    level connection drops (``httpx.RemoteProtocolError``, etc.).
+    Exponential backoff: 2/4/8/16/32s. ``ClientError`` (4xx) is
+    never retried — those are deterministic failures.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return client.models.generate_content(
+                model=model,
+                contents=contents,
+            )
+        except _RETRYABLE_EXCEPTIONS as exc:
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                break
+            delay = base_delay * (2**attempt)
+            _time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
 
 
 def _strip_markdown_fence(text: str) -> str:
@@ -97,10 +152,7 @@ class GeminiLLMProvider(LLMProvider):
             "no quotation marks.\n\n"
             f"Text: {raw_text}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         return (resp.text or "").strip()
 
     # ------------------------------------------------------------------
@@ -123,10 +175,7 @@ class GeminiLLMProvider(LLMProvider):
             "no bullet points, no markdown.\n\n"
             f"Text: {summary}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         raw = (resp.text or "").strip()
         # Robust split: strip each token, drop empties, cap at 5.
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
@@ -143,7 +192,7 @@ class GeminiLLMProvider(LLMProvider):
         Fixes issue #44: LongMemEval_s's 160-memory dream cycles were
         taking 16+ minutes against the serial implementation,
         blocking the whole benchmark package's ability to run
-        ``NeuromemAdkAgent`` at any meaningful scale.
+        ``NeuromemAgent`` at any meaningful scale.
 
         **Protocol**:
 
@@ -187,10 +236,7 @@ class GeminiLLMProvider(LLMProvider):
             "markdown fences, no explanation — ONLY the JSON.\n\n"
             f"{numbered}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         raw = (resp.text or "").strip()
 
         # Strip common markdown fence patterns. Gemini usually
@@ -239,10 +285,7 @@ class GeminiLLMProvider(LLMProvider):
             "No explanation, no punctuation, no markdown. One word only.\n\n"
             f"Concepts: {', '.join(concepts)}"
         )
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=prompt,
-        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
         raw = (resp.text or "").strip()
         if not raw:
             # Fall back to a deterministic synthesis so the dream cycle
