@@ -48,13 +48,15 @@ neuromem-bench/
 │   │                          #   - NaiveRagAgent  (vector-only baseline)
 │   │                          #   - NeuromemAgent  (full cognitive loop)
 │   ├── runner.py              # Orchestrator: load dataset → drive agent → collect metrics
-│   ├── metrics.py             # exact_match, accuracy, (future) LLM-as-judge
+│   ├── metrics.py             # exact_match, contains_match, llm_judge
+│   ├── _client.py             # GeminiAnsweringClient — shared by agent.py + metrics.py
 │   └── datasets/
 │       ├── base.py            # Dataset ABC with load() → iter[Instance]
 │       └── longmemeval.py     # LongMemEval loader + scorer
 ├── tests/
 ├── scripts/
-│   └── run_longmemeval.py     # CLI entrypoint for a benchmark run
+│   ├── run_longmemeval.py     # CLI entrypoint for a benchmark run
+│   └── rescore_with_llm_judge.py  # re-score an existing JSONL with llm_judge
 └── docs/benchmarks/           # results are written here, one file per run
 ```
 
