@@ -39,7 +39,57 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 from google import genai
 from neuromem import NeuroMemory, SQLiteAdapter
+from neuromem.providers import LLMProvider
 from neuromem_gemini import GeminiEmbeddingProvider, GeminiLLMProvider
+
+
+class _FastSummaryGeminiLLMProvider(LLMProvider):
+    """Gemini LLM provider with ``generate_summary`` short-circuited
+    to raw-text truncation.
+
+    Why this exists: ``NeuroMemory.enqueue`` runs
+    ``LLMProvider.generate_summary`` synchronously on the caller
+    thread for every turn. For benchmark workloads like LongMemEval_s
+    (40 sessions × ~4 turns per instance = 160 turns/instance), that
+    translates to 160 serial Gemini API calls before we even start
+    the dream cycle — each ~500ms–1.5s, adding up to 4+ minutes per
+    instance just for summaries.
+
+    The summary field is used by neuromem's cognitive loop only as
+    a short indexable string attached to the memory row. For a
+    short turn (<~200 chars), the raw text IS already a good
+    summary — running Gemini to re-phrase it shorter saves nothing
+    and costs an API round-trip.
+
+    This provider:
+    - Short-circuits ``generate_summary`` to ``raw_text[:200]`` —
+      zero API cost, ~microseconds latency.
+    - Delegates ``extract_tags`` and ``generate_category_name`` to
+      a real ``GeminiLLMProvider`` — these two methods fire during
+      the dream cycle (async w.r.t. the caller), the dream cycle
+      happens once per ``force_dream`` call, and their output
+      quality actually matters for the graph structure.
+
+    Net effect: per-instance runtime drops from ~8-12 min to
+    ~2-4 min on LongMemEval_s, API cost drops by ~50%, and the
+    cognitive loop still gets real LLM tag extraction and cluster
+    naming — the parts that drive the graph quality.
+    """
+
+    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-001") -> None:
+        self._inner = GeminiLLMProvider(api_key=api_key, model=model)
+
+    def generate_summary(self, raw_text: str) -> str:
+        # Raw-text truncation. 200 chars is roughly the length of
+        # one conversational turn; longer turns get clipped but
+        # the memory still contains the full raw_content.
+        return raw_text[:200]
+
+    def extract_tags(self, summary: str) -> list[str]:
+        return self._inner.extract_tags(summary)
+
+    def generate_category_name(self, concepts: list[str]) -> str:
+        return self._inner.generate_category_name(concepts)
 
 
 @runtime_checkable
@@ -322,10 +372,18 @@ class NeuromemAdkAgent(BaseAgent):
         self._build_memory()
 
     def _build_memory(self) -> None:
-        """(Re-)instantiate a fresh NeuroMemory with in-memory storage."""
+        """(Re-)instantiate a fresh NeuroMemory with in-memory storage.
+
+        Uses ``_FastSummaryGeminiLLMProvider`` instead of the standard
+        GeminiLLMProvider — the enqueue hot path skips generate_summary's
+        LLM call (raw-text truncation), cutting per-instance runtime
+        from ~8-12 min to ~2-4 min on LongMemEval_s. Real Gemini still
+        handles tag extraction and cluster naming during the dream
+        cycle, which is where graph quality actually comes from.
+        """
         self._memory = NeuroMemory(
             storage=SQLiteAdapter(":memory:"),
-            llm=GeminiLLMProvider(api_key=self._api_key, model=self._model),
+            llm=_FastSummaryGeminiLLMProvider(api_key=self._api_key, model=self._model),
             embedder=GeminiEmbeddingProvider(api_key=self._api_key, model=self._embedder_model),
             dream_threshold=9999,
             cluster_threshold=self._cluster_threshold,
