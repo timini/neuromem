@@ -94,6 +94,42 @@ class LLMProvider(ABC):
         clustering pass.
         """
 
+    def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
+        """Extract tags for many summaries in a single operation.
+
+        Concrete providers SHOULD override this with a **batched LLM
+        call** so the dream cycle's per-memory tag extraction collapses
+        from N serial requests into O(1) (or a small number of chunks
+        for very large batches). For typical dream-cycle workloads
+        (~100 memories per cycle), the batched form is 50–100× faster
+        than the serial equivalent.
+
+        The default implementation provided here is a correctness
+        fallback — it loops over :meth:`extract_tags`, one call per
+        summary, so every existing provider that doesn't override keeps
+        working without any change. It's just slow.
+
+        **Contract**:
+
+        - Returns a list of lists, one per input summary, in the same
+          order as the input.
+        - ``len(return_value) == len(summaries)`` is a hard invariant.
+          The dream cycle uses ``zip(..., strict=True)`` to pair
+          summaries with their tag lists and will raise if the
+          lengths don't match.
+        - Empty input → empty output. No LLM call needed.
+        - A batched override that fails mid-call (parse error, token
+          limit, etc.) SHOULD fall back to the per-memory loop so the
+          dream cycle still succeeds — see ``GeminiLLMProvider``'s
+          implementation for the canonical defensive pattern.
+
+        Added in neuromem-core 0.1.x as a performance fix for issue
+        #44. Backwards-compatible with every provider from 0.1.0 —
+        the default implementation matches the old serial dream-cycle
+        behaviour exactly.
+        """
+        return [self.extract_tags(s) for s in summaries]
+
     @abstractmethod
     def generate_category_name(self, concepts: list[str]) -> str:
         """Name the category that encompasses a cluster of concepts.

@@ -1427,6 +1427,96 @@ def test_dict_adapter_full_loop(
     assert dict_tree.count("📄") == sqlite_tree.count("📄")
 
 
+# ---------------------------------------------------------------------------
+# Issue #44 — dream cycle must call extract_tags_batch, not per-memory loop
+# ---------------------------------------------------------------------------
+
+
+class TestDreamCycleUsesExtractTagsBatch:
+    """The dream cycle must use the batched ``extract_tags_batch``
+    method, not a serial per-memory loop. This is the performance
+    invariant from issue #44 — with 100+ memories per dream cycle
+    the difference is 100 serial Gemini calls vs 1 batched call.
+
+    Verified by a counting LLM provider that tracks both method
+    call counts. After one dream cycle over N memories we expect
+    batch_call_count == 1 AND per_call_count == 0 (the overridden
+    batch method never falls through to the per-call path)."""
+
+    class _CountingLLM(LLMProvider):
+        """LLM provider that counts both per-call and batched
+        extract_tags invocations so the test can assert which
+        path the dream cycle actually takes."""
+
+        def __init__(self) -> None:
+            self.per_call_count = 0
+            self.batch_call_count = 0
+            self.batch_sizes: list[int] = []
+
+        def generate_summary(self, raw_text: str) -> str:
+            return raw_text[:80]
+
+        def extract_tags(self, summary: str) -> list[str]:
+            # Used only by the default fallback or a cycle that
+            # incorrectly calls the per-memory path.
+            self.per_call_count += 1
+            return [w for w in summary.split() if w.isalpha()][:3]
+
+        def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
+            self.batch_call_count += 1
+            self.batch_sizes.append(len(summaries))
+            return [[w for w in s.split() if w.isalpha()][:3] for s in summaries]
+
+        def generate_category_name(self, concepts: list[str]) -> str:
+            return "Cat"
+
+    def test_dream_cycle_calls_batch_exactly_once_per_cycle(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """Enqueue 5 memories, force_dream once, assert the counting
+        LLM saw exactly one batched call of size 5 and ZERO per-call
+        extract_tags invocations. Proves the dream cycle uses the
+        batched path, not the legacy serial loop."""
+        llm = self._CountingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=mock_embedder,
+        )
+        for i in range(5):
+            system.enqueue(f"memory {i} alpha beta gamma")
+        system.force_dream(block=True)
+
+        assert llm.batch_call_count == 1
+        assert llm.batch_sizes == [5]
+        assert llm.per_call_count == 0
+        # Memories all landed as consolidated, proving the pipeline
+        # still works end-to-end with the batched path.
+        assert system.storage.count_memories_by_status("consolidated") == 5
+
+    def test_dream_cycle_with_default_fallback_still_works(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+        mock_llm: MockLLMProvider,
+    ) -> None:
+        """A provider that doesn't override ``extract_tags_batch``
+        (like the shipped ``MockLLMProvider``) gets the default
+        fallback, which calls ``extract_tags`` once per summary.
+        The dream cycle still completes correctly — this is the
+        backwards-compatibility guarantee of the #44 fix.
+        """
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=mock_llm,
+            embedder=mock_embedder,
+        )
+        for i in range(4):
+            system.enqueue(f"memory {i} alpha beta")
+        system.force_dream(block=True)
+        assert system.storage.count_memories_by_status("consolidated") == 4
+
+
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
     """Referenced for type-checker compatibility."""
     # EmbeddingProvider is referenced by type annotations in test fixtures.

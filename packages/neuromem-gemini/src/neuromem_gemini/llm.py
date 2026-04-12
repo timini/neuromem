@@ -20,8 +20,38 @@ are overridable via constructor args.
 
 from __future__ import annotations
 
+import json
+
 from google import genai
 from neuromem.providers import LLMProvider
+
+
+def _strip_markdown_fence(text: str) -> str:
+    """Strip a leading/trailing triple-backtick fence from an LLM
+    response if present.
+
+    Gemini often wraps JSON output in ``\\`\\`\\`json ... \\`\\`\\``` fences
+    despite being told not to. This helper strips both the leading
+    fence (with optional language tag on the first line) and the
+    trailing fence so ``json.loads`` sees clean input.
+
+    Pure-function, no state, shared by multiple LLMProvider
+    methods (currently ``extract_tags_batch``; future methods
+    that request JSON output will reuse it).
+    """
+    text = text.strip()
+    if not text.startswith("```"):
+        return text
+    # Drop the opening fence line (which may include a lang tag
+    # like "```json") up to the first newline.
+    if "\n" in text:
+        text = text.split("\n", 1)[1]
+    else:
+        text = text[3:]
+    # Drop the trailing fence if present.
+    if text.endswith("```"):
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
 
 
 class GeminiLLMProvider(LLMProvider):
@@ -101,6 +131,93 @@ class GeminiLLMProvider(LLMProvider):
         # Robust split: strip each token, drop empties, cap at 5.
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
         return [t for t in tags if t][:5]
+
+    def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
+        """Extract tags for many summaries in ONE LLM call.
+
+        Override of the ABC's default loop implementation (which
+        calls :meth:`extract_tags` once per summary). For a typical
+        dream-cycle batch of ~100 memories this collapses ~100
+        serial Gemini calls into one — 50–100× faster.
+
+        Fixes issue #44: LongMemEval_s's 160-memory dream cycles were
+        taking 16+ minutes against the serial implementation,
+        blocking the whole benchmark package's ability to run
+        ``NeuromemAdkAgent`` at any meaningful scale.
+
+        **Protocol**:
+
+        - Constructs a single prompt with all summaries numbered
+          ``[1]``, ``[2]``, ... and asks for a JSON array of arrays
+          where each inner array is the tag list for the
+          corresponding numbered text.
+        - Parses the response as JSON. Strips common markdown-fence
+          patterns (``\\`\\`\\`json``, etc.) defensively.
+        - **Falls back to the per-memory loop** on any of:
+            * JSON parse failure
+            * Response is not a list
+            * Response length doesn't match ``len(summaries)``
+            * An inner element is not a list
+          This keeps the dream cycle running even when Gemini
+          hiccups on the batch format — correctness first, speed
+          second.
+        - Caps each tag list at 5 entries (same as the single-call
+          version) and strips quote characters from each tag.
+
+        Edge cases:
+        - Empty input → empty output, no LLM call.
+        - Single-item input → delegates to single-call
+          ``extract_tags`` so the prompt isn't wasted on a
+          batch-shape for one item.
+        """
+        if not summaries:
+            return []
+        if len(summaries) == 1:
+            return [self.extract_tags(summaries[0])]
+
+        numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
+        prompt = (
+            f"For each of the {len(summaries)} numbered texts below, "
+            "extract between 3 and 5 key concepts. Return ONLY a JSON "
+            "array containing one inner array per numbered text, in "
+            "order: the first inner array for text [1], the second "
+            "for text [2], and so on. Each inner array contains only "
+            "the concept strings. Exclude stopwords, articles, "
+            "prepositions, and generic words. No preamble, no "
+            "markdown fences, no explanation — ONLY the JSON.\n\n"
+            f"{numbered}"
+        )
+        resp = self._client.models.generate_content(
+            model=self._model,
+            contents=prompt,
+        )
+        raw = (resp.text or "").strip()
+
+        # Strip common markdown fence patterns. Gemini usually
+        # ignores the "no markdown" instruction when the output
+        # is JSON.
+        raw = _strip_markdown_fence(raw)
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [self.extract_tags(s) for s in summaries]
+
+        if not isinstance(parsed, list) or len(parsed) != len(summaries):
+            return [self.extract_tags(s) for s in summaries]
+
+        result: list[list[str]] = []
+        for i, inner in enumerate(parsed):
+            if not isinstance(inner, list):
+                result.append(self.extract_tags(summaries[i]))
+                continue
+            tags = [
+                str(t).strip().strip("\"'").strip()
+                for t in inner
+                if t is not None and str(t).strip()
+            ]
+            result.append(tags[:5])
+        return result
 
     # ------------------------------------------------------------------
     # Category naming — dream-thread
