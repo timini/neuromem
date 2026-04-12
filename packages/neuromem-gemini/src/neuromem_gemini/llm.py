@@ -266,6 +266,101 @@ class GeminiLLMProvider(LLMProvider):
         return result
 
     # ------------------------------------------------------------------
+    # Named-entity extraction — dream-thread
+    # ------------------------------------------------------------------
+
+    def extract_named_entities(self, summary: str) -> list[str]:
+        """Return a list of proper-noun entities mentioned in ``summary``.
+
+        Entity types targeted: brand names, products, places, people,
+        organisations. Common nouns (e.g., "coupon", "creamer") are
+        excluded — those are what :meth:`extract_tags` captures.
+
+        Zero-entity input is valid: a summary like "The user is
+        looking for advice" produces ``[]`` and that's correct.
+
+        The prompt asks for a comma-separated list, same shape as
+        extract_tags, for simplicity and robustness. Capped at 8
+        entities (slightly higher than tags' 5 since real prose
+        sometimes packs multiple brands per turn).
+        """
+        prompt = (
+            "List the proper-noun named entities mentioned in the "
+            "following text. Include brand names, products, places, "
+            "people, and organisations. EXCLUDE common nouns (e.g., "
+            "'coupon', 'creamer', 'user', 'email'). "
+            "If there are NO named entities, respond with the single "
+            "token: NONE\n"
+            "Otherwise respond with ONLY the entity names as a "
+            "comma-separated list, in the order they appear. No "
+            "numbering, no explanation, no bullet points, no markdown.\n\n"
+            f"Text: {summary}"
+        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
+        raw = (resp.text or "").strip()
+        if not raw or raw.upper().strip(".,!?\"'") == "NONE":
+            return []
+        # Same defensive split as extract_tags.
+        entities = [e.strip().strip("\"'").strip() for e in raw.split(",")]
+        return [e for e in entities if e][:8]
+
+    def extract_named_entities_batch(self, summaries: list[str]) -> list[list[str]]:
+        """Batched NER in one LLM call — mirrors :meth:`extract_tags_batch`.
+
+        Same protocol as the tag batch:
+        - Numbers each summary, asks for a JSON array-of-arrays back.
+        - Each inner array is the entities list for the corresponding
+          numbered text (empty arrays are valid for entity-free text).
+        - Strips markdown fences defensively.
+        - Falls back to the per-summary loop on parse failure, length
+          mismatch, or non-list inner elements.
+        - Single-item batch delegates to :meth:`extract_named_entities`.
+
+        Caps each inner list at 8 entries.
+        """
+        if not summaries:
+            return []
+        if len(summaries) == 1:
+            return [self.extract_named_entities(summaries[0])]
+
+        numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
+        prompt = (
+            f"For each of the {len(summaries)} numbered texts below, "
+            "list the proper-noun named entities mentioned (brand names, "
+            "products, places, people, organisations). EXCLUDE common "
+            "nouns. Return ONLY a JSON array containing one inner array "
+            "per numbered text, in order: the first inner array for "
+            "text [1], the second for text [2], and so on. Each inner "
+            "array contains only the entity name strings. If a text "
+            "has no entities, its inner array is []. No preamble, no "
+            "markdown fences, no explanation — ONLY the JSON.\n\n"
+            f"{numbered}"
+        )
+        resp = _generate_with_retry(self._client, self._model, prompt)
+        raw = _strip_markdown_fence((resp.text or "").strip())
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [self.extract_named_entities(s) for s in summaries]
+
+        if not isinstance(parsed, list) or len(parsed) != len(summaries):
+            return [self.extract_named_entities(s) for s in summaries]
+
+        result: list[list[str]] = []
+        for i, inner in enumerate(parsed):
+            if not isinstance(inner, list):
+                result.append(self.extract_named_entities(summaries[i]))
+                continue
+            entities = [
+                str(e).strip().strip("\"'").strip()
+                for e in inner
+                if e is not None and str(e).strip()
+            ]
+            result.append(entities[:8])
+        return result
+
+    # ------------------------------------------------------------------
     # Category naming — dream-thread
     # ------------------------------------------------------------------
 

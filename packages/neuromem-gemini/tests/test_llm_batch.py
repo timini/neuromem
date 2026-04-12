@@ -233,3 +233,148 @@ class TestExtractTagsBatchFallbacks:
         result = provider.extract_tags_batch(["x", "y"])
         assert result == [["alpha"], ["beta"]]
         assert generate.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# extract_named_entities — single-call path
+# ---------------------------------------------------------------------------
+
+
+class TestExtractNamedEntitiesSingle:
+    """Mocked unit tests for the per-summary NER path.
+
+    The production behaviour we need to lock in:
+    1. A Gemini response of exactly ``NONE`` (possibly with trailing
+       punctuation) → empty list. This is the "no entities" signal
+       the prompt asks for.
+    2. A comma-separated response → parsed into a list with quote/
+       whitespace stripping, capped at 8 entries.
+    3. Empty response → empty list (defensive: don't return [""]).
+    """
+
+    def test_none_response_returns_empty_list(self) -> None:
+        provider, _ = _make_llm_with_stub_client(single_responses=["NONE"])
+        assert provider.extract_named_entities("summary") == []
+
+    def test_none_with_trailing_punct_returns_empty_list(self) -> None:
+        """Defensive: Gemini sometimes adds punctuation even when told
+        not to. 'NONE.' or 'NONE!' must still be recognised."""
+        provider, _ = _make_llm_with_stub_client(single_responses=["NONE."])
+        assert provider.extract_named_entities("summary") == []
+
+    def test_empty_response_returns_empty_list(self) -> None:
+        provider, _ = _make_llm_with_stub_client(single_responses=[""])
+        assert provider.extract_named_entities("summary") == []
+
+    def test_comma_separated_response_parsed_and_stripped(self) -> None:
+        provider, _ = _make_llm_with_stub_client(single_responses=["Target, Cartwheel, RedCard"])
+        result = provider.extract_named_entities("summary")
+        assert result == ["Target", "Cartwheel", "RedCard"]
+
+    def test_quotes_stripped_from_entities(self) -> None:
+        provider, _ = _make_llm_with_stub_client(single_responses=['"Target", "Cartwheel"'])
+        result = provider.extract_named_entities("summary")
+        assert result == ["Target", "Cartwheel"]
+
+    def test_result_capped_at_eight(self) -> None:
+        provider, _ = _make_llm_with_stub_client(
+            single_responses=["A, B, C, D, E, F, G, H, I, J, K"]
+        )
+        result = provider.extract_named_entities("summary")
+        assert len(result) == 8
+        assert result == ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+
+# ---------------------------------------------------------------------------
+# extract_named_entities_batch — batched path + fallbacks
+# ---------------------------------------------------------------------------
+
+
+class TestExtractNamedEntitiesBatch:
+    """Mirrors the structure of TestExtractTagsBatch — if the prompt
+    contract breaks, the fallback path must keep the dream cycle
+    running with correctness-preserving per-item calls."""
+
+    def test_empty_input_no_llm_call(self) -> None:
+        provider, generate = _make_llm_with_stub_client()
+        assert provider.extract_named_entities_batch([]) == []
+        assert generate.call_count == 0
+
+    def test_single_input_delegates_to_per_call(self) -> None:
+        """Batched prompt would be wasted on one item; the single-call
+        path returns the same result with less prompt overhead."""
+        provider, generate = _make_llm_with_stub_client(single_responses=["Target, Cartwheel"])
+        result = provider.extract_named_entities_batch(["summary text"])
+        assert result == [["Target", "Cartwheel"]]
+        assert generate.call_count == 1
+
+    def test_batch_happy_path(self) -> None:
+        """Well-formed JSON array-of-arrays → parsed directly, no
+        fallback calls. Empty inner arrays are valid (summary with
+        no entities)."""
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=[
+                '[["Target"], [], ["Cartwheel", "RedCard"]]',
+            ]
+        )
+        result = provider.extract_named_entities_batch(["s1", "s2", "s3"])
+        assert result == [["Target"], [], ["Cartwheel", "RedCard"]]
+        assert generate.call_count == 1
+
+    def test_markdown_fenced_batch_response(self) -> None:
+        """Gemini often wraps JSON in ``\\`\\`\\`json ... \\`\\`\\```` despite
+        instructions. The strip helper covers this."""
+        provider, _ = _make_llm_with_stub_client(
+            batch_responses=[
+                '```json\n[["Target"], ["Cartwheel"]]\n```',
+            ]
+        )
+        result = provider.extract_named_entities_batch(["s1", "s2"])
+        assert result == [["Target"], ["Cartwheel"]]
+
+    def test_malformed_json_falls_back_to_per_call(self) -> None:
+        """Garbage-JSON batch response → N per-item calls."""
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=["not even close to json"],
+            single_responses=["NONE", "Beta"],
+        )
+        result = provider.extract_named_entities_batch(["alpha", "beta"])
+        assert result == [[], ["Beta"]]
+        # 1 failed batch + 2 per-item fallbacks.
+        assert generate.call_count == 3
+
+    def test_wrong_length_response_falls_back(self) -> None:
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=['[["only-one"]]'],
+            single_responses=["One", "Two"],
+        )
+        result = provider.extract_named_entities_batch(["a", "b"])
+        assert result == [["One"], ["Two"]]
+        assert generate.call_count == 3
+
+    def test_non_list_inner_element_fallback_per_item(self) -> None:
+        """A batch that's mostly well-formed but has one bad inner
+        element falls back for only that item, not the whole batch."""
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=['[["OK"], "bad", ["Fine"]]'],
+            single_responses=["Recovered"],
+        )
+        result = provider.extract_named_entities_batch(["s1", "s2", "s3"])
+        assert result == [["OK"], ["Recovered"], ["Fine"]]
+        # 1 batch + 1 per-item fallback for the broken middle entry.
+        assert generate.call_count == 2
+
+    def test_inner_list_capped_at_eight(self) -> None:
+        """Two-summary batch with well-formed JSON and a 10-entity
+        inner list → the inner list is capped at 8, matching the
+        single-call cap."""
+        provider, _ = _make_llm_with_stub_client(
+            batch_responses=[
+                '[["A","B","C","D","E","F","G","H","I","J"], []]',
+            ]
+        )
+        result = provider.extract_named_entities_batch(["x", "y"])
+        assert len(result) == 2
+        assert len(result[0]) == 8
+        assert result[0] == ["A", "B", "C", "D", "E", "F", "G", "H"]
+        assert result[1] == []
