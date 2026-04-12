@@ -1,6 +1,6 @@
 # Benchmark run: longmemeval / s
 
-- **Agent**: `NeuromemAdkAgent`
+- **Agent**: `NeuromemAgent`
 - **Metric**: `contains_match`
 - **Instances**: 3
 - **Mean score**: **0.333**

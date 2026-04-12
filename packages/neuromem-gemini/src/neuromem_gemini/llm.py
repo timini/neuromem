@@ -192,7 +192,7 @@ class GeminiLLMProvider(LLMProvider):
         Fixes issue #44: LongMemEval_s's 160-memory dream cycles were
         taking 16+ minutes against the serial implementation,
         blocking the whole benchmark package's ability to run
-        ``NeuromemAdkAgent`` at any meaningful scale.
+        ``NeuromemAgent`` at any meaningful scale.
 
         **Protocol**:
 

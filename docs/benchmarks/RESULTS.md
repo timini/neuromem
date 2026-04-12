@@ -11,13 +11,13 @@ Rolling leaderboard for `neuromem-bench` runs against published memory benchmark
 | Agent | Instances | `contains_match` | `llm_judge` | Total time | Notes |
 |---|---|---|---|---|---|
 | `NullAgent` (no memory) | 3 | 0.333 | 0.333 | 4s | Last-50-turn prompt stuffing |
-| `NeuromemAdkAgent` (real summary) | 3 | 0.333 | **0.667** | 5226s (~87 min) | Full cognitive loop |
+| `NeuromemAgent` (real summary) | 3 | 0.333 | **0.667** | 5226s (~87 min) | Full cognitive loop |
 
-**NeuromemAdkAgent scores 2× NullAgent** on the LLM-judge metric — the cognitive loop retains facts from sessions too far back for a brute-force-context-window baseline.
+**NeuromemAgent scores 2× NullAgent** on the LLM-judge metric — the cognitive loop retains facts from sessions too far back for a brute-force-context-window baseline.
 
 ### Per-instance detail
 
-| # | Question | Gold | NullAgent pred | Null score | NeuromemAdkAgent pred | Nm score |
+| # | Question | Gold | NullAgent pred | Null score | NeuromemAgent pred | Nm score |
 |---|---|---|---|---|---|---|
 | 1 | What degree did I graduate with? | Business Administration | "You mentioned you graduated with Business Administration." | **1.0** | "You have a business administration degree." | **1.0** |
 | 2 | How long is my daily commute to work? | 45 minutes each way | "I do not have access to your personal information..." | **0.0** | "Your daily commute is 90 minutes." | **1.0**† |
@@ -27,18 +27,18 @@ Rolling leaderboard for `neuromem-bench` runs against published memory benchmark
 
 ### Observations
 
-1. **Instance 2 is the money shot.** NullAgent refuses because the fact is outside its 50-turn window. NeuromemAdkAgent retrieves it from the concept graph and answers correctly. This is exactly the use case neuromem exists for.
-2. **Instance 3 is a real tuning opportunity.** NeuromemAdkAgent has *partial* knowledge (it recalled the coupon redemption event) but lost the specific store name "Target" somewhere in the `extract_tags → cluster → retrieve` pipeline. Hypothesis: the `extract_tags` prompt doesn't prioritise named entities. Fix: prompt tuning.
+1. **Instance 2 is the money shot.** NullAgent refuses because the fact is outside its 50-turn window. NeuromemAgent retrieves it from the concept graph and answers correctly. This is exactly the use case neuromem exists for.
+2. **Instance 3 is a real tuning opportunity.** NeuromemAgent has *partial* knowledge (it recalled the coupon redemption event) but lost the specific store name "Target" somewhere in the `extract_tags → cluster → retrieve` pipeline. Hypothesis: the `extract_tags` prompt doesn't prioritise named entities. Fix: prompt tuning.
 3. **Metric choice matters enormously.** Going from `contains_match` (0.333) to `llm_judge` (0.667) doubled the apparent score. For any serious benchmark reporting, `llm_judge` should be the default. `contains_match` is useful as a cheap CI sanity check.
 
 ### Full results
 
 - `longmemeval-s-null-n3.jsonl` — NullAgent `contains_match` scores
 - `longmemeval-s-null-n3.llm_judge.jsonl` — NullAgent `llm_judge` scores
-- `longmemeval-s-neuromem-adk-n3.jsonl` — NeuromemAdkAgent `contains_match` scores
-- `longmemeval-s-neuromem-adk-n3.llm_judge.jsonl` — NeuromemAdkAgent `llm_judge` scores
+- `longmemeval-s-neuromem-n3.jsonl` — NeuromemAgent `contains_match` scores
+- `longmemeval-s-neuromem-n3.llm_judge.jsonl` — NeuromemAgent `llm_judge` scores
 
-### Runtime breakdown (NeuromemAdkAgent)
+### Runtime breakdown (NeuromemAgent)
 
 | Instance | Wall time |
 |---|---|

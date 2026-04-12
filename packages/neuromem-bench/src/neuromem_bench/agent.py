@@ -22,11 +22,13 @@ Three concrete implementations:
                                 clustering, no decay, no LTP).
                                 The "how well does a plain
                                 retrieval setup do" baseline.
-- :class:`NeuromemAdkAgent`   — the thing we're validating. Uses
-                                neuromem-adk's ``enable_memory``
-                                under the hood, with the full
+- :class:`NeuromemAgent`      — the thing we're validating. Uses
+                                NeuroMemory directly (not via
+                                neuromem-adk) with the full
                                 cognitive loop (hippocampus +
-                                dreaming + decay + LTP).
+                                dreaming + decay + LTP). See the
+                                class docstring for why this
+                                deliberately skips neuromem-adk.
 
 All three take an ``api_key`` constructor arg and use real Gemini
 under the hood. For unit-testable agents, use mock providers.
@@ -34,78 +36,15 @@ under the hood. For unit-testable agents, use mock providers.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 import numpy as np
-from google import genai
 from neuromem import NeuroMemory, SQLiteAdapter
-from neuromem.providers import LLMProvider
 from neuromem_gemini import GeminiEmbeddingProvider, GeminiLLMProvider
 
-
-class _FastSummaryGeminiLLMProvider(LLMProvider):
-    """Gemini LLM provider with ``generate_summary`` short-circuited
-    to raw-text truncation.
-
-    Why this exists: ``NeuroMemory.enqueue`` runs
-    ``LLMProvider.generate_summary`` synchronously on the caller
-    thread for every turn. For benchmark workloads like LongMemEval_s
-    (40 sessions × ~4 turns per instance = 160 turns/instance), that
-    translates to 160 serial Gemini API calls before we even start
-    the dream cycle — each ~500ms–1.5s, adding up to 4+ minutes per
-    instance just for summaries.
-
-    The summary field is used by neuromem's cognitive loop only as
-    a short indexable string attached to the memory row. For a
-    short turn (<~200 chars), the raw text IS already a good
-    summary — running Gemini to re-phrase it shorter saves nothing
-    and costs an API round-trip.
-
-    This provider:
-    - Short-circuits ``generate_summary`` to ``raw_text[:200]`` —
-      zero API cost, ~microseconds latency.
-    - Delegates ``extract_tags`` and ``generate_category_name`` to
-      a real ``GeminiLLMProvider`` — these two methods fire during
-      the dream cycle (async w.r.t. the caller), the dream cycle
-      happens once per ``force_dream`` call, and their output
-      quality actually matters for the graph structure.
-
-    Net effect: per-instance runtime drops from ~8-12 min to
-    ~2-4 min on LongMemEval_s, API cost drops by ~50%, and the
-    cognitive loop still gets real LLM tag extraction and cluster
-    naming — the parts that drive the graph quality.
-    """
-
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-001") -> None:
-        self._inner = GeminiLLMProvider(api_key=api_key, model=model)
-
-    def generate_summary(self, raw_text: str) -> str:
-        # Use the real Gemini summary — the 200-char truncation
-        # was cutting off factual details that tag extraction
-        # needs to build a useful concept graph. The first
-        # benchmark run (instance e47becba) scored 0.0 because
-        # "Business Administration" was past position 200 and
-        # never entered the graph.
-        #
-        # This adds ~1s per enqueue call (160 calls for a
-        # LongMemEval_s instance = ~3 min extra) but preserves
-        # the semantic content that makes the cognitive loop work.
-        return self._inner.generate_summary(raw_text)
-
-    def extract_tags(self, summary: str) -> list[str]:
-        return self._inner.extract_tags(summary)
-
-    def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
-        # Delegate to the inner GeminiLLMProvider's batched override
-        # so we actually use the one-call path from #45 instead of
-        # falling through to LLMProvider's default serial loop.
-        return self._inner.extract_tags_batch(summaries)
-
-    def generate_category_name(self, concepts: list[str]) -> str:
-        return self._inner.generate_category_name(concepts)
+from neuromem_bench._client import GeminiAnsweringClient
 
 
-@runtime_checkable
 class BaseAgent(Protocol):
     """Protocol every benchmark agent satisfies.
 
@@ -145,49 +84,6 @@ class BaseAgent(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Shared LLM helper — answer generation given a prompt
-# ---------------------------------------------------------------------------
-
-
-class _GeminiAnsweringClient:
-    """Thin wrapper around ``google.genai.Client`` for one-shot
-    answer generation.
-
-    Used by every agent below to convert (system_prompt,
-    user_question) into a text answer. Kept here rather than
-    pulling in the full ADK stack because most baselines don't
-    need ADK — only ``NeuromemAdkAgent`` does.
-    """
-
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-001") -> None:
-        self._client = genai.Client(api_key=api_key)
-        self._model = model
-
-    def generate(
-        self,
-        *,
-        system_instruction: str | None,
-        user_message: str,
-    ) -> str:
-        from google.genai import types as genai_types  # noqa: PLC0415
-
-        config = (
-            genai_types.GenerateContentConfig(
-                system_instruction=system_instruction,
-            )
-            if system_instruction
-            else None
-        )
-
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=user_message,
-            config=config,
-        )
-        return (resp.text or "").strip()
-
-
-# ---------------------------------------------------------------------------
 # NullAgent — no memory baseline
 # ---------------------------------------------------------------------------
 
@@ -215,7 +111,7 @@ class NullAgent(BaseAgent):
         model: str = "gemini-2.0-flash-001",
         max_turns: int = 50,
     ) -> None:
-        self._client = _GeminiAnsweringClient(api_key=api_key, model=model)
+        self._client = GeminiAnsweringClient(api_key=api_key, model=model)
         self._max_turns = max_turns
         self._history: list[tuple[str, str]] = []
 
@@ -263,7 +159,7 @@ class NaiveRagAgent(BaseAgent):
     search. Represents "what you'd get if you wired a vector DB
     to your agent and called it memory".
 
-    The comparison against ``NeuromemAdkAgent`` is the point of
+    The comparison against ``NeuromemAgent`` is the point of
     this baseline: if neuromem's cognitive loop produces
     meaningfully better scores than naive vector retrieval, the
     decay + clustering + LTP machinery is earning its complexity.
@@ -277,7 +173,7 @@ class NaiveRagAgent(BaseAgent):
         embedder_model: str = "gemini-embedding-001",
         top_k: int = 5,
     ) -> None:
-        self._client = _GeminiAnsweringClient(api_key=api_key, model=model)
+        self._client = GeminiAnsweringClient(api_key=api_key, model=model)
         self._embedder = GeminiEmbeddingProvider(api_key=api_key, model=embedder_model)
         self._top_k = top_k
         self._texts: list[tuple[str, str]] = []  # (role, text)
@@ -332,30 +228,33 @@ class NaiveRagAgent(BaseAgent):
 
 
 # ---------------------------------------------------------------------------
-# NeuromemAdkAgent — the cognitive-loop path
+# NeuromemAgent — the cognitive-loop path
 # ---------------------------------------------------------------------------
 
 
-class NeuromemAdkAgent(BaseAgent):
+class NeuromemAgent(BaseAgent):
     """The agent we're validating. Uses neuromem's full cognitive
     loop under the hood: hippocampal capture, neocortex dreaming
     (tag extraction + agglomerative clustering), synaptic decay,
     long-term potentiation on retrieval.
 
-    Unlike the ``enable_memory`` wrapper path (which attaches
-    callbacks to a live ADK Agent), this uses the cognitive loop
-    directly from Python — enqueue turns via ``NeuroMemory.enqueue``,
-    force a dream cycle at the end of ingestion, then use
-    ``ContextHelper.build_prompt_context`` to inject relevant
-    context into the answer prompt.
+    **Does NOT go through neuromem-adk.** This agent uses the
+    cognitive loop directly via ``NeuroMemory.enqueue`` +
+    ``force_dream`` + ``ContextHelper.build_prompt_context``, NOT
+    via ``neuromem_adk.enable_memory``. Going through a real ADK
+    ``Runner`` per turn would add latency orthogonal to what we're
+    measuring here (the quality of the memory graph, not ADK's
+    runtime wiring). The T015 integration test inside neuromem-adk
+    already proves the ADK wiring works end-to-end against real
+    Gemini; this agent exercises the same underlying NeuroMemory
+    machinery with a simpler harness.
 
-    Going through ``enable_memory`` with a real ADK runtime and
-    real ADK sessions would add latency (each turn is a full
-    agent invocation) and is orthogonal to what we're measuring
-    (the quality of the memory graph, not ADK's runtime wiring).
-    The T015 integration test in neuromem-adk already proves the
-    enable_memory path works end-to-end; this agent exercises
-    the same NeuroMemory machinery with a simpler harness.
+    If you want to measure the full ADK integration path specifically
+    (latency, tool-call behaviour, session-end consolidation via
+    ADK's BaseMemoryService slot), that's a separate agent class
+    worth adding — probably named ``NeuromemAdkAgent`` — that
+    actually calls ``enable_memory``. It would be slower per turn
+    but would measure a different property.
 
     **Tuning knobs** passed to ``NeuroMemory``:
       - ``dream_threshold=9999`` so auto-dream never fires during
@@ -380,23 +279,16 @@ class NeuromemAdkAgent(BaseAgent):
         self._model = model
         self._embedder_model = embedder_model
         self._cluster_threshold = cluster_threshold
-        self._client = _GeminiAnsweringClient(api_key=api_key, model=model)
+        self._client = GeminiAnsweringClient(api_key=api_key, model=model)
         self._memory: NeuroMemory | None = None
         self._build_memory()
 
     def _build_memory(self) -> None:
-        """(Re-)instantiate a fresh NeuroMemory with in-memory storage.
-
-        Uses ``_FastSummaryGeminiLLMProvider`` instead of the standard
-        GeminiLLMProvider — the enqueue hot path skips generate_summary's
-        LLM call (raw-text truncation), cutting per-instance runtime
-        from ~8-12 min to ~2-4 min on LongMemEval_s. Real Gemini still
-        handles tag extraction and cluster naming during the dream
-        cycle, which is where graph quality actually comes from.
-        """
+        """(Re-)instantiate a fresh NeuroMemory with in-memory storage
+        backed by real Gemini providers."""
         self._memory = NeuroMemory(
             storage=SQLiteAdapter(":memory:"),
-            llm=_FastSummaryGeminiLLMProvider(api_key=self._api_key, model=self._model),
+            llm=GeminiLLMProvider(api_key=self._api_key, model=self._model),
             embedder=GeminiEmbeddingProvider(api_key=self._api_key, model=self._embedder_model),
             dream_threshold=9999,
             cluster_threshold=self._cluster_threshold,

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 
-from neuromem_bench.agent import _GeminiAnsweringClient
+from neuromem_bench._client import GeminiAnsweringClient
 
 # Stripping pattern: keep letters, digits, spaces, hyphens.
 # Collapses everything else (punctuation, quotes, newlines) to a
@@ -107,7 +107,7 @@ def llm_judge(
     signal and the llm_judge metric for end-of-milestone
     validation.
     """
-    client = _GeminiAnsweringClient(api_key=api_key, model=model)
+    client = GeminiAnsweringClient(api_key=api_key, model=model)
     prompt = (
         "You are grading an answer. Given the question, the reference "
         "(correct) answer, and the submitted prediction, respond with "

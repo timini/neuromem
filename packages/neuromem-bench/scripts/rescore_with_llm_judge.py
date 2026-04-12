@@ -9,7 +9,7 @@ alongside with updated scores.
 Usage:
     GOOGLE_API_KEY=... uv run python \\
         packages/neuromem-bench/scripts/rescore_with_llm_judge.py \\
-        docs/benchmarks/longmemeval-s-neuromem-adk-n3.jsonl
+        docs/benchmarks/longmemeval-s-neuromem-n3.jsonl
 """
 
 from __future__ import annotations
@@ -74,8 +74,14 @@ def main() -> None:
     rescored: list[dict] = []
     print(f"[rescore] reading {input_path}")
     with input_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            row = json.loads(line)
+        for lineno, raw in enumerate(fh, start=1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                sys.exit(f"ERROR: malformed JSONL at {input_path}:{lineno}: {exc}")
             old_score = row["score"]
             new_score = llm_judge(
                 prediction=row["prediction"],

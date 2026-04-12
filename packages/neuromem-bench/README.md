@@ -1,6 +1,6 @@
 # neuromem-bench
 
-> Benchmark harness for the [neuromem](../../) long-term memory library. Runs published memory-evaluation benchmarks against agents built with [`neuromem-adk`](../neuromem-adk/) and publishes scored results.
+> Benchmark harness for the [neuromem](../../) long-term memory library. Runs published memory-evaluation benchmarks against agents that use neuromem's cognitive loop, and publishes scored results.
 
 This package is a development tool, not a consumer library. It exists so the neuromem project can measure its own cognitive-loop quality against published benchmarks (SC-008 in the neuromem-core spec).
 
@@ -23,13 +23,13 @@ The package is a workspace member and pulls in `neuromem-core`, `neuromem-gemini
 ## Running a benchmark
 
 ```bash
-# Run LongMemEval_s (the smallest variant) against neuromem-adk
-# with real Gemini providers:
+# Run LongMemEval_s (the smallest variant) against the neuromem
+# cognitive loop with real Gemini providers:
 export GOOGLE_API_KEY="your-key-here"
 uv run python packages/neuromem-bench/scripts/run_longmemeval.py \
     --split s \
     --sample-size 10 \
-    --agent neuromem-adk \
+    --agent neuromem \
     --output docs/benchmarks/longmemeval-s-$(date +%Y%m%d).jsonl
 ```
 
@@ -44,8 +44,9 @@ neuromem-bench/
 ├── src/neuromem_bench/
 │   ├── __init__.py
 │   ├── agent.py               # BaseAgent ABC + concrete implementations
-│   │                          #   - NullAgent (no memory baseline)
-│   │                          #   - NeuromemAdkAgent (uses enable_memory)
+│   │                          #   - NullAgent      (no memory baseline)
+│   │                          #   - NaiveRagAgent  (vector-only baseline)
+│   │                          #   - NeuromemAgent  (full cognitive loop)
 │   ├── runner.py              # Orchestrator: load dataset → drive agent → collect metrics
 │   ├── metrics.py             # exact_match, accuracy, (future) LLM-as-judge
 │   └── datasets/
@@ -71,9 +72,11 @@ neuromem-bench/
 
 | Agent | Purpose | Memory backend |
 |---|---|---|
-| `NullAgent` | No-memory baseline | None — feeds each turn straight to the LLM |
-| `NeuromemAdkAgent` | The thing we're validating | `neuromem-adk.enable_memory` with Gemini providers |
-| `NaiveRagAgent` | Vector-only baseline | Single SQLite table, no clustering / decay / LTP |
+| `NullAgent` | No-memory baseline | None — feeds each turn straight to the LLM, capped to the last N turns |
+| `NaiveRagAgent` | Vector-only baseline | Per-turn embedding + cosine retrieval — no clustering, decay, or LTP |
+| `NeuromemAgent` | The thing we're validating | `NeuroMemory` + `SQLiteAdapter` + `GeminiLLMProvider` + `GeminiEmbeddingProvider` — full cognitive loop |
+
+`NeuromemAgent` deliberately exercises `NeuroMemory` directly rather than going through `neuromem-adk.enable_memory`. The `neuromem-adk` wrapper adds per-turn ADK `Runner` latency that's orthogonal to measuring memory-graph quality; the T015 integration test inside `neuromem-adk` already proves the ADK wiring works end-to-end. If you specifically want to measure the ADK integration path (tool-call behaviour, session-end consolidation, etc.) that's a different agent class worth adding.
 
 Each agent satisfies a small `BaseAgent` protocol:
 

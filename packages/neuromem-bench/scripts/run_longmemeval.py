@@ -6,7 +6,7 @@ Usage:
         packages/neuromem-bench/scripts/run_longmemeval.py \\
         --split s \\
         --sample-size 5 \\
-        --agent neuromem-adk \\
+        --agent neuromem \\
         --output docs/benchmarks/longmemeval-s-sample.jsonl
 
 Options:
@@ -15,8 +15,9 @@ Options:
     --sample-size    Max instances to score. Defaults to 5 (smoke test).
                      None/0 = full split.
     --agent          Which agent backend(s) to run against. One or more
-                     of: null, naive-rag, neuromem-adk. Pass multiple
-                     times to run a comparison. Defaults to 'neuromem-adk'.
+                     of: null, naive-rag, neuromem. Pass multiple
+                     times to run a comparison. Defaults to 'neuromem'.
+                     (Legacy alias ``neuromem-adk`` is still accepted.)
     --output         Path to write JSONL results to. A sibling .md file
                      with the aggregate summary is written alongside.
                      Defaults to docs/benchmarks/longmemeval-<split>-<agent>.jsonl
@@ -27,7 +28,7 @@ Options:
                      gemini-2.0-flash-001.
 
 Cost note: a 5-instance smoke run against LongMemEval_s burns
-roughly 15–30K tokens through the neuromem-adk agent (each instance
+roughly 15–30K tokens through the neuromem agent (each instance
 has ~40 sessions × ~4 turns to process, each running a
 generate_summary LLM call on the hot path). Estimated cost per
 5-instance smoke run: ~$0.02 at Gemini 2.0 Flash rates. A full
@@ -99,7 +100,7 @@ def _build_agent(name: str, api_key: str, model: str):
     don't need ADK don't pay the import cost."""
     from neuromem_bench.agent import (  # noqa: PLC0415
         NaiveRagAgent,
-        NeuromemAdkAgent,
+        NeuromemAgent,
         NullAgent,
     )
 
@@ -107,9 +108,11 @@ def _build_agent(name: str, api_key: str, model: str):
         return NullAgent(api_key=api_key, model=model)
     if name == "naive-rag":
         return NaiveRagAgent(api_key=api_key, model=model)
-    if name == "neuromem-adk":
-        return NeuromemAdkAgent(api_key=api_key, model=model)
-    raise ValueError(f"unknown agent name: {name!r}. Valid: null / naive-rag / neuromem-adk")
+    if name in ("neuromem", "neuromem-adk"):
+        # Accept the legacy --agent neuromem-adk name too so any
+        # docs or scripts referencing the pre-rename CLI keep working.
+        return NeuromemAgent(api_key=api_key, model=model)
+    raise ValueError(f"unknown agent name: {name!r}. Valid: null / naive-rag / neuromem")
 
 
 def _build_metric(name: str, api_key: str):
@@ -153,7 +156,7 @@ def main() -> None:
         "--agent",
         action="append",
         default=None,
-        help="Agent backend (repeatable). null / naive-rag / neuromem-adk. Default: neuromem-adk.",
+        help="Agent backend (repeatable). null / naive-rag / neuromem. Default: neuromem. Legacy 'neuromem-adk' still accepted.",
     )
     parser.add_argument(
         "--output",
@@ -174,7 +177,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    agents = args.agent or ["neuromem-adk"]
+    agents = args.agent or ["neuromem"]
     limit = args.sample_size if args.sample_size > 0 else None
 
     api_key = _resolve_api_key()
