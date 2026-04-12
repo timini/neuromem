@@ -130,7 +130,14 @@ class TestRenderAsciiTree:
         assert rendered.count("└── ") >= 2
 
     def test_long_summary_truncated_with_ellipsis(self) -> None:
-        long_text = "x" * 500
+        """Summaries longer than the snippet cap get truncated with a
+        trailing ellipsis. Assert behavioural truncation — via the
+        module-level constant — rather than hard-coding the specific
+        cap so a future tune of _MEMORY_SNIPPET_MAX_CHARS doesn't
+        break this test."""
+        from neuromem.context import _MEMORY_SNIPPET_MAX_CHARS  # noqa: PLC0415
+
+        long_text = "x" * (_MEMORY_SNIPPET_MAX_CHARS * 2)
         subgraph = {
             "nodes": [{"id": "n1", "label": "Tag", "is_centroid": False}],
             "edges": [
@@ -144,15 +151,12 @@ class TestRenderAsciiTree:
             "memories": [{"id": "m1", "summary": long_text}],
         }
         rendered = _render_ascii_tree(subgraph)
-        # Snippet must be truncated to <= 80 chars plus the trailing ellipsis
         assert "…" in rendered
-        # Total snippet length including the ellipsis should be <= 80
-        # (the renderer uses MAX_CHARS-1 characters + "…")
-        # Find the snippet line and check its length
+        # Find the snippet line and check its length: the renderer
+        # produces (cap - 1) content characters plus the "…" glyph.
         snippet_line = next(line for line in rendered.splitlines() if "m1:" in line)
-        # Extract the quoted portion
         quoted = snippet_line.split('"', 1)[1].rsplit('"', 1)[0]
-        assert len(quoted) <= 80
+        assert len(quoted) <= _MEMORY_SNIPPET_MAX_CHARS
 
     def test_multi_parent_node_rendered_once_with_also_under_reference(
         self,

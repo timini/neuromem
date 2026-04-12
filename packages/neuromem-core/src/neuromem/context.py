@@ -33,9 +33,14 @@ logger = logging.getLogger("neuromem.context")
 
 
 # Max characters of a memory summary to include inline in the rendered
-# tree. Keeps the prompt injection compact. Can be made configurable
-# later if real-world usage needs it.
-_MEMORY_SNIPPET_MAX_CHARS = 80
+# tree. Summaries are typically 1–2 sentences (~150–300 chars) coming
+# out of ``LLMProvider.generate_summary``; at 80 chars we were
+# truncating most of them, losing the detail the answer LLM needs to
+# answer specific questions. 300 chars comfortably fits two sentences
+# and still caps pathological outputs. Not yet configurable at the
+# API level — can be made so if a real-world use case needs something
+# different.
+_MEMORY_SNIPPET_MAX_CHARS = 300
 
 
 class ContextHelper:

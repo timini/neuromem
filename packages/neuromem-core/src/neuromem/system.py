@@ -277,6 +277,17 @@ class NeuroMemory:
             # NER get the ABC default which returns empty lists for
             # every summary, so the code path is correctness-safe
             # whether or not the provider has been upgraded.
+            #
+            # Rollback intent: this write commits BEFORE steps 3–9. If
+            # a later step raises, the exception handler flips these
+            # memories back to 'inbox' but does NOT clear the
+            # named_entities column. This is intentional — the next
+            # dream cycle will run NER again on the same summaries and
+            # overwrite the column with an equivalent (or identical)
+            # result, so end-state correctness is preserved and the
+            # partially-written entity data never leaks into the graph.
+            # Tags/edges are rolled back implicitly because they were
+            # never committed (status flip gates visibility).
             entity_lists = self.llm.extract_named_entities_batch(summaries)
             entity_updates = {
                 mem["id"]: entities
