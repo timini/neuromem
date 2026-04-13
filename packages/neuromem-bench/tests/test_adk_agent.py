@@ -3,7 +3,7 @@
 Full end-to-end coverage of the ADK + enable_memory path already lives
 in ``neuromem-adk``'s own integration test (``test_adk_integration.py``)
 against real Gemini. These tests here cover the ``BaseAgent``-shaped
-wiring we put on TOP of that: process_turn ingestion bypassing the
+wiring we put on TOP of that: process_session ingestion bypassing the
 Runner, reset rebuilding state, answer dispatching through an ADK
 Runner-shaped mock.
 
@@ -32,11 +32,14 @@ pytestmark = [
 
 
 class _FakeMemory:
-    """Stand-in for NeuroMemory. Records ``enqueue`` calls + a flag
-    that confirms ``force_dream`` fired before the first answer."""
+    """Stand-in for NeuroMemory. Records ``enqueue_session`` calls
+    (the path NeuromemAdkAgent uses) plus any stray ``enqueue``
+    calls (which shouldn't happen on this agent — enqueue is only
+    used by the ADK callback path at answer time)."""
 
     def __init__(self) -> None:
         self.enqueues: list[tuple[str, dict]] = []
+        self.session_enqueues: list[tuple[list, dict]] = []
         self.force_dream_count = 0
         self.cluster_threshold = 0.0
         self.dream_threshold = 0
@@ -44,6 +47,10 @@ class _FakeMemory:
     def enqueue(self, text: str, metadata: dict | None = None) -> str:
         self.enqueues.append((text, metadata or {}))
         return f"mem_{len(self.enqueues)}"
+
+    def enqueue_session(self, turns: list, metadata: dict | None = None) -> str:
+        self.session_enqueues.append((list(turns), metadata or {}))
+        return f"mem_session_{len(self.session_enqueues)}"
 
     def force_dream(self, block: bool = True) -> None:
         self.force_dream_count += 1
@@ -140,55 +147,76 @@ class TestConstruction:
 
 
 # ---------------------------------------------------------------------------
-# process_turn
+# process_session
 # ---------------------------------------------------------------------------
 
 
-class TestProcessTurn:
-    def test_enqueues_text_with_role_and_turn_metadata(self, patched_adk) -> None:
-        """Ingestion bypasses ADK — process_turn goes straight to
-        memory.enqueue. Metadata schema matches the
-        after_agent_turn_capturer in neuromem_adk: both ``role`` AND
-        ``turn`` (1-indexed). No Runner calls during ingestion."""
+class TestProcessSession:
+    def test_enqueues_session_with_metadata(self, patched_adk) -> None:
+        """Ingestion bypasses ADK — process_session goes straight to
+        memory.enqueue_session. Metadata includes session_index
+        (1-indexed) and turn_count. No Runner calls during ingestion."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         agent = NeuromemAdkAgent(api_key="fake-key")
-        agent.process_turn("hello", role="user")
-        agent.process_turn("hi there", role="assistant")
+        agent.process_session(
+            [
+                {"role": "user", "text": "hello"},
+                {"role": "assistant", "text": "hi there"},
+            ]
+        )
 
-        enqueues = patched_adk["fake_memory"].enqueues
-        assert enqueues == [
-            ("hello", {"role": "user", "turn": 1}),
-            ("hi there", {"role": "assistant", "turn": 2}),
-        ]
+        session_enqueues = patched_adk["fake_memory"].session_enqueues
+        assert len(session_enqueues) == 1
+        turns, metadata = session_enqueues[0]
+        assert len(turns) == 2
+        assert metadata == {"session_index": 1, "turn_count": 2}
+
+        # Per-turn enqueue should never have been hit — ingestion is
+        # session-level.
+        assert patched_adk["fake_memory"].enqueues == []
 
         # Runner was constructed in __init__ but never invoked during
         # ingestion — that's the whole point of the bypass.
         patched_adk["fake_runner"].run_debug.assert_not_called()
 
-    def test_turn_index_resets_on_rebuild(self, patched_adk) -> None:
-        """reset() rebuilds state, including the turn counter — so the
-        next instance's first ingested turn metadata reads ``turn=1``,
-        not ``turn=51``."""
+    def test_session_index_resets_on_rebuild(self, patched_adk) -> None:
+        """reset() rebuilds state, including the session counter — so
+        the next instance's first session metadata reads
+        ``session_index=1``, not ``session_index=4``."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         agent = NeuromemAdkAgent(api_key="fake-key")
         for i in range(3):
-            agent.process_turn(f"turn {i}", role="user")
+            agent.process_session([{"role": "user", "text": f"session {i}"}])
         agent.reset()
-        agent.process_turn("first turn of new instance", role="user")
+        agent.process_session([{"role": "user", "text": "new instance session"}])
 
-        last_metadata = patched_adk["fake_memory"].enqueues[-1][1]
-        assert last_metadata == {"role": "user", "turn": 1}
+        _, last_metadata = patched_adk["fake_memory"].session_enqueues[-1]
+        assert last_metadata == {"session_index": 1, "turn_count": 1}
 
-    def test_many_turns_all_flow_through(self, patched_adk) -> None:
+    def test_many_sessions_all_flow_through(self, patched_adk) -> None:
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         agent = NeuromemAdkAgent(api_key="fake-key")
         for i in range(50):
-            agent.process_turn(f"turn {i}", role="user" if i % 2 == 0 else "assistant")
+            agent.process_session(
+                [
+                    {"role": "user", "text": f"q {i}"},
+                    {"role": "assistant", "text": f"a {i}"},
+                ]
+            )
 
-        assert len(patched_adk["fake_memory"].enqueues) == 50
+        assert len(patched_adk["fake_memory"].session_enqueues) == 50
+
+    def test_empty_turns_list_skipped(self, patched_adk) -> None:
+        """Defensive: a session with zero turns (shouldn't happen from
+        LongMemEval but could from custom callers) is a no-op."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        agent.process_session([])
+        assert patched_adk["fake_memory"].session_enqueues == []
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +241,7 @@ class TestAnswer:
         patched_adk["fake_runner"].run_debug = fake_run_debug
 
         agent = NeuromemAdkAgent(api_key="fake-key")
-        agent.process_turn("prior turn", role="user")
+        agent.process_session([{"role": "user", "text": "prior turn"}])
         result = agent.answer("What did I say?")
 
         # Dream cycle fired before the runner's first turn.

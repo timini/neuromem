@@ -155,6 +155,58 @@ class NeuroMemory:
 
         return memory_id
 
+    def enqueue_session(
+        self,
+        turns: list[dict[str, str]],
+        metadata: dict | None = None,
+    ) -> str:
+        """Ingest a whole multi-turn session as a single memory.
+
+        A "session" is a coherent stretch of conversation between one
+        user and the agent — the natural episodic unit for hippocampal-
+        style encoding. Compare to ``enqueue``, which treats its input
+        as a single memory regardless of internal structure.
+
+        This method is preferred over looping ``enqueue`` per turn
+        when the caller has explicit session boundaries (chat app,
+        benchmark harness, log replay). Benefits vs per-turn ingestion:
+
+        - **N× fewer LLM calls**: one ``generate_summary`` per session
+          instead of per turn. A 4-turn session goes from 4 summary
+          calls to 1. For a 200-turn / 40-session input that's a 40×
+          call-count reduction and a 40× reduction in rate-limit
+          pressure.
+        - **Denser memories**: a single session summary captures the
+          narrative arc of a conversation, preserving relationships
+          between adjacent turns that a turn-isolated summary would
+          miss. E.g., turn 4 says "I redeemed a coupon on creamer"
+          and turn 5's reply mentions Target — a session summary
+          naturally links them; per-turn summaries may not.
+        - **Raw transcript preserved**: ``raw_content`` stores the
+          full "role: text" transcript (turns joined by blank lines),
+          so ``retrieve_memories`` can still surface the original
+          turn-by-turn conversation when the LLM drills in.
+
+        ``turns`` is a list of dicts, each with ``"role"`` and
+        ``"text"`` keys. Other keys are ignored. Empty list raises
+        ``ValueError``. A single turn is valid — it ingests as one
+        memory with "role: text" as the raw content.
+
+        Metadata is attached to the single resulting memory. Useful
+        shape: ``{"session_index": i, "turn_count": len(turns)}``.
+        """
+        if not turns:
+            raise ValueError("turns must be non-empty")
+        for idx, turn in enumerate(turns):
+            if not isinstance(turn, dict):
+                raise ValueError(f"turns[{idx}] must be a dict, got {type(turn).__name__}")
+            if "role" not in turn or "text" not in turn:
+                raise ValueError(
+                    f"turns[{idx}] must have 'role' and 'text' keys, got {list(turn.keys())}"
+                )
+        transcript = "\n\n".join(f"{t['role']}: {t['text']}" for t in turns)
+        return self.enqueue(transcript, metadata=metadata)
+
     def _spawn_dream_thread(self) -> threading.Thread:
         """Start a daemon thread running ``_run_dream_cycle``.
 

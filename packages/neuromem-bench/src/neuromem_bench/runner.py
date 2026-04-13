@@ -5,8 +5,9 @@ The core loop:
     for instance in dataset.load(limit=N):
         agent.reset()
         for session in instance.sessions:
-            for turn in session.turns:
-                agent.process_turn(turn.text, role=turn.role)
+            agent.process_session([
+                {"role": t.role, "text": t.text} for t in session.turns
+            ])
         prediction = agent.answer(instance.question)
         score = metric(prediction, instance.gold_answer)
         record_result(...)
@@ -16,7 +17,7 @@ supplied output path. A markdown summary is written to a sibling
 ``.md`` file with aggregate statistics.
 
 No async, no parallel runs in v0.1. Agents vary in how much
-state they carry between process_turn and answer, so sequential
+state they carry between process_session and answer, so sequential
 is the simplest correct thing. Future versions can parallelise
 at the instance level.
 """
@@ -225,12 +226,17 @@ def _run_one_instance(
     start = time.perf_counter()
     _log(verbose, f"{prefix}- reset done, starting ingestion")
 
-    # Ingest all sessions in order.
+    # Ingest all sessions in order. One ``process_session`` call per
+    # session — agents decide how to handle the turns internally.
+    # For neuromem agents this means one generate_summary call per
+    # session (vs per turn historically), which cuts API pressure
+    # 4-5× and preserves turn-level semantics via the transcript
+    # in raw_content.
     turn_count = 0
     for session in instance.sessions:
-        for turn in session.turns:
-            agent.process_turn(turn.text, role=turn.role)
-            turn_count += 1
+        turns_payload = [{"role": turn.role, "text": turn.text} for turn in session.turns]
+        agent.process_session(turns_payload)
+        turn_count += len(turns_payload)
     _log(
         verbose,
         f"{prefix}- ingestion done "
