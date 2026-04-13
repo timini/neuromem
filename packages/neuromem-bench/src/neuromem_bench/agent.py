@@ -290,6 +290,14 @@ class NeuromemAgent(BaseAgent):
         self._cluster_threshold = cluster_threshold
         self._client = GeminiAnsweringClient(api_key=api_key, model=model)
         self._memory: NeuroMemory | None = None
+        # Buffer turns during process_turn and flush all at once via
+        # NeuroMemory.enqueue_many() at answer time. enqueue_many runs
+        # generate_summary calls concurrently in a thread pool, so
+        # ingestion for a 550-turn instance collapses from 550× serial
+        # API latency to ceil(550/20)=28× pool-iteration latency. Big
+        # win on any paid Gemini tier where the per-minute quota is
+        # well above the per-second pool saturation rate.
+        self._pending_turns: list[tuple[str, str]] = []
         self._build_memory()
 
     def _build_memory(self) -> None:
@@ -304,11 +312,31 @@ class NeuromemAgent(BaseAgent):
         )
 
     def process_turn(self, text: str, *, role: str) -> None:
+        # Buffer — actual enqueue happens concurrently in answer().
         assert self._memory is not None
-        self._memory.enqueue(text, metadata={"role": role})
+        self._pending_turns.append((role, text))
+
+    def _flush_pending(self) -> None:
+        """Concurrently enqueue all buffered turns in one batch.
+
+        Called from answer() right before force_dream. After the flush
+        the buffer is empty. If the buffer is empty already (e.g. an
+        answer() call with no prior process_turn, or a second answer()
+        in the same instance — unusual but possible), this is a no-op.
+        """
+        assert self._memory is not None
+        if not self._pending_turns:
+            return
+        raw_texts = [text for _role, text in self._pending_turns]
+        metadatas: list[dict | None] = [{"role": role} for role, _text in self._pending_turns]
+        self._memory.enqueue_many(raw_texts, metadatas=metadatas)
+        self._pending_turns = []
 
     def answer(self, question: str) -> str:
         assert self._memory is not None
+        # Flush buffered turns concurrently — one pool of N workers
+        # races through all the generate_summary calls.
+        self._flush_pending()
         # Force consolidation so the concept graph is built before
         # we query it. This is a single expensive call — roughly
         # proportional to the number of enqueued memories — that
@@ -339,8 +367,11 @@ class NeuromemAgent(BaseAgent):
     def reset(self) -> None:
         # Drop the old memory and build a fresh one. The GC
         # cleanup path for SQLiteAdapter closes the file handle
-        # (see its __del__).
+        # (see its __del__). Clear the pending-turns buffer too
+        # so the next instance doesn't accidentally ingest the
+        # previous instance's tail.
         self._memory = None
+        self._pending_turns = []
         self._build_memory()
 
 
@@ -432,6 +463,11 @@ class NeuromemAdkAgent(BaseAgent):
         # captured via our bypass path (at ingestion time) share the
         # same ``metadata["turn"]`` field.
         self._turn_index = 0
+        # Same buffered-ingestion pattern as NeuromemAgent: process_turn
+        # buffers, answer() flushes all turns concurrently via
+        # NeuroMemory.enqueue_many. Big speedup for the ingestion
+        # phase at the cost of a tiny buffer per-instance.
+        self._pending_turns: list[tuple[str, str]] = []
         self._memory = None  # type: ignore[assignment]
         self._runner = None  # type: ignore[assignment]
         self._build()
@@ -458,6 +494,10 @@ class NeuromemAdkAgent(BaseAgent):
         # ``turn`` field starts at 1 for each instance's first ingested
         # turn — matching what the ADK callback path would emit.
         self._turn_index = 0
+        # Clear pending buffer too — a prior instance could have left
+        # its tail behind if answer() wasn't called (shouldn't happen,
+        # but cheap insurance).
+        self._pending_turns = []
 
         # Construct the ADK agent with an instruction that hints tool
         # use. Passive context injection lands in the system prompt
@@ -510,22 +550,41 @@ class NeuromemAdkAgent(BaseAgent):
         )
 
     def process_turn(self, text: str, *, role: str) -> None:
-        # Bypass ADK for ingestion. See class docstring for why.
-        # Metadata schema mirrors what neuromem_adk's
-        # after_agent_turn_capturer writes when the ADK runner is
-        # driven for a turn — both ``role`` and ``turn`` fields. Keeping
-        # the schema identical means downstream consumers (rendering,
-        # filtering, future analytics) can't tell whether a memory was
+        # Buffer turns; actual ingestion happens concurrently in
+        # answer() via NeuroMemory.enqueue_many. See class docstring
+        # for the bypass rationale. Metadata schema mirrors what
+        # neuromem_adk's after_agent_turn_capturer writes so
+        # downstream consumers can't tell whether a memory was
         # captured via this bypass or via the ADK callback path.
         assert self._memory is not None
         self._turn_index += 1
-        self._memory.enqueue(text, metadata={"role": role, "turn": self._turn_index})
+        self._pending_turns.append((role, text))
+
+    def _flush_pending(self) -> None:
+        """Concurrently enqueue all buffered turns in one batch."""
+        assert self._memory is not None
+        if not self._pending_turns:
+            return
+        # Rebuild turn indices as sequential so the "turn" metadata
+        # field lines up with position in the buffer regardless of
+        # what _turn_index counter looked like while buffering.
+        start_idx = self._turn_index - len(self._pending_turns) + 1
+        raw_texts = [text for _role, text in self._pending_turns]
+        metadatas: list[dict | None] = [
+            {"role": role, "turn": start_idx + i}
+            for i, (role, _text) in enumerate(self._pending_turns)
+        ]
+        self._memory.enqueue_many(raw_texts, metadatas=metadatas)
+        self._pending_turns = []
 
     def answer(self, question: str) -> str:
         import asyncio  # noqa: PLC0415
 
         assert self._memory is not None
         assert self._runner is not None
+
+        # Flush buffered turns concurrently before we build the graph.
+        self._flush_pending()
 
         # Force consolidation so the concept graph is built before the
         # before_model_callback fires. Without this, the context tree

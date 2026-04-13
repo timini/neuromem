@@ -44,7 +44,7 @@ class GeminiAnsweringClient:
         model: str = "gemini-2.0-flash-001",
         *,
         request_timeout_ms: int = 60_000,
-        rate_per_minute: int = 60,
+        rate_per_minute: int = 6000,
     ) -> None:
         """``request_timeout_ms`` bounds every call; prevents a hung
         response from blocking the benchmark indefinitely. Same

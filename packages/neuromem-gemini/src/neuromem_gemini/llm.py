@@ -24,7 +24,7 @@ import json
 import time as _time
 
 from google import genai
-from google.genai.errors import ServerError
+from google.genai.errors import APIError, ClientError, ServerError
 from neuromem.providers import LLMProvider
 
 # Transient errors we retry on. ServerError covers 5xx from the Gemini API.
@@ -33,6 +33,11 @@ from neuromem.providers import LLMProvider
 # that surface as httpx exceptions through the google-genai SDK. We import
 # them defensively — if httpx isn't installed (shouldn't happen, since
 # google-genai depends on it) we just catch fewer exception types.
+#
+# Note: ``ClientError`` (4xx) is NOT retryable in general, BUT 429
+# RESOURCE_EXHAUSTED IS. We handle that case specifically in the retry
+# loop rather than adding ClientError to this tuple (which would
+# incorrectly retry 400 / 403 / 404 too).
 _RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ServerError,)
 try:
     import httpx  # noqa: PLC0415
@@ -51,6 +56,28 @@ except ImportError:
     pass
 
 
+def _is_retryable(exc: Exception) -> bool:
+    """Is this exception worth another attempt?
+
+    Retryable:
+    - ``ServerError`` (any 5xx)
+    - ``httpx.TimeoutException`` / ``RemoteProtocolError`` / ``ConnectError``
+    - ``ClientError`` with code 429 RESOURCE_EXHAUSTED (rate limit) —
+      Gemini's own backpressure signal, must be respected
+
+    Not retryable:
+    - ``ClientError`` with any other 4xx code (400 malformed, 403
+      forbidden, 404 not found, etc.) — deterministic failures.
+
+    Keeping the 429 check separate from the retry tuple means a
+    catch-all ``ClientError`` doesn't accidentally retry a 400 which
+    would just fail the same way five times.
+    """
+    if isinstance(exc, _RETRYABLE_EXCEPTIONS):
+        return True
+    return bool(isinstance(exc, ClientError) and getattr(exc, "code", None) == 429)
+
+
 def _generate_with_retry(
     client: genai.Client,
     model: str,
@@ -62,16 +89,16 @@ def _generate_with_retry(
 ) -> object:
     """Call ``models.generate_content`` with retry on transient errors.
 
-    Catches both Gemini-level ``ServerError`` (5xx) and transport-
-    level connection drops (``httpx.RemoteProtocolError``, etc.).
-    Exponential backoff: 2/4/8/16/32s. ``ClientError`` (4xx) is
-    never retried — those are deterministic failures.
+    Catches Gemini-level ``ServerError`` (5xx), ``ClientError`` 429
+    RESOURCE_EXHAUSTED (rate limit pushback), and transport-level
+    connection drops. Exponential backoff: 2/4/8/16/32s. Other 4xx
+    errors propagate immediately — no point retrying a malformed
+    request.
 
     If a ``bucket`` (from :mod:`._rate_limit`) is supplied, each
     attempt acquires one token before hitting the wire. Retries
     therefore consume tokens too — this is intentional, since
-    retries are just as much "requests" from Gemini's perspective
-    and counting them is what keeps our total RPM honest.
+    retries are just as much "requests" from Gemini's perspective.
     """
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
@@ -82,7 +109,17 @@ def _generate_with_retry(
                 model=model,
                 contents=contents,
             )
-        except _RETRYABLE_EXCEPTIONS as exc:
+        except APIError as exc:
+            if not _is_retryable(exc):
+                raise
+            last_exc = exc
+            if attempt == max_attempts - 1:
+                break
+            delay = base_delay * (2**attempt)
+            _time.sleep(delay)
+        except Exception as exc:
+            if not _is_retryable(exc):
+                raise
             last_exc = exc
             if attempt == max_attempts - 1:
                 break
@@ -142,7 +179,7 @@ class GeminiLLMProvider(LLMProvider):
         model: str = "gemini-2.0-flash-001",
         *,
         request_timeout_ms: int = 60_000,
-        rate_per_minute: int = 60,
+        rate_per_minute: int = 6000,
     ) -> None:
         """Construct a Gemini-backed LLMProvider.
 

@@ -32,11 +32,16 @@ pytestmark = [
 
 
 class _FakeMemory:
-    """Stand-in for NeuroMemory. Records ``enqueue`` calls + a flag
-    that confirms ``force_dream`` fired before the first answer."""
+    """Stand-in for NeuroMemory. Records ``enqueue`` calls (one-at-a-
+    time) and ``enqueue_many`` calls (the concurrent path). The
+    NeuromemAdkAgent now buffers turns and flushes via enqueue_many
+    at answer time, so tests that previously asserted on per-turn
+    enqueues should assert on the flattened ``enqueues`` list —
+    which we populate from both paths for test ergonomics."""
 
     def __init__(self) -> None:
         self.enqueues: list[tuple[str, dict]] = []
+        self.enqueue_many_calls: int = 0
         self.force_dream_count = 0
         self.cluster_threshold = 0.0
         self.dream_threshold = 0
@@ -44,6 +49,22 @@ class _FakeMemory:
     def enqueue(self, text: str, metadata: dict | None = None) -> str:
         self.enqueues.append((text, metadata or {}))
         return f"mem_{len(self.enqueues)}"
+
+    def enqueue_many(
+        self,
+        raw_texts: list[str],
+        metadatas: list[dict | None] | None = None,
+        *,
+        max_workers: int = 20,
+    ) -> list[str]:
+        self.enqueue_many_calls += 1
+        ids: list[str] = []
+        if metadatas is None:
+            metadatas = [None] * len(raw_texts)
+        for text, meta in zip(raw_texts, metadatas, strict=True):
+            self.enqueues.append((text, meta or {}))
+            ids.append(f"mem_{len(self.enqueues)}")
+        return ids
 
     def force_dream(self, block: bool = True) -> None:
         self.force_dream_count += 1
@@ -145,49 +166,77 @@ class TestConstruction:
 
 
 class TestProcessTurn:
-    def test_enqueues_text_with_role_and_turn_metadata(self, patched_adk) -> None:
-        """Ingestion bypasses ADK — process_turn goes straight to
-        memory.enqueue. Metadata schema matches the
-        after_agent_turn_capturer in neuromem_adk: both ``role`` AND
-        ``turn`` (1-indexed). No Runner calls during ingestion."""
+    def test_process_turn_buffers_until_answer_flushes(self, patched_adk) -> None:
+        """process_turn now buffers — actual memory enqueue happens
+        in answer()'s _flush_pending via enqueue_many (concurrent).
+        Until answer fires, fake_memory.enqueues is empty."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [_fake_event("final response")]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
 
         agent = NeuromemAdkAgent(api_key="fake-key")
         agent.process_turn("hello", role="user")
         agent.process_turn("hi there", role="assistant")
 
-        enqueues = patched_adk["fake_memory"].enqueues
-        assert enqueues == [
+        # Nothing enqueued yet — still buffered.
+        assert patched_adk["fake_memory"].enqueues == []
+        assert patched_adk["fake_memory"].enqueue_many_calls == 0
+
+        # Invoking answer triggers the concurrent flush.
+        agent.answer("question?")
+
+        # enqueue_many called ONCE (one batch for all buffered turns),
+        # and the resulting enqueue list preserves input order with
+        # the correct role + turn metadata.
+        assert patched_adk["fake_memory"].enqueue_many_calls == 1
+        assert patched_adk["fake_memory"].enqueues == [
             ("hello", {"role": "user", "turn": 1}),
             ("hi there", {"role": "assistant", "turn": 2}),
         ]
 
-        # Runner was constructed in __init__ but never invoked during
-        # ingestion — that's the whole point of the bypass.
-        patched_adk["fake_runner"].run_debug.assert_not_called()
+        # Runner fires once in answer(), not during process_turn.
+        assert patched_adk["fake_runner"].run_debug is fake_run_debug
 
     def test_turn_index_resets_on_rebuild(self, patched_adk) -> None:
-        """reset() rebuilds state, including the turn counter — so the
-        next instance's first ingested turn metadata reads ``turn=1``,
-        not ``turn=51``."""
+        """reset() rebuilds state, including the turn counter AND the
+        buffer — so the next instance's first turn reads ``turn=1``."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [_fake_event("ok")]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
 
         agent = NeuromemAdkAgent(api_key="fake-key")
         for i in range(3):
             agent.process_turn(f"turn {i}", role="user")
+        agent.answer("q?")  # flushes the 3-turn buffer
         agent.reset()
         agent.process_turn("first turn of new instance", role="user")
+        agent.answer("q?")  # flushes the 1-turn buffer
 
         last_metadata = patched_adk["fake_memory"].enqueues[-1][1]
         assert last_metadata == {"role": "user", "turn": 1}
 
-    def test_many_turns_all_flow_through(self, patched_adk) -> None:
+    def test_many_turns_flush_in_one_batch(self, patched_adk) -> None:
+        """50 buffered turns → 1 enqueue_many call. The whole point of
+        the buffer — we never serialise per-turn API calls."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [_fake_event("ok")]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
 
         agent = NeuromemAdkAgent(api_key="fake-key")
         for i in range(50):
             agent.process_turn(f"turn {i}", role="user" if i % 2 == 0 else "assistant")
+        agent.answer("q?")
 
+        assert patched_adk["fake_memory"].enqueue_many_calls == 1
         assert len(patched_adk["fake_memory"].enqueues) == 50
 
 

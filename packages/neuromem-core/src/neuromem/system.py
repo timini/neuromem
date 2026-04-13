@@ -155,6 +155,80 @@ class NeuroMemory:
 
         return memory_id
 
+    def enqueue_many(
+        self,
+        raw_texts: list[str],
+        metadatas: list[dict | None] | None = None,
+        *,
+        max_workers: int = 20,
+    ) -> list[str]:
+        """Ingest many raw texts concurrently, preserving input order.
+
+        Runs ``self.llm.generate_summary`` for each text in parallel
+        via a ``ThreadPoolExecutor`` of ``max_workers`` threads, then
+        inserts all summaries into storage in the SAME ORDER as the
+        input. Final step is one ``count_memories_by_status`` check
+        to decide whether to spawn a dream thread, same as ``enqueue``.
+
+        Use this when the caller has a batch of texts to ingest and
+        wants to saturate an LLM provider that can handle concurrent
+        calls (e.g. a Tier 3 Gemini account with ~30000 RPM quota).
+        Serial per-item ``enqueue`` calls would take N × API_latency;
+        this method takes roughly ``ceil(N/max_workers) × API_latency``.
+
+        The LLM provider MUST be thread-safe (documented in the ABC;
+        ``google.genai.Client`` is). Storage writes happen on the
+        caller thread after all summaries complete, so storage
+        thread-safety isn't required.
+
+        Returns the list of memory IDs in input order. Empty input
+        returns ``[]`` with no work done.
+
+        ``metadatas`` must be ``None`` or the same length as
+        ``raw_texts``. Each entry is either a metadata dict or
+        ``None`` (no metadata for that memory).
+        """
+        if not raw_texts:
+            return []
+        if metadatas is None:
+            metadatas = [None] * len(raw_texts)
+        if len(metadatas) != len(raw_texts):
+            raise ValueError(
+                f"metadatas length {len(metadatas)} != raw_texts length {len(raw_texts)}"
+            )
+        for idx, text in enumerate(raw_texts):
+            if not text:
+                raise ValueError(f"raw_texts[{idx}] must be non-empty")
+
+        # Concurrent summary generation. ThreadPoolExecutor.map
+        # preserves input order, which is exactly what we want.
+        import concurrent.futures  # noqa: PLC0415
+
+        workers = min(max_workers, len(raw_texts))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            summaries = list(pool.map(self.llm.generate_summary, raw_texts))
+
+        # Storage inserts on the caller thread, preserving order.
+        memory_ids: list[str] = []
+        for text, summary, metadata in zip(raw_texts, summaries, metadatas, strict=True):
+            memory_id = self.storage.insert_memory(
+                raw_content=text,
+                summary=summary,
+                metadata=metadata,
+            )
+            memory_ids.append(memory_id)
+
+        inbox_count = self.storage.count_memories_by_status("inbox")
+        if inbox_count >= self.dream_threshold and not self._is_dreaming:
+            logger.debug(
+                "enqueue_many: inbox count %d >= threshold %d — spawning dream thread",
+                inbox_count,
+                self.dream_threshold,
+            )
+            self._spawn_dream_thread()
+
+        return memory_ids
+
     def _spawn_dream_thread(self) -> threading.Thread:
         """Start a daemon thread running ``_run_dream_cycle``.
 
@@ -247,6 +321,7 @@ class NeuroMemory:
             return
 
         dreaming_ids: list[str] = []
+        cycle_start = time.perf_counter()
         try:
             self._is_dreaming = True
 
@@ -258,6 +333,16 @@ class NeuroMemory:
 
             dreaming_ids = [m["id"] for m in inbox_memories]
             self.storage.update_memory_status(dreaming_ids, "dreaming")
+            # Dream-cycle phase markers are emitted at INFO level so
+            # benchmark harnesses and ops dashboards see them without
+            # having to turn on DEBUG. For a 550-memory instance the
+            # dream cycle can run 15+ minutes; without these markers
+            # any caller (including the benchmark runner) has zero
+            # visibility into which phase is slow.
+            logger.info(
+                "dream cycle START: %d memories",
+                len(inbox_memories),
+            )
 
             # 2a. Extract tag labels per memory in one batched call.
             # Providers that override LLMProvider.extract_tags_batch
@@ -267,8 +352,14 @@ class NeuroMemory:
             # loops over extract_tags — correctness-identical to
             # the pre-#44 behaviour, just slower. See issue #44.
             summaries = [m["summary"] for m in inbox_memories]
+            phase_t = time.perf_counter()
             tag_lists = self.llm.extract_tags_batch(summaries)
             memories_with_tags = list(zip(inbox_memories, tag_lists, strict=True))
+            logger.info(
+                "dream cycle: extract_tags_batch done (%d summaries, %.1fs)",
+                len(summaries),
+                time.perf_counter() - phase_t,
+            )
 
             # 2b. Extract named entities per memory (also in one batch).
             # Unlike tags (which feed clustering), entities are purely
@@ -288,19 +379,38 @@ class NeuroMemory:
             # partially-written entity data never leaks into the graph.
             # Tags/edges are rolled back implicitly because they were
             # never committed (status flip gates visibility).
+            phase_t = time.perf_counter()
             entity_lists = self.llm.extract_named_entities_batch(summaries)
             entity_updates = {
                 mem["id"]: entities
                 for mem, entities in zip(inbox_memories, entity_lists, strict=True)
             }
             self.storage.set_named_entities(entity_updates)
+            logger.info(
+                "dream cycle: extract_named_entities_batch done (%.1fs)",
+                time.perf_counter() - phase_t,
+            )
 
             # 3-5. Resolve labels → node records, creating nodes for any
             #      label that isn't already in storage.
+            phase_t = time.perf_counter()
             label_to_node = self._ensure_tag_nodes(memories_with_tags)
+            logger.info(
+                "dream cycle: tag nodes resolved (%d unique labels, %.1fs)",
+                len(label_to_node),
+                time.perf_counter() - phase_t,
+            )
 
-            # 6. Agglomerative clustering (Half B — no-op in this commit).
+            # 6. Agglomerative clustering — this is the serial-bottleneck
+            # phase. For large dream cycles with many tags this can
+            # dominate wall time (each merge needs one generate_category_name
+            # LLM call and they can't be parallelised).
+            phase_t = time.perf_counter()
             self._run_clustering(label_to_node)
+            logger.info(
+                "dream cycle: clustering done (%.1fs)",
+                time.perf_counter() - phase_t,
+            )
 
             # 7. Wire has_tag edges from each memory to its tag nodes.
             for memory, tag_labels in memories_with_tags:
@@ -325,6 +435,11 @@ class NeuroMemory:
 
             # 9. Flip dreaming → consolidated.
             self.storage.update_memory_status(dreaming_ids, "consolidated")
+            logger.info(
+                "dream cycle DONE: %d memories consolidated in %.1fs",
+                len(dreaming_ids),
+                time.perf_counter() - cycle_start,
+            )
 
         except Exception:
             logger.exception(
@@ -430,6 +545,12 @@ class NeuroMemory:
             for node in label_to_node.values()
         ]
         alive = [True] * len(candidates)
+        merge_count = 0
+        # Tick every N merges so ops can see the serial-bottleneck
+        # clustering phase progress. On a 2750-tag dream cycle this
+        # can easily be 100+ merges at ~2-5s each — without the tick
+        # the whole phase shows up as silence.
+        _TICK_EVERY = 10
 
         max_iterations = max(2, 2 * len(candidates))
         for _iteration in range(max_iterations):
@@ -499,6 +620,14 @@ class NeuroMemory:
                 }
             )
             alive.append(True)
+            merge_count += 1  # noqa: SIM113  (not every loop iteration triggers a merge)
+            if merge_count % _TICK_EVERY == 0:
+                logger.info(
+                    "dream cycle: clustering merge %d (alive=%d, last_sim=%.2f)",
+                    merge_count,
+                    sum(alive),
+                    best_sim,
+                )
 
 
 def _sanitise_category_name(raw: str) -> str:

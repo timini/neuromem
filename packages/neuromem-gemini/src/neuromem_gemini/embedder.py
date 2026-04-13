@@ -21,12 +21,13 @@ import time
 
 import numpy as np
 from google import genai
-from google.genai.errors import ServerError
+from google.genai.errors import APIError, ClientError, ServerError
 from neuromem.providers import EmbeddingProvider
 from numpy.typing import NDArray
 
 # Same retryable-exceptions tuple as the LLM provider — transport-
-# level connection drops + Gemini 5xx.
+# level connection drops + Gemini 5xx. 429 RESOURCE_EXHAUSTED is
+# handled specially in the retry loop (see _is_retryable).
 _RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ServerError,)
 try:
     import httpx  # noqa: PLC0415
@@ -41,6 +42,13 @@ try:
     )
 except ImportError:
     pass
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Same rule as llm.py: 5xx + timeouts + transport drops + 429."""
+    if isinstance(exc, _RETRYABLE_EXCEPTIONS):
+        return True
+    return bool(isinstance(exc, ClientError) and getattr(exc, "code", None) == 429)
 
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
@@ -65,7 +73,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         model: str = "gemini-embedding-001",
         *,
         request_timeout_ms: int = 60_000,
-        rate_per_minute: int = 60,
+        rate_per_minute: int = 6000,
     ) -> None:
         """Construct a Gemini-backed EmbeddingProvider.
 
@@ -143,8 +151,10 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         endpoint hundreds of times don't fail on a single transient
         hiccup.
 
-        Retries on ``ServerError`` (5xx) only. ``ClientError`` (4xx)
-        is not retried — a 400/403/404 won't fix itself on retry.
+        Retries on ``ServerError`` (5xx), transport timeouts, and
+        ``ClientError`` 429 RESOURCE_EXHAUSTED (Gemini's own
+        rate-limit pushback). Other 4xx errors propagate
+        immediately — they're deterministic failures.
         """
         max_attempts = 5
         base_delay = 2.0  # seconds
@@ -158,13 +168,23 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
                     model=self._model,
                     contents=chunk,
                 )
-            except _RETRYABLE_EXCEPTIONS as exc:
+            except APIError as exc:
+                if not _is_retryable(exc):
+                    raise
                 last_exc = exc
                 if attempt == max_attempts - 1:
                     break
                 delay = base_delay * (2**attempt)
                 time.sleep(delay)
-        # Exhausted retries — re-raise the last ServerError so the
+            except Exception as exc:
+                if not _is_retryable(exc):
+                    raise
+                last_exc = exc
+                if attempt == max_attempts - 1:
+                    break
+                delay = base_delay * (2**attempt)
+                time.sleep(delay)
+        # Exhausted retries — re-raise the last error so the
         # caller sees a real Gemini error, not a generic wrapped one.
         assert last_exc is not None
         raise last_exc

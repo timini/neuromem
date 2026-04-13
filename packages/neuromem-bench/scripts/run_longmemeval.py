@@ -39,10 +39,28 @@ generate_summary LLM call on the hot path). Estimated cost per
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 import warnings
 from pathlib import Path
+
+# Route the core library's INFO-level logging (dream-cycle phase
+# markers etc.) into stdout so a tee-captured log has every level
+# of progress signal in one place. The runner emits its own
+# ``_log`` prints too; both streams end up in the same tee output.
+# Set BEFORE any neuromem module imports so the logger hierarchy
+# is configured from the start.
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s.%(msecs)03dZ] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    stream=sys.stdout,
+)
+# Silence google-genai/httpx DEBUG noise — they're very chatty.
+logging.getLogger("google_genai").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Force unbuffered stdout/stderr so progress shows up in real time even
 # when piped through ``tee`` or redirected to a file. Python otherwise
