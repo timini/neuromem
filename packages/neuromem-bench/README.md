@@ -76,9 +76,10 @@ neuromem-bench/
 |---|---|---|
 | `NullAgent` | No-memory baseline | None — feeds each turn straight to the LLM, capped to the last N turns |
 | `NaiveRagAgent` | Vector-only baseline | Per-turn embedding + cosine retrieval — no clustering, decay, or LTP |
-| `NeuromemAgent` | The thing we're validating | `NeuroMemory` + `SQLiteAdapter` + `GeminiLLMProvider` + `GeminiEmbeddingProvider` — full cognitive loop |
+| `NeuromemAgent` | Direct-NeuroMemory cognitive-loop baseline | `NeuroMemory` + `SQLiteAdapter` + `GeminiLLMProvider` + `GeminiEmbeddingProvider`. One-shot answer path: the ASCII context tree is injected as system prompt, no tool calls. Fast per-instance. |
+| `NeuromemAdkAgent` | The real product | Real `google.adk.agents.Agent` with `neuromem_adk.enable_memory`. Answer LLM has `search_memory` + `retrieve_memories` as function tools, so it can drill into `raw_content` mid-answer when summaries aren't specific enough. 2-5× slower per answer than `NeuromemAgent`; measures the full cognitive loop rather than the handicapped one-shot path. |
 
-`NeuromemAgent` deliberately exercises `NeuroMemory` directly rather than going through `neuromem-adk.enable_memory`. The `neuromem-adk` wrapper adds per-turn ADK `Runner` latency that's orthogonal to measuring memory-graph quality; the T015 integration test inside `neuromem-adk` already proves the ADK wiring works end-to-end. If you specifically want to measure the ADK integration path (tool-call behaviour, session-end consolidation, etc.) that's a different agent class worth adding.
+`NeuromemAgent` and `NeuromemAdkAgent` are complementary benchmark arms. The direct variant isolates "how good is the memory graph as a prompt-injection source?". The ADK variant adds "and does the LLM know when to reach for a tool when the prompt isn't enough?". Large score gaps between them indicate the tool-call path is pulling real weight.
 
 Each agent satisfies a small `BaseAgent` protocol:
 

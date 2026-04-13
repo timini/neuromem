@@ -4,7 +4,11 @@ Public API:
 
     from neuromem_bench import run_benchmark, RunSummary
     from neuromem_bench.agent import (
-        BaseAgent, NullAgent, NaiveRagAgent, NeuromemAgent,
+        BaseAgent,
+        NullAgent,
+        NaiveRagAgent,
+        NeuromemAgent,
+        NeuromemAdkAgent,
     )
     from neuromem_bench.datasets import LongMemEval
     from neuromem_bench.metrics import exact_match, contains_match, llm_judge

@@ -22,15 +22,24 @@ Three concrete implementations:
                                 clustering, no decay, no LTP).
                                 The "how well does a plain
                                 retrieval setup do" baseline.
-- :class:`NeuromemAgent`      — the thing we're validating. Uses
-                                NeuroMemory directly (not via
-                                neuromem-adk) with the full
-                                cognitive loop (hippocampus +
-                                dreaming + decay + LTP). See the
-                                class docstring for why this
-                                deliberately skips neuromem-adk.
+- :class:`NeuromemAgent`      — direct-NeuroMemory baseline with the
+                                full cognitive loop (hippocampus +
+                                dreaming + decay + LTP). One-shot
+                                answer path: context tree injected as
+                                system prompt, no tool calls. Fast
+                                per-instance.
+- :class:`NeuromemAdkAgent`   — the thing we actually ship. Real
+                                Google ADK ``Agent`` with
+                                ``neuromem_adk.enable_memory`` wired
+                                up. The answer LLM has ``search_memory``
+                                and ``retrieve_memories`` as function
+                                tools and can look up ``raw_content``
+                                mid-answer when the injected context
+                                tree's summaries aren't specific enough.
+                                Measures the full product, not the
+                                handicapped one-shot variant.
 
-All three take an ``api_key`` constructor arg and use real Gemini
+All agents take an ``api_key`` constructor arg and use real Gemini
 under the hood. For unit-testable agents, use mock providers.
 """
 
@@ -333,3 +342,235 @@ class NeuromemAgent(BaseAgent):
         # (see its __del__).
         self._memory = None
         self._build_memory()
+
+
+# ---------------------------------------------------------------------------
+# NeuromemAdkAgent — the real ADK-backed path with tool access
+# ---------------------------------------------------------------------------
+
+
+class NeuromemAdkAgent(BaseAgent):
+    """Real Google ADK ``Agent`` with ``neuromem_adk.enable_memory``.
+
+    The counterpart to :class:`NeuromemAgent`. The key behavioural
+    differences that matter for benchmark scoring:
+
+    - **Tools exposed to the answer LLM**: ``enable_memory`` registers
+      ``search_memory`` and ``retrieve_memories`` as ADK function
+      tools. The LLM can decide mid-answer to call them when the
+      passively injected context tree's 300-char summary snippets
+      aren't enough. In particular, ``retrieve_memories(ids)``
+      returns the full ``raw_content`` of a memory, so the LLM can
+      drill into specifics that were compressed out of the summary.
+      The direct-NeuroMemory path in :class:`NeuromemAgent` does NOT
+      have this — it's strictly the one-shot context-tree prompt.
+
+    - **Passive context injection via ADK callback**: ADK's
+      ``before_model_callback`` fires on every model invocation;
+      ``enable_memory`` wires a context-tree renderer into it, so
+      the prompt is enriched even when the LLM doesn't actively
+      ask for memory.
+
+    - **Turn capture**: ``enable_memory`` also wires an
+      ``after_agent_callback`` that walks ``session.events`` to
+      enqueue each new (user, assistant) pair into memory. For the
+      benchmark ingestion phase we bypass this and call
+      ``memory.enqueue(text, metadata={"role": role})`` directly —
+      driving the ADK Runner for every historical turn would double
+      the LLM spend on ingestion for no benefit. The callback-based
+      capture still fires at answer time for the benchmark question
+      + produced response, which is fine (reset drops it before the
+      next instance anyway).
+
+    **Design trade-offs**:
+
+    - Per-answer call is slower than :class:`NeuromemAgent` because
+      ADK's ``Runner.run_debug`` is async-only and each call goes
+      through the full callback pipeline + potential tool invocations.
+      Expect 2-5× the latency of the one-shot path. That's the cost
+      of measuring the real product.
+
+    - Thresholds are passed to ``enable_memory`` directly via its
+      ``cluster_threshold`` and ``dream_threshold`` kwargs (added in
+      PR #49). Matches the tuning :class:`NeuromemAgent` uses for
+      apples-to-apples benchmark comparison.
+
+    - Ingestion bypasses the ADK path entirely. The fully orthodox
+      version would drive the Runner for every turn, but that
+      doubles ingestion cost and is not what the benchmark is
+      measuring (we're measuring answer-time recall, not turn
+      capture fidelity — the integration test in neuromem-adk
+      already covers capture correctness).
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = "gemini-2.0-flash-001",
+        embedder_model: str = "gemini-embedding-001",
+        cluster_threshold: float = 0.55,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._embedder_model = embedder_model
+        self._cluster_threshold = cluster_threshold
+        # Session identifiers are stable across turns within one
+        # benchmark instance; reset() re-rolls the session_id so
+        # the prior instance's session.events don't leak in.
+        self._app_name = "neuromem-bench"
+        self._user_id = "benchmark-user"
+        self._session_id: str = ""  # populated in _build
+        # Agent name is used both when constructing the ADK Agent AND
+        # when filtering events by author at answer time (the LLM's
+        # text parts are authored by this string; tool-result events
+        # are not).
+        self._agent_name = "benchmark_agent"
+        # Turn counter for metadata — matches the schema the
+        # after_agent_callback in neuromem-adk uses so memories
+        # captured via the ADK runner (at answer time) and memories
+        # captured via our bypass path (at ingestion time) share the
+        # same ``metadata["turn"]`` field.
+        self._turn_index = 0
+        self._memory = None  # type: ignore[assignment]
+        self._runner = None  # type: ignore[assignment]
+        self._build()
+
+    def _build(self) -> None:
+        """(Re-)instantiate the ADK Agent, memory, and Runner.
+
+        Called on ``__init__`` and on every ``reset()``. Uses
+        in-memory SQLite so each benchmark instance has fresh
+        storage. The ``session_id`` is a fresh UUID so ADK's
+        in-memory session service doesn't merge state across
+        instances even though we keep the same ``SessionService``
+        instance for simplicity.
+        """
+        import uuid  # noqa: PLC0415
+
+        from google.adk.agents import Agent  # noqa: PLC0415
+        from google.adk.runners import Runner  # noqa: PLC0415
+        from google.adk.sessions import InMemorySessionService  # noqa: PLC0415
+        from neuromem_adk import enable_memory  # noqa: PLC0415
+
+        self._session_id = f"instance-{uuid.uuid4().hex[:12]}"
+        # Turn counter resets per benchmark instance so the metadata
+        # ``turn`` field starts at 1 for each instance's first ingested
+        # turn — matching what the ADK callback path would emit.
+        self._turn_index = 0
+
+        # Construct the ADK agent with an instruction that hints tool
+        # use. Passive context injection lands in the system prompt
+        # before every model call; the instruction below nudges the
+        # LLM to fall through to the tools when the injected summaries
+        # aren't enough.
+        agent = Agent(
+            model=self._model,
+            name=self._agent_name,
+            instruction=(
+                "You are a helpful assistant with access to long-term "
+                "memory. Before each of your responses, a tree of "
+                "relevant memories from prior conversations is "
+                "automatically injected into your context. Read it "
+                "first. If the injected memories contain the answer, "
+                "respond directly and specifically. If the summaries "
+                "are too compressed to answer precisely, call the "
+                "retrieve_memories tool with the specific memory IDs "
+                "shown in the tree to fetch their full original text. "
+                "If the tree doesn't surface the relevant topic at "
+                "all, call search_memory with a focused query. Always "
+                "answer the user's question directly — no hedging, no "
+                "'I don't have access' responses unless the memories "
+                "genuinely don't cover the topic."
+            ),
+        )
+
+        # Thresholds go in as kwargs via enable_memory (PR #49). No
+        # post-hoc attribute mutation needed. Matches NeuromemAgent's
+        # tuning (cluster_threshold=0.55, dream_threshold=9999) for
+        # apples-to-apples benchmark comparison. dream_threshold=9999
+        # effectively disables auto-dream during ingestion; we force
+        # one consolidation at answer time, same as NeuromemAgent.
+        memory = enable_memory(
+            agent,
+            db_path=":memory:",
+            llm=GeminiLLMProvider(api_key=self._api_key, model=self._model),
+            embedder=GeminiEmbeddingProvider(api_key=self._api_key, model=self._embedder_model),
+            cluster_threshold=self._cluster_threshold,
+            dream_threshold=9999,
+        )
+
+        self._memory = memory
+
+        self._runner = Runner(
+            app_name=self._app_name,
+            agent=agent,
+            session_service=InMemorySessionService(),
+            auto_create_session=True,
+        )
+
+    def process_turn(self, text: str, *, role: str) -> None:
+        # Bypass ADK for ingestion. See class docstring for why.
+        # Metadata schema mirrors what neuromem_adk's
+        # after_agent_turn_capturer writes when the ADK runner is
+        # driven for a turn — both ``role`` and ``turn`` fields. Keeping
+        # the schema identical means downstream consumers (rendering,
+        # filtering, future analytics) can't tell whether a memory was
+        # captured via this bypass or via the ADK callback path.
+        assert self._memory is not None
+        self._turn_index += 1
+        self._memory.enqueue(text, metadata={"role": role, "turn": self._turn_index})
+
+    def answer(self, question: str) -> str:
+        import asyncio  # noqa: PLC0415
+
+        assert self._memory is not None
+        assert self._runner is not None
+
+        # Force consolidation so the concept graph is built before the
+        # before_model_callback fires. Without this, the context tree
+        # injection has nothing to render (inbox memories aren't
+        # searchable — only consolidated ones are).
+        self._memory.force_dream(block=True)
+
+        events = asyncio.run(
+            self._runner.run_debug(
+                question,
+                user_id=self._user_id,
+                session_id=self._session_id,
+                quiet=True,
+            )
+        )
+
+        # CRITICAL: filter by author. ADK emits events for tool calls
+        # AND tool RESULTS, both of which can have text-bearing
+        # ``content.parts``. If we naively grab the last text part
+        # across all events, a tool-result JSON blob (e.g. from
+        # ``retrieve_memories``) becomes the "answer" — wrong, and a
+        # silent failure that scores 0 on llm_judge.
+        #
+        # Only events authored by our agent represent the LLM's own
+        # text output. The agent's name is set in _build, mirroring
+        # the same author-filter pattern neuromem_adk's
+        # after_agent_turn_capturer uses.
+        final_text = ""
+        for event in events:
+            if getattr(event, "author", None) != self._agent_name:
+                continue
+            content = getattr(event, "content", None)
+            if content is None:
+                continue
+            parts = getattr(content, "parts", None) or []
+            for part in parts:
+                text = getattr(part, "text", None)
+                if text:
+                    final_text = text
+        return final_text.strip()
+
+    def reset(self) -> None:
+        # Drop everything and rebuild. New SQLite :memory: DB, new
+        # Agent, new Runner, new session_id. The GC handles the old
+        # SQLiteAdapter's file-handle close via __del__.
+        self._memory = None
+        self._runner = None
+        self._build()
