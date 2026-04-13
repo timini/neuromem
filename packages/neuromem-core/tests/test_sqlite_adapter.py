@@ -488,6 +488,74 @@ class TestNamedEntitiesStorage:
         assert record["named_entities"] == []
 
 
+# ---------------------------------------------------------------------------
+# update_node_labels — render-time lazy centroid renaming (ADR-002)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateNodeLabels:
+    """``update_node_labels`` persists centroid labels generated lazily
+    at render time (per ADR-002). Tests lock in:
+
+    - Round-trip: write labels → read back via get_all_nodes → match.
+    - Empty updates dict is a cheap no-op.
+    - Missing node IDs are silently skipped (matches set_named_entities
+      and update_memory_status semantics).
+    - Renaming preserves the node's other fields (embedding, is_centroid).
+    - Repeated writes overwrite (last-write-wins).
+    """
+
+    def test_round_trips(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        adapter.upsert_node("n_a", "cluster_abc", embedding=np.array([1.0, 0.0]), is_centroid=True)
+        adapter.upsert_node("n_b", "cluster_def", embedding=np.array([0.0, 1.0]), is_centroid=True)
+
+        adapter.update_node_labels({"n_a": "retail", "n_b": "groceries"})
+
+        nodes = {n["id"]: n for n in adapter.get_all_nodes()}
+        assert nodes["n_a"]["label"] == "retail"
+        assert nodes["n_b"]["label"] == "groceries"
+
+    def test_empty_dict_is_noop(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        # Does not raise.
+        adapter.update_node_labels({})
+
+    def test_missing_ids_silently_skipped(self) -> None:
+        """An unknown node id in the updates dict produces a 0-row
+        UPDATE in SQLite — no error. Matches update_memory_status
+        and set_named_entities semantics."""
+        adapter = SQLiteAdapter(":memory:")
+        adapter.update_node_labels({"node_does_not_exist": "anything"})
+        # Verify it didn't somehow create the node.
+        assert adapter.get_all_nodes() == []
+
+    def test_preserves_other_node_fields(self) -> None:
+        """Renaming MUST NOT alter embedding, is_centroid, or any
+        other column on the node row."""
+        adapter = SQLiteAdapter(":memory:")
+        original_emb = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+        adapter.upsert_node("n_x", "cluster_old", embedding=original_emb, is_centroid=True)
+
+        adapter.update_node_labels({"n_x": "shopping"})
+
+        nodes = adapter.get_all_nodes()
+        assert len(nodes) == 1
+        node = nodes[0]
+        assert node["label"] == "shopping"
+        assert node["is_centroid"] is True
+        np.testing.assert_array_equal(node["embedding"], original_emb)
+
+    def test_overwrites_prior_label(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        adapter.upsert_node("n_y", "cluster_init", embedding=np.array([1.0]), is_centroid=False)
+        adapter.update_node_labels({"n_y": "first"})
+        adapter.update_node_labels({"n_y": "second"})
+
+        nodes = adapter.get_all_nodes()
+        assert nodes[0]["label"] == "second"
+
+
 # Silence unused-import lint rule on sqlite3 — it's imported above for
 # the type context and used directly in TestLifecycle for the
 # ProgrammingError assertion.

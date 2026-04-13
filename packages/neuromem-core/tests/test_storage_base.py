@@ -78,6 +78,9 @@ class TestStorageAdapterABC:
             ) -> None:
                 return None
 
+            def update_node_labels(self, updates: dict[str, str]) -> None:
+                return None
+
             def get_all_nodes(self) -> list[dict[str, Any]]:
                 return []
 
@@ -159,6 +162,9 @@ class TestStorageAdapterABC:
                 embedding: NDArray[np.floating] | list[float],
                 is_centroid: bool,
             ) -> None:
+                return None
+
+            def update_node_labels(self, updates: dict[str, str]) -> None:
                 return None
 
             def get_all_nodes(self) -> list[dict[str, Any]]:

@@ -164,6 +164,26 @@ class StorageAdapter(ABC):
         """
 
     @abstractmethod
+    def update_node_labels(self, updates: dict[str, str]) -> None:
+        """Atomically rename a batch of nodes by id.
+
+        Used by lazy centroid naming (ADR-002): centroids are written
+        with placeholder labels during the dream cycle and renamed at
+        render time to LLM-generated semantic ones. Persisting via
+        this method means the second render of the same query is a
+        cache hit.
+
+        Contract:
+        - Empty ``updates`` → no-op.
+        - Missing node IDs are silently skipped (a node was deleted
+          between subgraph fetch and naming — uncommon, harmless).
+        - Implementation MUST be atomic per call (single transaction
+          for storage that supports it).
+        - Existing ``embedding`` and ``is_centroid`` of the renamed
+          node are unchanged — only ``label`` updates.
+        """
+
+    @abstractmethod
     def get_all_nodes(self) -> list[dict[str, Any]]:
         """Return every node in storage with deserialised embeddings.
 
