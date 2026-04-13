@@ -44,15 +44,28 @@ class GeminiAnsweringClient:
         model: str = "gemini-2.0-flash-001",
         *,
         request_timeout_ms: int = 60_000,
+        rate_per_minute: int = 60,
     ) -> None:
         """``request_timeout_ms`` bounds every call; prevents a hung
         response from blocking the benchmark indefinitely. Same
-        rationale as the provider pair in ``neuromem-gemini``."""
+        rationale as the provider pair in ``neuromem-gemini``.
+
+        ``rate_per_minute`` — participates in the same token-bucket
+        budget as any ``GeminiLLMProvider`` / ``GeminiEmbeddingProvider``
+        constructed with the same ``api_key``. The answer LLM (this
+        client) is typically called once per benchmark instance so
+        it doesn't add much pressure, but sharing the budget means
+        the llm_judge metric's verdict call also gets throttled
+        when a whole run is in progress.
+        """
+        from neuromem_gemini._rate_limit import get_bucket  # noqa: PLC0415
+
         self._client = genai.Client(
             api_key=api_key,
             http_options=genai_types.HttpOptions(timeout=request_timeout_ms),
         )
         self._model = model
+        self._bucket = get_bucket(api_key, rate_per_minute)
 
     def generate(
         self,
@@ -67,6 +80,7 @@ class GeminiAnsweringClient:
             if system_instruction
             else None
         )
+        self._bucket.acquire()
         resp = self._client.models.generate_content(
             model=self._model,
             contents=user_message,
