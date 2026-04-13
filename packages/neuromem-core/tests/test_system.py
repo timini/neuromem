@@ -267,6 +267,105 @@ class TestEnqueueSync:
 
 
 # ---------------------------------------------------------------------------
+# enqueue_session — session-level ingestion
+# ---------------------------------------------------------------------------
+
+
+class TestEnqueueSession:
+    """``enqueue_session`` is the session-level counterpart to
+    ``enqueue``. A list of (role, text) turns becomes a single
+    memory whose raw_content is the concatenated transcript. The
+    key invariant we lock in here: only ONE LLM summary call per
+    session regardless of how many turns it contains.
+    """
+
+    def test_returns_single_memory_id(self, memory_system: NeuroMemory) -> None:
+        mem_id = memory_system.enqueue_session(
+            [
+                {"role": "user", "text": "hello"},
+                {"role": "assistant", "text": "hi there"},
+            ]
+        )
+        assert isinstance(mem_id, str)
+        assert mem_id.startswith("mem_")
+
+    def test_single_turn_valid(self, memory_system: NeuroMemory) -> None:
+        """A one-turn session is a degenerate but valid input."""
+        mem_id = memory_system.enqueue_session([{"role": "user", "text": "alone turn"}])
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row is not None
+        assert row["raw_content"] == "user: alone turn"
+
+    def test_transcript_format_in_raw_content(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """Turns are joined with a double newline and prefixed by role."""
+        mem_id = memory_system.enqueue_session(
+            [
+                {"role": "user", "text": "question?"},
+                {"role": "assistant", "text": "answer."},
+                {"role": "user", "text": "follow-up"},
+            ]
+        )
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["raw_content"] == ("user: question?\n\nassistant: answer.\n\nuser: follow-up")
+
+    def test_one_summary_call_per_session(
+        self,
+        mock_embedder: MockEmbeddingProvider,
+    ) -> None:
+        """The whole point of this method: a 10-turn session should
+        produce exactly ONE generate_summary call, not 10."""
+
+        class CountingLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.summary_call_count = 0
+
+            def generate_summary(self, raw_text: str) -> str:
+                self.summary_call_count += 1
+                return raw_text[:50]
+
+        llm = CountingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=mock_embedder,
+        )
+        turns = [
+            {"role": "user" if i % 2 == 0 else "assistant", "text": f"turn {i}"} for i in range(10)
+        ]
+        system.enqueue_session(turns)
+        assert llm.summary_call_count == 1
+
+    def test_metadata_attached_to_session_memory(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        mem_id = memory_system.enqueue_session(
+            [{"role": "user", "text": "hi"}],
+            metadata={"session_index": 5, "turn_count": 1},
+        )
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["metadata"] == {"session_index": 5, "turn_count": 1}
+
+    def test_empty_turns_raises(self, memory_system: NeuroMemory) -> None:
+        with pytest.raises(ValueError, match="turns must be non-empty"):
+            memory_system.enqueue_session([])
+
+    def test_turn_missing_keys_raises(self, memory_system: NeuroMemory) -> None:
+        with pytest.raises(ValueError, match="must have 'role' and 'text'"):
+            memory_system.enqueue_session([{"role": "user"}])  # no text
+        with pytest.raises(ValueError, match="must have 'role' and 'text'"):
+            memory_system.enqueue_session([{"text": "hi"}])  # no role
+
+    def test_turn_wrong_type_raises(self, memory_system: NeuroMemory) -> None:
+        with pytest.raises(ValueError, match="must be a dict"):
+            memory_system.enqueue_session(["just a string"])  # type: ignore[list-item]
+
+
+# ---------------------------------------------------------------------------
 # force_dream (T020 Half A: block=True runs sync; block=False lands in T021)
 # ---------------------------------------------------------------------------
 

@@ -3,7 +3,7 @@
 Every agent satisfies the :class:`BaseAgent` protocol:
 
     class BaseAgent(Protocol):
-        def process_turn(self, text: str, *, role: str) -> None: ...
+        def process_session(self, turns: list[dict[str, str]]) -> None: ...
         def answer(self, question: str) -> str: ...
         def reset(self) -> None: ...
 
@@ -57,26 +57,37 @@ from neuromem_bench._client import GeminiAnsweringClient
 class BaseAgent(Protocol):
     """Protocol every benchmark agent satisfies.
 
-    The runner calls ``process_turn`` for each turn in each
-    session of the benchmark instance, then ``answer`` once to
-    get the predicted response for the benchmark question, then
-    ``reset`` before the next instance.
+    The runner calls ``process_session`` once per session in the
+    benchmark instance, then ``answer`` once to get the predicted
+    response for the benchmark question, then ``reset`` before the
+    next instance.
+
+    **Sessions, not turns.** Earlier versions of this protocol used
+    ``process_turn(text, role)`` once per turn — which meant the
+    ``NeuromemAgent`` made one ``generate_summary`` LLM call per
+    turn (200+ calls per LongMemEval instance, tripping Gemini's
+    rate limits). Since LongMemEval's data model is explicitly
+    session-structured and the neuroscience we're modelling encodes
+    episodes rather than individual utterances, we now ingest at
+    the session level. Agents that internally care about
+    turn-granularity (NaiveRagAgent embeds each turn) can still
+    loop over ``turns`` inside their ``process_session``.
     """
 
-    def process_turn(self, text: str, *, role: str) -> None:
-        """Ingest one turn of conversation history.
+    def process_session(self, turns: list[dict[str, str]]) -> None:
+        """Ingest one session of conversation history.
 
-        Called once per turn per session. The agent accumulates
-        whatever state it needs — text buffer, vector store,
-        neuromem graph — so that a subsequent ``answer`` call
-        can use it.
+        Called once per session per instance. ``turns`` is a list
+        of ``{"role": ..., "text": ...}`` dicts in conversation
+        order. Agents accumulate whatever state they need so a
+        subsequent ``answer`` can use it.
         """
         ...
 
     def answer(self, question: str) -> str:
         """Return the agent's answer to the benchmark question.
 
-        Called once per instance, after all ``process_turn``
+        Called once per instance, after all ``process_session``
         calls for the instance's sessions have been made.
         """
         ...
@@ -124,10 +135,14 @@ class NullAgent(BaseAgent):
         self._max_turns = max_turns
         self._history: list[tuple[str, str]] = []
 
-    def process_turn(self, text: str, *, role: str) -> None:
-        self._history.append((role, text))
-        # Cap the history so we never build a prompt bigger than
-        # the model's context window. Oldest turns drop first.
+    def process_session(self, turns: list[dict[str, str]]) -> None:
+        # NullAgent's "memory" is just the most-recent N turns
+        # flattened, so we append each turn individually and trim at
+        # the tail. Session boundaries have no semantic meaning for
+        # this baseline — we're deliberately measuring what the raw
+        # LLM does with a sliding window of context.
+        for turn in turns:
+            self._history.append((turn["role"], turn["text"]))
         if len(self._history) > self._max_turns:
             self._history = self._history[-self._max_turns :]
 
@@ -188,13 +203,22 @@ class NaiveRagAgent(BaseAgent):
         self._texts: list[tuple[str, str]] = []  # (role, text)
         self._embeddings: list[np.ndarray] = []
 
-    def process_turn(self, text: str, *, role: str) -> None:
-        # Embed one turn. We do this per-turn rather than batching
-        # because the runner feeds turns sequentially and the
-        # alternative would be an extra ingestion phase.
-        vector = self._embedder.get_embeddings([text])[0]
-        self._texts.append((role, text))
-        self._embeddings.append(np.asarray(vector, dtype=np.float32))
+    def process_session(self, turns: list[dict[str, str]]) -> None:
+        # NaiveRag intentionally keeps per-turn retrieval granularity
+        # — that's the whole point of vector-store baselines: match
+        # specific utterances, not session summaries. So within a
+        # session we still embed each turn separately. The only
+        # session-level thing here is that we batch the embedding
+        # call, cutting the per-session API round-trips from N to 1.
+        if not turns:
+            return
+        texts = [t["text"] for t in turns]
+        # Embedder handles batches natively (up to 100 per Gemini
+        # call); one API call per session here is optimal.
+        vectors = self._embedder.get_embeddings(texts)
+        for turn, vector in zip(turns, vectors, strict=True):
+            self._texts.append((turn["role"], turn["text"]))
+            self._embeddings.append(np.asarray(vector, dtype=np.float32))
 
     def answer(self, question: str) -> str:
         if not self._texts:
@@ -290,6 +314,10 @@ class NeuromemAgent(BaseAgent):
         self._cluster_threshold = cluster_threshold
         self._client = GeminiAnsweringClient(api_key=api_key, model=model)
         self._memory: NeuroMemory | None = None
+        # Per-session ordinal written into each memory's metadata
+        # (starts at 1 on the first process_session call, resets on
+        # reset()). Useful for downstream filtering/analytics.
+        self._session_index = 0
         self._build_memory()
 
     def _build_memory(self) -> None:
@@ -303,9 +331,26 @@ class NeuromemAgent(BaseAgent):
             cluster_threshold=self._cluster_threshold,
         )
 
-    def process_turn(self, text: str, *, role: str) -> None:
+    def process_session(self, turns: list[dict[str, str]]) -> None:
+        # One memory per session — the whole rationale for the
+        # session-level ingestion shift. A 4-turn session becomes
+        # a single NeuroMemory with the concatenated transcript as
+        # raw_content and a single generate_summary call capturing
+        # the session's narrative arc. Cuts the per-instance API
+        # call count 4-5× and produces denser, more coherent
+        # memories that preserve relationships between adjacent
+        # turns (which per-turn summarisation would miss).
         assert self._memory is not None
-        self._memory.enqueue(text, metadata={"role": role})
+        if not turns:
+            return
+        self._session_index += 1
+        self._memory.enqueue_session(
+            turns,
+            metadata={
+                "session_index": self._session_index,
+                "turn_count": len(turns),
+            },
+        )
 
     def answer(self, question: str) -> str:
         assert self._memory is not None
@@ -341,6 +386,7 @@ class NeuromemAgent(BaseAgent):
         # cleanup path for SQLiteAdapter closes the file handle
         # (see its __del__).
         self._memory = None
+        self._session_index = 0
         self._build_memory()
 
 
@@ -426,12 +472,14 @@ class NeuromemAdkAgent(BaseAgent):
         # text parts are authored by this string; tool-result events
         # are not).
         self._agent_name = "benchmark_agent"
-        # Turn counter for metadata — matches the schema the
-        # after_agent_callback in neuromem-adk uses so memories
-        # captured via the ADK runner (at answer time) and memories
-        # captured via our bypass path (at ingestion time) share the
-        # same ``metadata["turn"]`` field.
-        self._turn_index = 0
+        # Session counter for metadata on ingested memories (1-indexed,
+        # reset per benchmark instance via _build). ADK's own
+        # after_agent_turn_capturer still writes a per-turn ``turn``
+        # field for memories captured at answer time — those are
+        # complementary events; ingestion goes through the bypass path
+        # (one memory per whole session) while answer-time Q+A capture
+        # goes through the ADK callback (one memory per turn pair).
+        self._session_index = 0
         self._memory = None  # type: ignore[assignment]
         self._runner = None  # type: ignore[assignment]
         self._build()
@@ -454,10 +502,10 @@ class NeuromemAdkAgent(BaseAgent):
         from neuromem_adk import enable_memory  # noqa: PLC0415
 
         self._session_id = f"instance-{uuid.uuid4().hex[:12]}"
-        # Turn counter resets per benchmark instance so the metadata
-        # ``turn`` field starts at 1 for each instance's first ingested
-        # turn — matching what the ADK callback path would emit.
-        self._turn_index = 0
+        # Session counter resets per benchmark instance so the
+        # metadata ``session_index`` field starts at 1 for each
+        # instance's first ingested session.
+        self._session_index = 0
 
         # Construct the ADK agent with an instruction that hints tool
         # use. Passive context injection lands in the system prompt
@@ -509,17 +557,24 @@ class NeuromemAdkAgent(BaseAgent):
             auto_create_session=True,
         )
 
-    def process_turn(self, text: str, *, role: str) -> None:
-        # Bypass ADK for ingestion. See class docstring for why.
-        # Metadata schema mirrors what neuromem_adk's
-        # after_agent_turn_capturer writes when the ADK runner is
-        # driven for a turn — both ``role`` and ``turn`` fields. Keeping
-        # the schema identical means downstream consumers (rendering,
-        # filtering, future analytics) can't tell whether a memory was
-        # captured via this bypass or via the ADK callback path.
+    def process_session(self, turns: list[dict[str, str]]) -> None:
+        # Bypass ADK for ingestion and ingest at the session level.
+        # One memory per session, one generate_summary call per
+        # session — matches NeuromemAgent's new behaviour so the
+        # two benchmark arms differ only in their answer-time paths
+        # (the whole point of NeuromemAdkAgent is tool access at
+        # answer time, not a different ingestion strategy).
         assert self._memory is not None
-        self._turn_index += 1
-        self._memory.enqueue(text, metadata={"role": role, "turn": self._turn_index})
+        if not turns:
+            return
+        self._session_index += 1
+        self._memory.enqueue_session(
+            turns,
+            metadata={
+                "session_index": self._session_index,
+                "turn_count": len(turns),
+            },
+        )
 
     def answer(self, question: str) -> str:
         import asyncio  # noqa: PLC0415
