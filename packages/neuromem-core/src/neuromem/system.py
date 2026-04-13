@@ -187,6 +187,173 @@ class NeuroMemory:
         thread.start()
         return thread
 
+    def resolve_centroid_names(self, nodes: list[dict]) -> None:
+        """Lazily name centroids that still have placeholder labels.
+
+        Per ADR-002 (lazy centroid naming): the dream-cycle clustering
+        loop writes centroids with placeholder labels of the form
+        ``cluster_<12-hex-chars>``. This method, called from
+        ``ContextHelper.build_prompt_context`` at render time, replaces
+        those placeholders with LLM-generated semantic ones — but
+        ONLY for centroids actually appearing in the rendered subgraph.
+
+        Algorithm:
+        1. Filter ``nodes`` to centroids whose label still has the
+           placeholder prefix. If none, return — nothing to do.
+        2. For each placeholder centroid, fetch its ``child_of``
+           children from storage. Build a list of pairs (the two
+           child labels) per centroid.
+        3. Try ``llm.generate_category_names_batch(pairs)`` — one
+           round-trip for all of them.
+        4. On any failure (exception, length mismatch, empty name),
+           fall back to numpy nearest-neighbour for the failed
+           centroids: the centroid is renamed to the label of its
+           child whose embedding has the highest cosine similarity
+           to the centroid's own embedding.
+        5. Persist all updates via ``storage.update_node_labels`` —
+           a single transaction. Subsequent renders touching the
+           same centroids skip naming entirely.
+        6. Mutate the in-memory ``nodes`` list dicts so the immediate
+           render uses the new labels without a re-fetch.
+
+        NEVER raises. Worst case: every placeholder stays as
+        ``cluster_a3f8b1c01234`` — ugly but the renderer still
+        returns a tree.
+        """
+        try:
+            self._do_resolve_centroid_names(nodes)
+        except Exception:
+            logger.exception(
+                "resolve_centroid_names: unexpected error, leaving centroid "
+                "labels as placeholders. Render will still succeed with "
+                "ugly labels."
+            )
+
+    def _do_resolve_centroid_names(self, nodes: list[dict]) -> None:
+        """Inner implementation of resolve_centroid_names. May raise;
+        the public wrapper catches and logs."""
+        placeholders = [
+            n for n in nodes if n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
+        ]
+        if not placeholders:
+            return
+
+        # Gather each placeholder centroid's children once. Store the
+        # full child node records (id, label, embedding) so the numpy
+        # fallback path can use embeddings without a second fetch.
+        children_by_centroid: dict[str, list[dict]] = {}
+        for centroid in placeholders:
+            child_records = self._fetch_child_records(centroid["id"])
+            if child_records:
+                children_by_centroid[centroid["id"]] = child_records
+        if not children_by_centroid:
+            return
+
+        # Try batched LLM naming, then numpy fallback for anything left
+        # unnamed. Each helper returns a {centroid_id: new_label} dict.
+        ordered_centroid_ids = list(children_by_centroid.keys())
+        updates = self._try_batched_naming(ordered_centroid_ids, children_by_centroid)
+        for centroid in placeholders:
+            cid = centroid["id"]
+            if cid in updates or cid not in children_by_centroid:
+                continue
+            updates[cid] = self._nearest_child_label(centroid, children_by_centroid[cid])
+
+        if not updates:
+            return
+
+        # Persist + mutate the in-memory nodes list in place.
+        self.storage.update_node_labels(updates)
+        for node in nodes:
+            new_label = updates.get(node["id"])
+            if new_label is not None:
+                node["label"] = new_label
+
+    def _try_batched_naming(
+        self,
+        ordered_centroid_ids: list[str],
+        children_by_centroid: dict[str, list[dict]],
+    ) -> dict[str, str]:
+        """Try the batched LLM naming. Return a partial
+        ``{centroid_id: name}`` dict on success (skipping centroids
+        whose returned name was empty). Return an empty dict on any
+        failure — the caller falls back to numpy nearest-neighbour for
+        every still-unnamed centroid.
+        """
+        pair_list: list[list[str]] = [
+            [c["label"] for c in children_by_centroid[cid][:2]] for cid in ordered_centroid_ids
+        ]
+        try:
+            names = self.llm.generate_category_names_batch(pair_list)
+            if len(names) != len(pair_list):
+                raise ValueError(
+                    f"generate_category_names_batch returned {len(names)} "
+                    f"names for {len(pair_list)} pairs"
+                )
+        except Exception:
+            logger.warning(
+                "resolve_centroid_names: batched LLM naming failed; "
+                "falling back to numpy nearest-neighbour for %d centroid(s)",
+                len(ordered_centroid_ids),
+                exc_info=True,
+            )
+            return {}
+
+        updates: dict[str, str] = {}
+        for cid, name in zip(ordered_centroid_ids, names, strict=True):
+            first_word = (name or "").strip().split()[0:1]
+            if first_word:
+                updates[cid] = first_word[0]
+        return updates
+
+    def _fetch_child_records(self, centroid_id: str) -> list[dict]:
+        """Return the centroid's child node records via a depth-1
+        subgraph fetch. Each record has ``id``, ``label``, and
+        ``embedding`` (the latter is needed for the numpy fallback).
+        Returns an empty list if the centroid has no child_of edges.
+        """
+        sub = self.storage.get_subgraph([centroid_id], depth=1)
+        nodes_by_id = {n["id"]: n for n in sub.get("nodes", [])}
+        child_ids = [
+            e["target_id"]
+            for e in sub.get("edges", [])
+            if e.get("relationship") == "child_of" and e.get("source_id") == centroid_id
+        ]
+        return [nodes_by_id[cid] for cid in child_ids if cid in nodes_by_id]
+
+    @staticmethod
+    def _nearest_child_label(centroid: dict, children: list[dict]) -> str:
+        """Return the label of whichever child has the highest cosine
+        similarity to ``centroid``'s embedding. Used as the numpy
+        fallback when the LLM batched naming fails.
+
+        If ``centroid`` lacks an embedding (shouldn't happen — clustering
+        always writes one), or if all children lack embeddings, returns
+        the first child's label as a last-ditch fallback.
+        """
+        centroid_emb = centroid.get("embedding")
+        if centroid_emb is None or not children:
+            return children[0]["label"] if children else _PLACEHOLDER_LABEL_PREFIX
+        c_vec = np.asarray(centroid_emb, dtype=np.float64)
+        c_norm = float(np.linalg.norm(c_vec))
+        if c_norm == 0.0:
+            return children[0]["label"]
+        best_label = children[0]["label"]
+        best_sim = -np.inf
+        for child in children:
+            emb = child.get("embedding")
+            if emb is None:
+                continue
+            v = np.asarray(emb, dtype=np.float64)
+            n = float(np.linalg.norm(v))
+            if n == 0.0:
+                continue
+            sim = float(np.dot(c_vec, v) / (c_norm * n))
+            if sim > best_sim:
+                best_sim = sim
+                best_label = child["label"]
+        return best_label
+
     def force_dream(self, block: bool = True) -> None:
         """Manually trigger a dreaming cycle.
 
