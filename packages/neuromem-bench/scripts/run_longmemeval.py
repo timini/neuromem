@@ -25,7 +25,8 @@ Options:
                      Defaults to contains (cheap, deterministic,
                      tolerant of phrasing differences).
     --model          Gemini model for the agents. Defaults to
-                     gemini-2.0-flash-001.
+                     gemini-flash-latest. Avoid preview-tier models
+                     for long runs — their rate limits are punishing.
 
 Cost note: a 5-instance smoke run against LongMemEval_s burns
 roughly 15–30K tokens through the neuromem agent (each instance
@@ -42,6 +43,23 @@ import os
 import sys
 import warnings
 from pathlib import Path
+
+# Force unbuffered stdout/stderr so progress shows up in real time even
+# when piped through ``tee`` or redirected to a file. Python otherwise
+# block-buffers stdout when it isn't attached to a TTY, which meant
+# a 10+ hour benchmark run produced ZERO visible progress before we
+# killed it (see docs/investigations for the PR writeup). Setting
+# reconfigure(line_buffering=True) takes effect immediately and is
+# cheap; the alternative (PYTHONUNBUFFERED=1 env var) requires the
+# caller to remember to set it, which nobody does.
+try:
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+except (AttributeError, OSError):
+    # Python < 3.7 or a stdout replacement that doesn't support
+    # reconfigure — fall back silently, the explicit flush=True calls
+    # in the runner still cover the critical progress lines.
+    pass
 
 # Suppress the usual upstream warnings from google-adk / google-genai
 # that the workspace filterwarnings=['error'] config would otherwise
@@ -91,6 +109,7 @@ def _resolve_api_key() -> str:
     print(
         "ERROR: no GOOGLE_API_KEY / GEMINI_API_KEY in env or repo-root .env",
         file=sys.stderr,
+        flush=True,
     )
     sys.exit(1)
 
@@ -172,8 +191,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gemini-2.0-flash-001",
-        help="Gemini model name (default: gemini-2.0-flash-001)",
+        default="gemini-flash-latest",
+        help=(
+            "Gemini model name (default: gemini-flash-latest — rolling "
+            "alias for the current stable flash tier). Preview models "
+            "(e.g. gemini-3.1-flash-lite-preview) have aggressive "
+            "rate limits and are NOT recommended for long benchmark "
+            "runs — they can stall indefinitely under sustained load."
+        ),
     )
     args = parser.parse_args()
 
@@ -209,9 +234,10 @@ def main() -> None:
             f"\n{'=' * 72}\n"
             f"Running LongMemEval split={args.split} "
             f"agent={agent_name} metric={metric_name} "
-            f"limit={limit}\n"
+            f"limit={limit} model={args.model}\n"
             f"Output: {output_path}\n"
-            f"{'=' * 72}"
+            f"{'=' * 72}",
+            flush=True,
         )
 
         run_benchmark(

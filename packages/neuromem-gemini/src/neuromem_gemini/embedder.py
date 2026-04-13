@@ -35,9 +35,9 @@ try:
         ServerError,
         httpx.RemoteProtocolError,
         httpx.ConnectError,
-        httpx.ReadTimeout,
-        httpx.WriteTimeout,
-        httpx.PoolTimeout,
+        # TimeoutException covers every subclass (Read/Write/Pool/Connect)
+        # — see llm.py for the rationale on catching the base.
+        httpx.TimeoutException,
     )
 except ImportError:
     pass
@@ -63,10 +63,27 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         self,
         api_key: str,
         model: str = "gemini-embedding-001",
+        *,
+        request_timeout_ms: int = 60_000,
     ) -> None:
+        """Construct a Gemini-backed EmbeddingProvider.
+
+        ``request_timeout_ms`` bounds every underlying HTTP call —
+        same intent as ``GeminiLLMProvider``. A hung embed call blocks
+        the whole dream cycle if we don't put a ceiling on it. 60 s
+        handles a max-sized batch (100 texts) comfortably while still
+        failing fast on a stalled connection.
+        """
         if not api_key:
             raise ValueError("api_key must be non-empty")
-        self._client = genai.Client(api_key=api_key)
+        if request_timeout_ms <= 0:
+            raise ValueError(f"request_timeout_ms must be > 0, got {request_timeout_ms}")
+        from google.genai.types import HttpOptions  # noqa: PLC0415
+
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=HttpOptions(timeout=request_timeout_ms),
+        )
         self._model = model
 
     # Gemini's ``embed_content`` endpoint caps at 100 texts per batch.

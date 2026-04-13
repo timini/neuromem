@@ -41,9 +41,11 @@ try:
         ServerError,
         httpx.RemoteProtocolError,
         httpx.ConnectError,
-        httpx.ReadTimeout,
-        httpx.WriteTimeout,
-        httpx.PoolTimeout,
+        # TimeoutException is the base class of ReadTimeout / WriteTimeout /
+        # PoolTimeout / ConnectTimeout — catching the base ensures we
+        # retry on any timeout variant without having to keep the
+        # subclass list in sync as httpx evolves.
+        httpx.TimeoutException,
     )
 except ImportError:
     pass
@@ -129,10 +131,32 @@ class GeminiLLMProvider(LLMProvider):
         self,
         api_key: str,
         model: str = "gemini-2.0-flash-001",
+        *,
+        request_timeout_ms: int = 60_000,
     ) -> None:
+        """Construct a Gemini-backed LLMProvider.
+
+        ``request_timeout_ms`` bounds every underlying HTTP call. A call
+        that takes longer than this raises via httpx and surfaces to
+        ``_generate_with_retry`` as a transport error (which triggers
+        the standard 5-attempt exponential backoff, then gives up).
+        Without this, a hung Gemini response (mid-stream stall, silent
+        TCP drop, etc.) blocks the caller indefinitely — which is
+        exactly what the 10-hour benchmark hang on the preview
+        flash-lite model turned out to be. 60 s is generous enough for
+        large batched calls (extract_tags_batch over 100 summaries)
+        while still failing fast when something's wrong.
+        """
         if not api_key:
             raise ValueError("api_key must be non-empty")
-        self._client = genai.Client(api_key=api_key)
+        if request_timeout_ms <= 0:
+            raise ValueError(f"request_timeout_ms must be > 0, got {request_timeout_ms}")
+        from google.genai.types import HttpOptions  # noqa: PLC0415
+
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=HttpOptions(timeout=request_timeout_ms),
+        )
         self._model = model
 
     # ------------------------------------------------------------------

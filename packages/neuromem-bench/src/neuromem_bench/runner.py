@@ -24,6 +24,7 @@ at the instance level.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -38,6 +39,26 @@ from neuromem_bench.metrics import contains_match
 # returns a float score in [0.0, 1.0]. Not every metric uses ``question``
 # (exact_match doesn't) but we pass it so llm_judge works transparently.
 MetricFn = Callable[[str, str, str], float]
+
+
+def _log(verbose: bool, message: str) -> None:
+    """Emit a progress line with UTC timestamp and immediate flush.
+
+    ``flush=True`` is critical: when the runner is invoked under
+    ``tee`` or a similar pipe, Python's default block-buffered stdout
+    swallows prints until the buffer fills (typically 8 KB) or the
+    process exits. For a benchmark where instances take 20+ minutes,
+    that means zero visible signal for hours — which is exactly the
+    hang-detection regression that motivated this helper.
+
+    The UTC timestamp lets a log-tail user see the cadence of progress
+    markers and spot stalls directly (if two markers are 10 min apart
+    on something that should take 10 s, something's wrong).
+    """
+    if not verbose:
+        return
+    stamp = time.strftime("%H:%M:%S", time.gmtime())
+    print(f"[{stamp}Z] {message}", flush=True, file=sys.stdout)
 
 
 @dataclass
@@ -120,6 +141,13 @@ def run_benchmark(
     start_all = time.perf_counter()
     try:
         for idx, instance in enumerate(dataset.load(limit=limit)):
+            _log(
+                verbose,
+                f"[{idx + 1}] START  instance={instance.instance_id[:8]} "
+                f"type={instance.question_type or '?'} "
+                f"sessions={len(instance.sessions)} "
+                f"Q: {instance.question[:60]!r}",
+            )
             result = _run_one_instance(
                 instance=instance,
                 agent=agent,
@@ -128,6 +156,8 @@ def run_benchmark(
                 agent_name=agent_name,
                 dataset_name=dataset.name,
                 dataset_split=dataset.split,
+                verbose=verbose,
+                instance_number=idx + 1,
             )
             results.append(result)
 
@@ -135,13 +165,10 @@ def run_benchmark(
                 jsonl_handle.write(json.dumps(asdict(result)) + "\n")
                 jsonl_handle.flush()
 
-            if verbose:
-                print(
-                    f"[{idx + 1}] [{result.question_type or '?':25}] "
-                    f"score={result.score:.2f}  "
-                    f"t={result.wall_time_s:.1f}s  "
-                    f"Q: {result.question[:60]!r}"
-                )
+            _log(
+                verbose,
+                f"[{idx + 1}] DONE   score={result.score:.2f}  t={result.wall_time_s:.1f}s",
+            )
     finally:
         if jsonl_handle is not None:
             jsonl_handle.close()
@@ -158,17 +185,15 @@ def run_benchmark(
     if output_jsonl is not None:
         summary_md = output_jsonl.with_suffix(".md")
         _write_summary_markdown(summary, summary_md)
-        if verbose:
-            print(f"\n[neuromem-bench] JSONL results:  {output_jsonl}")
-            print(f"[neuromem-bench] markdown summary: {summary_md}")
+        _log(verbose, f"JSONL results:  {output_jsonl}")
+        _log(verbose, f"markdown summary: {summary_md}")
 
-    if verbose:
-        print(
-            f"\n[neuromem-bench] FINAL "
-            f"mean={summary.mean_score:.3f} "
-            f"n={summary.instance_count} "
-            f"wall_time={summary.wall_time_s:.1f}s"
-        )
+    _log(
+        verbose,
+        f"FINAL mean={summary.mean_score:.3f} "
+        f"n={summary.instance_count} "
+        f"wall_time={summary.wall_time_s:.1f}s",
+    )
 
     return summary
 
@@ -182,18 +207,43 @@ def _run_one_instance(
     agent_name: str,
     dataset_name: str,
     dataset_split: str,
+    verbose: bool = True,
+    instance_number: int | None = None,
 ) -> InstanceResult:
-    """Drive one instance through the agent and score the result."""
+    """Drive one instance through the agent and score the result.
+
+    When ``verbose`` is True, emits progress markers at the natural
+    phase boundaries (reset complete, ingestion complete, answer
+    complete, scored) so a piped run shows *some* signal of progress
+    instead of going silent for 20+ minutes between instance-end
+    lines. Each marker includes elapsed seconds since instance start
+    so a stalled phase is obvious from the log.
+    """
+    prefix = f"[{instance_number}]   " if instance_number is not None else "    "
+
     agent.reset()
     start = time.perf_counter()
+    _log(verbose, f"{prefix}- reset done, starting ingestion")
 
     # Ingest all sessions in order.
+    turn_count = 0
     for session in instance.sessions:
         for turn in session.turns:
             agent.process_turn(turn.text, role=turn.role)
+            turn_count += 1
+    _log(
+        verbose,
+        f"{prefix}- ingestion done "
+        f"({turn_count} turns across {len(instance.sessions)} sessions, "
+        f"elapsed={time.perf_counter() - start:.1f}s)",
+    )
 
     prediction = agent.answer(instance.question)
     elapsed = time.perf_counter() - start
+    _log(
+        verbose,
+        f"{prefix}- answer done (elapsed={elapsed:.1f}s), scoring…",
+    )
     score = metric(prediction, instance.gold_answer, instance.question)
 
     return InstanceResult(
