@@ -49,6 +49,18 @@ DEFAULT_DECAY_LAMBDA = 3e-7  # per second → ~30-day half-life
 DEFAULT_ARCHIVE_THRESHOLD = 0.1
 DEFAULT_CLUSTER_THRESHOLD = 0.82
 
+# Centroids written during ``_run_clustering`` get a placeholder label
+# of the form ``cluster_<12-hex-chars>``. The lazy naming flow
+# (ADR-002) recognises this prefix at render time and replaces the
+# placeholder with an LLM-generated semantic name. The 12-hex suffix
+# is sourced from the centroid's UUID so labels remain unique even
+# before naming.
+#
+# An LLM SHOULD NOT ever return a label that matches this exact form
+# (lowercase "cluster_" + 12 hex chars) — but if it did, the resolver
+# would treat it as still-placeholder and rename it again. Harmless.
+_PLACEHOLDER_LABEL_PREFIX = "cluster_"
+
 
 class NeuroMemory:
     """Cognitive orchestration engine for ``neuromem-core``.
@@ -461,11 +473,17 @@ class NeuroMemory:
             a = candidates[i]
             b = candidates[j]
 
-            # Merge: compute centroid, name it, persist.
+            # Merge: compute centroid, write with placeholder label,
+            # persist. ADR-002 (lazy centroid naming) defers naming to
+            # render time — see ``ContextHelper.build_prompt_context``
+            # which calls ``NeuroMemory.resolve_centroid_names`` to
+            # rename placeholders to LLM-generated semantic ones, but
+            # only for centroids that actually appear in the rendered
+            # subgraph. The placeholder format is recognised by the
+            # resolver via the "cluster_" prefix.
             centroid_emb = compute_centroid([a["embedding"], b["embedding"]])
-            raw_label = self.llm.generate_category_name([a["label"], b["label"]])
-            parent_label = _sanitise_category_name(raw_label)
             centroid_id = f"node_{uuid.uuid4()}"
+            parent_label = _PLACEHOLDER_LABEL_PREFIX + centroid_id[5:17]
 
             self.storage.upsert_node(
                 node_id=centroid_id,
