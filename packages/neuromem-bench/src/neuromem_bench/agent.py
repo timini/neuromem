@@ -390,12 +390,10 @@ class NeuromemAdkAgent(BaseAgent):
       Expect 2-5× the latency of the one-shot path. That's the cost
       of measuring the real product.
 
-    - ``enable_memory`` doesn't expose ``cluster_threshold`` or
-      ``dream_threshold`` kwargs; we mutate both attributes on the
-      returned ``NeuroMemory`` instance after the call to keep the
-      config consistent with :class:`NeuromemAgent`. A future
-      enable_memory signature could accept **kwargs — flagged as a
-      follow-up, not blocking.
+    - Thresholds are passed to ``enable_memory`` directly via its
+      ``cluster_threshold`` and ``dream_threshold`` kwargs (added in
+      PR #49). Matches the tuning :class:`NeuromemAgent` uses for
+      apples-to-apples benchmark comparison.
 
     - Ingestion bypasses the ADK path entirely. The fully orthodox
       version would drive the Runner for every turn, but that
@@ -487,20 +485,20 @@ class NeuromemAdkAgent(BaseAgent):
             ),
         )
 
+        # Thresholds go in as kwargs via enable_memory (PR #49). No
+        # post-hoc attribute mutation needed. Matches NeuromemAgent's
+        # tuning (cluster_threshold=0.55, dream_threshold=9999) for
+        # apples-to-apples benchmark comparison. dream_threshold=9999
+        # effectively disables auto-dream during ingestion; we force
+        # one consolidation at answer time, same as NeuromemAgent.
         memory = enable_memory(
             agent,
             db_path=":memory:",
             llm=GeminiLLMProvider(api_key=self._api_key, model=self._model),
             embedder=GeminiEmbeddingProvider(api_key=self._api_key, model=self._embedder_model),
+            cluster_threshold=self._cluster_threshold,
+            dream_threshold=9999,
         )
-
-        # enable_memory doesn't expose these kwargs; tune post-hoc so
-        # the config matches NeuromemAgent for apples-to-apples
-        # benchmark comparison.
-        memory.cluster_threshold = self._cluster_threshold
-        # Prevent auto-dream during per-turn enqueue; we force one
-        # consolidation at answer time, same as NeuromemAgent.
-        memory.dream_threshold = 9999
 
         self._memory = memory
 

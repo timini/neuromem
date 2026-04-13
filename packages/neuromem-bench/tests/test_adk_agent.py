@@ -109,8 +109,8 @@ def patched_adk():
 class TestConstruction:
     def test_constructor_builds_memory_and_runner(self, patched_adk) -> None:
         """Post-__init__, all wiring should be in place: enable_memory
-        called once, a Runner built, the cluster_threshold and
-        dream_threshold tuned on the returned memory."""
+        called once (with the threshold kwargs from PR #49), a Runner
+        built, and the session_id populated."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         agent = NeuromemAdkAgent(api_key="fake-key", model="gemini-flash-latest")
@@ -118,19 +118,25 @@ class TestConstruction:
         assert patched_adk["enable_memory"].call_count == 1
         assert patched_adk["runner_cls"].call_count == 1
 
-        # cluster_threshold + dream_threshold mutated to match the
-        # tuning NeuromemAgent uses — lets apples-to-apples comparison.
-        assert patched_adk["fake_memory"].cluster_threshold == 0.55
-        assert patched_adk["fake_memory"].dream_threshold == 9999
+        # Thresholds are passed as enable_memory kwargs (not post-hoc
+        # mutation). Inspect the call-kwargs to verify the config
+        # matches NeuromemAgent's tuning for apples-to-apples
+        # benchmark comparison.
+        _, kwargs = patched_adk["enable_memory"].call_args
+        assert kwargs["cluster_threshold"] == 0.55
+        assert kwargs["dream_threshold"] == 9999
 
         # Session id is populated and has the expected prefix.
         assert agent._session_id.startswith("instance-")
 
     def test_custom_cluster_threshold_passes_through(self, patched_adk) -> None:
+        """A non-default cluster_threshold on the agent flows through
+        to enable_memory's cluster_threshold kwarg unchanged."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         NeuromemAdkAgent(api_key="fake-key", cluster_threshold=0.7)
-        assert patched_adk["fake_memory"].cluster_threshold == 0.7
+        _, kwargs = patched_adk["enable_memory"].call_args
+        assert kwargs["cluster_threshold"] == 0.7
 
 
 # ---------------------------------------------------------------------------
