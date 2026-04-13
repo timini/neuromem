@@ -38,8 +38,20 @@ class GeminiAnsweringClient:
     this client just does the final LLM turn.
     """
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-001") -> None:
-        self._client = genai.Client(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-2.0-flash-001",
+        *,
+        request_timeout_ms: int = 60_000,
+    ) -> None:
+        """``request_timeout_ms`` bounds every call; prevents a hung
+        response from blocking the benchmark indefinitely. Same
+        rationale as the provider pair in ``neuromem-gemini``."""
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=genai_types.HttpOptions(timeout=request_timeout_ms),
+        )
         self._model = model
 
     def generate(
