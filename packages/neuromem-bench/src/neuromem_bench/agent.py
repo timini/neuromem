@@ -423,6 +423,17 @@ class NeuromemAdkAgent(BaseAgent):
         self._app_name = "neuromem-bench"
         self._user_id = "benchmark-user"
         self._session_id: str = ""  # populated in _build
+        # Agent name is used both when constructing the ADK Agent AND
+        # when filtering events by author at answer time (the LLM's
+        # text parts are authored by this string; tool-result events
+        # are not).
+        self._agent_name = "benchmark_agent"
+        # Turn counter for metadata — matches the schema the
+        # after_agent_callback in neuromem-adk uses so memories
+        # captured via the ADK runner (at answer time) and memories
+        # captured via our bypass path (at ingestion time) share the
+        # same ``metadata["turn"]`` field.
+        self._turn_index = 0
         self._memory = None  # type: ignore[assignment]
         self._runner = None  # type: ignore[assignment]
         self._build()
@@ -445,6 +456,10 @@ class NeuromemAdkAgent(BaseAgent):
         from neuromem_adk import enable_memory  # noqa: PLC0415
 
         self._session_id = f"instance-{uuid.uuid4().hex[:12]}"
+        # Turn counter resets per benchmark instance so the metadata
+        # ``turn`` field starts at 1 for each instance's first ingested
+        # turn — matching what the ADK callback path would emit.
+        self._turn_index = 0
 
         # Construct the ADK agent with an instruction that hints tool
         # use. Passive context injection lands in the system prompt
@@ -453,7 +468,7 @@ class NeuromemAdkAgent(BaseAgent):
         # aren't enough.
         agent = Agent(
             model=self._model,
-            name="benchmark_agent",
+            name=self._agent_name,
             instruction=(
                 "You are a helpful assistant with access to long-term "
                 "memory. Before each of your responses, a tree of "
@@ -498,8 +513,15 @@ class NeuromemAdkAgent(BaseAgent):
 
     def process_turn(self, text: str, *, role: str) -> None:
         # Bypass ADK for ingestion. See class docstring for why.
+        # Metadata schema mirrors what neuromem_adk's
+        # after_agent_turn_capturer writes when the ADK runner is
+        # driven for a turn — both ``role`` and ``turn`` fields. Keeping
+        # the schema identical means downstream consumers (rendering,
+        # filtering, future analytics) can't tell whether a memory was
+        # captured via this bypass or via the ADK callback path.
         assert self._memory is not None
-        self._memory.enqueue(text, metadata={"role": role})
+        self._turn_index += 1
+        self._memory.enqueue(text, metadata={"role": role, "turn": self._turn_index})
 
     def answer(self, question: str) -> str:
         import asyncio  # noqa: PLC0415
@@ -522,12 +544,21 @@ class NeuromemAdkAgent(BaseAgent):
             )
         )
 
-        # Walk the event list in reverse — the last text-bearing part
-        # on the last agent-authored event is the final response.
-        # Tool-invocation events may appear earlier; we skip them by
-        # taking the LAST text part.
+        # CRITICAL: filter by author. ADK emits events for tool calls
+        # AND tool RESULTS, both of which can have text-bearing
+        # ``content.parts``. If we naively grab the last text part
+        # across all events, a tool-result JSON blob (e.g. from
+        # ``retrieve_memories``) becomes the "answer" — wrong, and a
+        # silent failure that scores 0 on llm_judge.
+        #
+        # Only events authored by our agent represent the LLM's own
+        # text output. The agent's name is set in _build, mirroring
+        # the same author-filter pattern neuromem_adk's
+        # after_agent_turn_capturer uses.
         final_text = ""
         for event in events:
+            if getattr(event, "author", None) != self._agent_name:
+                continue
             content = getattr(event, "content", None)
             if content is None:
                 continue

@@ -49,11 +49,19 @@ class _FakeMemory:
         self.force_dream_count += 1
 
 
-def _fake_event(text: str):
+def _fake_event(text: str, *, author: str = "benchmark_agent"):
     """Build an ADK-event-shaped SimpleNamespace with a single
-    text-bearing part. NeuromemAdkAgent.answer walks ``events[*]
-    .content.parts[*].text`` so this shape is the minimum."""
-    return SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text=text)]))
+    text-bearing part and a configurable author.
+
+    ``answer()`` filters by author — events whose author isn't the
+    agent's name are skipped (e.g. tool-result events, system
+    events). Tests that want to exercise the filter pass
+    ``author="some_other_thing"``. Default is ``"benchmark_agent"``,
+    which matches the hard-coded agent name in NeuromemAdkAgent."""
+    return SimpleNamespace(
+        author=author,
+        content=SimpleNamespace(parts=[SimpleNamespace(text=text)]),
+    )
 
 
 @pytest.fixture
@@ -131,10 +139,11 @@ class TestConstruction:
 
 
 class TestProcessTurn:
-    def test_enqueues_text_with_role_metadata(self, patched_adk) -> None:
+    def test_enqueues_text_with_role_and_turn_metadata(self, patched_adk) -> None:
         """Ingestion bypasses ADK — process_turn goes straight to
-        memory.enqueue with role metadata. No Runner calls should
-        fire during the ingestion phase."""
+        memory.enqueue. Metadata schema matches the
+        after_agent_turn_capturer in neuromem_adk: both ``role`` AND
+        ``turn`` (1-indexed). No Runner calls during ingestion."""
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         agent = NeuromemAdkAgent(api_key="fake-key")
@@ -143,13 +152,28 @@ class TestProcessTurn:
 
         enqueues = patched_adk["fake_memory"].enqueues
         assert enqueues == [
-            ("hello", {"role": "user"}),
-            ("hi there", {"role": "assistant"}),
+            ("hello", {"role": "user", "turn": 1}),
+            ("hi there", {"role": "assistant", "turn": 2}),
         ]
 
         # Runner was constructed in __init__ but never invoked during
         # ingestion — that's the whole point of the bypass.
         patched_adk["fake_runner"].run_debug.assert_not_called()
+
+    def test_turn_index_resets_on_rebuild(self, patched_adk) -> None:
+        """reset() rebuilds state, including the turn counter — so the
+        next instance's first ingested turn metadata reads ``turn=1``,
+        not ``turn=51``."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        for i in range(3):
+            agent.process_turn(f"turn {i}", role="user")
+        agent.reset()
+        agent.process_turn("first turn of new instance", role="user")
+
+        last_metadata = patched_adk["fake_memory"].enqueues[-1][1]
+        assert last_metadata == {"role": "user", "turn": 1}
 
     def test_many_turns_all_flow_through(self, patched_adk) -> None:
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
@@ -199,7 +223,54 @@ class TestAnswer:
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
         async def fake_run_debug(*args, **kwargs):
-            return [SimpleNamespace(content=None)]
+            return [SimpleNamespace(author="benchmark_agent", content=None)]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        assert agent.answer("Q?") == ""
+
+    def test_answer_filters_events_by_author(self, patched_adk) -> None:
+        """CRITICAL: events authored by anything other than the agent
+        (e.g. tool-result events from retrieve_memories) MUST NOT be
+        treated as the LLM's answer. If the LLM calls
+        ``retrieve_memories(...)`` mid-answer and the tool returns a
+        text-rich JSON result, that text would otherwise be picked
+        up as the final answer — silently scoring 0 on the benchmark.
+
+        Set up an event list where a tool-result event with a long
+        text part comes AFTER the agent's actual answer. The
+        author-filter must skip it and return the agent's text."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [
+                _fake_event("The answer is 42.", author="benchmark_agent"),
+                _fake_event(
+                    '{"raw_content": "tool result blob..."}',
+                    author="retrieve_memories",
+                ),
+            ]
+
+        patched_adk["fake_runner"].run_debug = fake_run_debug
+
+        agent = NeuromemAdkAgent(api_key="fake-key")
+        result = agent.answer("Q?")
+        assert result == "The answer is 42."
+        assert "tool result blob" not in result
+
+    def test_answer_returns_empty_when_only_tool_events_present(self, patched_adk) -> None:
+        """If the LLM only emits tool-call events (no text from the
+        agent itself), answer returns ''. Benchmark scores it 0; the
+        empty result is a visible-enough signal in the JSONL output
+        that something went wrong."""
+        from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
+
+        async def fake_run_debug(*args, **kwargs):
+            return [
+                _fake_event("tool blob 1", author="some_tool"),
+                _fake_event("tool blob 2", author="another_tool"),
+            ]
 
         patched_adk["fake_runner"].run_debug = fake_run_debug
 
