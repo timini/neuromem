@@ -191,9 +191,42 @@ Swapping would require, in order:
    needed (e.g., because centroid naming moves to a post-processing pass),
    document that design change explicitly.
 
+## Amendment 2026-04-13 — interplay with ADR-002 (lazy centroid naming)
+
+ADR-002 moved centroid naming out of the per-merge clustering loop
+and into a render-time hook (`NeuroMemory.resolve_centroid_names`,
+called from `ContextHelper.build_prompt_context`). Centroids are
+now written with placeholder labels (`cluster_<12-hex-chars>`)
+during clustering and renamed to LLM-quality semantic ones lazily,
+on the first render that touches them, in one batched LLM call.
+
+This **does not invalidate the ADR-001 decision** (stay with hand-
+rolled numpy clustering):
+
+- The per-merge LLM callback was Constraint #2 and one of the main
+  reasons libraries didn't fit (they expose dendrograms, not merge
+  hooks). Lazy naming removes the LLM call from the per-merge step
+  but **the merge loop still calls into provider-supplied logic**
+  for the centroid embedding (`compute_centroid`) and for the
+  storage upsert. A library-driven dendrogram still wouldn't give
+  us the right shape — we need to write centroids AND `child_of`
+  edges incrementally as the loop runs, not as a post-pass.
+- Speed-wise, the bottleneck this ADR was helping us reason about
+  (per-merge LLM latency) is gone. The next bottleneck on the
+  clustering loop, if one ever appears, would be the dense
+  similarity matrix at very large k — Constraint #4 in this ADR
+  (k ≤ 5000 is single-digit ms) still holds and the revisit
+  criteria there are still the right ones.
+
+The per-merge LLM revisit clause in this ADR's "Revisit when" list
+is now obsolete: there is no per-merge LLM call. Removing centroid
+naming from the loop didn't require library swap — we just deleted
+the call site. ADR-002 captures the new control flow.
+
 ## References
 
 - Implementation: `packages/neuromem-core/src/neuromem/system.py::_run_clustering`
+- Lazy naming: ADR-002, `packages/neuromem-core/src/neuromem/system.py::resolve_centroid_names`
 - Tests: `packages/neuromem-core/tests/test_system.py::TestAgglomerativeClustering`
 - Original decision brief: `specs/001-neuromem-core/research.md` §Decision 3
 - Pipeline context: `specs/001-neuromem-core/spec.md` §Phase B (Consolidation)
