@@ -58,6 +58,7 @@ def _generate_with_retry(
     *,
     max_attempts: int = 5,
     base_delay: float = 2.0,
+    bucket: object | None = None,
 ) -> object:
     """Call ``models.generate_content`` with retry on transient errors.
 
@@ -65,9 +66,17 @@ def _generate_with_retry(
     level connection drops (``httpx.RemoteProtocolError``, etc.).
     Exponential backoff: 2/4/8/16/32s. ``ClientError`` (4xx) is
     never retried — those are deterministic failures.
+
+    If a ``bucket`` (from :mod:`._rate_limit`) is supplied, each
+    attempt acquires one token before hitting the wire. Retries
+    therefore consume tokens too — this is intentional, since
+    retries are just as much "requests" from Gemini's perspective
+    and counting them is what keeps our total RPM honest.
     """
     last_exc: Exception | None = None
     for attempt in range(max_attempts):
+        if bucket is not None:
+            bucket.acquire()  # type: ignore[attr-defined]
         try:
             return client.models.generate_content(
                 model=model,
@@ -133,6 +142,7 @@ class GeminiLLMProvider(LLMProvider):
         model: str = "gemini-2.0-flash-001",
         *,
         request_timeout_ms: int = 60_000,
+        rate_per_minute: int = 60,
     ) -> None:
         """Construct a Gemini-backed LLMProvider.
 
@@ -140,12 +150,20 @@ class GeminiLLMProvider(LLMProvider):
         that takes longer than this raises via httpx and surfaces to
         ``_generate_with_retry`` as a transport error (which triggers
         the standard 5-attempt exponential backoff, then gives up).
-        Without this, a hung Gemini response (mid-stream stall, silent
-        TCP drop, etc.) blocks the caller indefinitely — which is
-        exactly what the 10-hour benchmark hang on the preview
-        flash-lite model turned out to be. 60 s is generous enough for
-        large batched calls (extract_tags_batch over 100 summaries)
-        while still failing fast when something's wrong.
+        Without this, a hung Gemini response blocks the caller
+        indefinitely — the 10-hour benchmark hang on the preview
+        flash-lite model. 60 s is generous enough for large batched
+        calls (extract_tags_batch over 100 summaries) while still
+        failing fast when something's wrong.
+
+        ``rate_per_minute`` caps the RPM of this provider against
+        the Gemini API. The bucket is shared across every provider
+        (LLM + embedder) that uses the same ``api_key``, so an agent
+        running ingestion on the caller thread AND a dream cycle on
+        the background thread collectively stay within one budget.
+        Default of 60 is a conservative middle ground — well below
+        paid-tier flash limits, well above free-tier. Override upward
+        for paid-tier high-volume use, downward for free-tier.
         """
         if not api_key:
             raise ValueError("api_key must be non-empty")
@@ -153,11 +171,14 @@ class GeminiLLMProvider(LLMProvider):
             raise ValueError(f"request_timeout_ms must be > 0, got {request_timeout_ms}")
         from google.genai.types import HttpOptions  # noqa: PLC0415
 
+        from neuromem_gemini._rate_limit import get_bucket  # noqa: PLC0415
+
         self._client = genai.Client(
             api_key=api_key,
             http_options=HttpOptions(timeout=request_timeout_ms),
         )
         self._model = model
+        self._bucket = get_bucket(api_key, rate_per_minute)
 
     # ------------------------------------------------------------------
     # Summary — caller-thread hot path
@@ -187,7 +208,7 @@ class GeminiLLMProvider(LLMProvider):
             "no quotation marks.\n\n"
             f"Text: {raw_text}"
         )
-        resp = _generate_with_retry(self._client, self._model, prompt)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
 
     # ------------------------------------------------------------------
@@ -218,7 +239,7 @@ class GeminiLLMProvider(LLMProvider):
             "no bullet points, no markdown.\n\n"
             f"Text: {summary}"
         )
-        resp = _generate_with_retry(self._client, self._model, prompt)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         # Robust split: strip each token, drop empties, cap at 5.
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
@@ -283,7 +304,7 @@ class GeminiLLMProvider(LLMProvider):
             "explanation — ONLY the JSON.\n\n"
             f"{numbered}"
         )
-        resp = _generate_with_retry(self._client, self._model, prompt)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
 
         # Strip common markdown fence patterns. Gemini usually
@@ -343,7 +364,7 @@ class GeminiLLMProvider(LLMProvider):
             "numbering, no explanation, no bullet points, no markdown.\n\n"
             f"Text: {summary}"
         )
-        resp = _generate_with_retry(self._client, self._model, prompt)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         if not raw or raw.upper().strip(".,!?\"'") == "NONE":
             return []
@@ -383,7 +404,7 @@ class GeminiLLMProvider(LLMProvider):
             "markdown fences, no explanation — ONLY the JSON.\n\n"
             f"{numbered}"
         )
-        resp = _generate_with_retry(self._client, self._model, prompt)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
 
         try:
@@ -427,7 +448,7 @@ class GeminiLLMProvider(LLMProvider):
             "No explanation, no punctuation, no markdown. One word only.\n\n"
             f"Concepts: {', '.join(concepts)}"
         )
-        resp = _generate_with_retry(self._client, self._model, prompt)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         if not raw:
             # Fall back to a deterministic synthesis so the dream cycle

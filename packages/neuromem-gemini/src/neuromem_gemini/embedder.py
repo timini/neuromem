@@ -65,6 +65,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         model: str = "gemini-embedding-001",
         *,
         request_timeout_ms: int = 60_000,
+        rate_per_minute: int = 60,
     ) -> None:
         """Construct a Gemini-backed EmbeddingProvider.
 
@@ -73,6 +74,12 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         the whole dream cycle if we don't put a ceiling on it. 60 s
         handles a max-sized batch (100 texts) comfortably while still
         failing fast on a stalled connection.
+
+        ``rate_per_minute`` — embedding calls share a token-bucket
+        budget with the LLM provider for the same api_key. See
+        ``GeminiLLMProvider.__init__`` for the rationale. Passing
+        matching values to both providers is how you get a single
+        coherent RPM budget for the whole cognitive loop.
         """
         if not api_key:
             raise ValueError("api_key must be non-empty")
@@ -80,11 +87,14 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             raise ValueError(f"request_timeout_ms must be > 0, got {request_timeout_ms}")
         from google.genai.types import HttpOptions  # noqa: PLC0415
 
+        from neuromem_gemini._rate_limit import get_bucket  # noqa: PLC0415
+
         self._client = genai.Client(
             api_key=api_key,
             http_options=HttpOptions(timeout=request_timeout_ms),
         )
         self._model = model
+        self._bucket = get_bucket(api_key, rate_per_minute)
 
     # Gemini's ``embed_content`` endpoint caps at 100 texts per batch.
     # Callers that pass more than 100 texts in a single call get a
@@ -140,6 +150,9 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         base_delay = 2.0  # seconds
         last_exc: Exception | None = None
         for attempt in range(max_attempts):
+            # Pace against the shared RPM budget — same rationale as
+            # llm.py: retries are requests too, so they spend tokens.
+            self._bucket.acquire()
             try:
                 return self._client.models.embed_content(
                     model=self._model,
