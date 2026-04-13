@@ -282,43 +282,72 @@ class GeminiLLMProvider(LLMProvider):
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
         return [t for t in tags if t][:5]
 
+    # Max summaries per single batched LLM call. Gemini flash-lite
+    # tops out at ~8K OUTPUT tokens. A single tag list is ~30-80
+    # output tokens (JSON-wrapped). At 50 summaries per chunk that's
+    # ~1500-4000 output tokens — well inside the cap with headroom.
+    # Increasing this beyond 50 pushes flash-lite past its output
+    # budget and causes silent truncation or 504 DEADLINE_EXCEEDED.
+    _BATCH_CHUNK_SIZE = 50
+    # Concurrent chunks per call. Multiple batched chunks fire in
+    # parallel; with the token bucket they still respect RPM.
+    _BATCH_WORKERS = 10
+
     def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
-        """Extract tags for many summaries in ONE LLM call.
+        """Extract tags for many summaries, chunked + parallelised.
 
-        Override of the ABC's default loop implementation (which
-        calls :meth:`extract_tags` once per summary). For a typical
-        dream-cycle batch of ~100 memories this collapses ~100
-        serial Gemini calls into one — 50–100× faster.
+        Chunks the input into ``_BATCH_CHUNK_SIZE`` sub-batches and
+        runs the underlying batched LLM call across multiple chunks
+        concurrently via a thread pool. Each chunk's response must
+        fit within Gemini's ~8K output token cap — packing too many
+        summaries into one call causes silent truncation or a
+        504 DEADLINE_EXCEEDED as the model can't produce that much
+        output in time.
 
-        Fixes issue #44: LongMemEval_s's 160-memory dream cycles were
-        taking 16+ minutes against the serial implementation,
-        blocking the whole benchmark package's ability to run
-        ``NeuromemAgent`` at any meaningful scale.
+        For a 550-memory dream cycle this decomposes to
+        ceil(550/50)=11 chunked calls, run in parallel up to
+        ``_BATCH_WORKERS`` at a time, keeping each individual
+        request well inside the model's output budget.
 
-        **Protocol**:
-
-        - Constructs a single prompt with all summaries numbered
-          ``[1]``, ``[2]``, ... and asks for a JSON array of arrays
-          where each inner array is the tag list for the
-          corresponding numbered text.
-        - Parses the response as JSON. Strips common markdown-fence
-          patterns (``\\`\\`\\`json``, etc.) defensively.
-        - **Falls back to the per-memory loop** on any of:
-            * JSON parse failure
-            * Response is not a list
-            * Response length doesn't match ``len(summaries)``
-            * An inner element is not a list
-          This keeps the dream cycle running even when Gemini
-          hiccups on the batch format — correctness first, speed
-          second.
-        - Caps each tag list at 5 entries (same as the single-call
-          version) and strips quote characters from each tag.
+        Each chunked call falls back to per-item ``extract_tags``
+        on JSON parse failure, length mismatch, or non-list inner
+        element — correctness-first.
 
         Edge cases:
         - Empty input → empty output, no LLM call.
         - Single-item input → delegates to single-call
-          ``extract_tags`` so the prompt isn't wasted on a
-          batch-shape for one item.
+          :meth:`extract_tags`.
+        """
+        if not summaries:
+            return []
+        if len(summaries) == 1:
+            return [self.extract_tags(summaries[0])]
+
+        if len(summaries) <= self._BATCH_CHUNK_SIZE:
+            return self._extract_tags_one_chunk(summaries)
+
+        # Split into chunks, run concurrently, splice back in order.
+        import concurrent.futures  # noqa: PLC0415
+
+        chunks: list[list[str]] = [
+            summaries[i : i + self._BATCH_CHUNK_SIZE]
+            for i in range(0, len(summaries), self._BATCH_CHUNK_SIZE)
+        ]
+        workers = min(self._BATCH_WORKERS, len(chunks))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            chunk_results = list(pool.map(self._extract_tags_one_chunk, chunks))
+
+        # Flatten back to one list in original order.
+        result: list[list[str]] = []
+        for chunk_result in chunk_results:
+            result.extend(chunk_result)
+        return result
+
+    def _extract_tags_one_chunk(self, summaries: list[str]) -> list[list[str]]:
+        """Internal: process one ≤``_BATCH_CHUNK_SIZE`` slice of summaries.
+
+        This is the actual batched LLM call. ``extract_tags_batch``
+        is the chunking wrapper that invokes this once per chunk.
         """
         if not summaries:
             return []
@@ -342,12 +371,7 @@ class GeminiLLMProvider(LLMProvider):
             f"{numbered}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
-        raw = (resp.text or "").strip()
-
-        # Strip common markdown fence patterns. Gemini usually
-        # ignores the "no markdown" instruction when the output
-        # is JSON.
-        raw = _strip_markdown_fence(raw)
+        raw = _strip_markdown_fence((resp.text or "").strip())
 
         try:
             parsed = json.loads(raw)
@@ -410,19 +434,34 @@ class GeminiLLMProvider(LLMProvider):
         return [e for e in entities if e][:8]
 
     def extract_named_entities_batch(self, summaries: list[str]) -> list[list[str]]:
-        """Batched NER in one LLM call — mirrors :meth:`extract_tags_batch`.
-
-        Same protocol as the tag batch:
-        - Numbers each summary, asks for a JSON array-of-arrays back.
-        - Each inner array is the entities list for the corresponding
-          numbered text (empty arrays are valid for entity-free text).
-        - Strips markdown fences defensively.
-        - Falls back to the per-summary loop on parse failure, length
-          mismatch, or non-list inner elements.
-        - Single-item batch delegates to :meth:`extract_named_entities`.
-
-        Caps each inner list at 8 entries.
+        """Batched NER, chunked + parallelised — mirrors
+        :meth:`extract_tags_batch` for the same output-budget reasons.
         """
+        if not summaries:
+            return []
+        if len(summaries) == 1:
+            return [self.extract_named_entities(summaries[0])]
+
+        if len(summaries) <= self._BATCH_CHUNK_SIZE:
+            return self._extract_named_entities_one_chunk(summaries)
+
+        import concurrent.futures  # noqa: PLC0415
+
+        chunks: list[list[str]] = [
+            summaries[i : i + self._BATCH_CHUNK_SIZE]
+            for i in range(0, len(summaries), self._BATCH_CHUNK_SIZE)
+        ]
+        workers = min(self._BATCH_WORKERS, len(chunks))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            chunk_results = list(pool.map(self._extract_named_entities_one_chunk, chunks))
+
+        result: list[list[str]] = []
+        for chunk_result in chunk_results:
+            result.extend(chunk_result)
+        return result
+
+    def _extract_named_entities_one_chunk(self, summaries: list[str]) -> list[list[str]]:
+        """Internal: one ≤``_BATCH_CHUNK_SIZE`` slice of summaries."""
         if not summaries:
             return []
         if len(summaries) == 1:
