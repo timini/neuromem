@@ -189,3 +189,36 @@ class LLMProvider(ABC):
         first word and log a warning — but implementations SHOULD
         honour the contract on their own.
         """
+
+    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+        """Name many independent clusters in one operation.
+
+        Used by the lazy centroid naming flow (ADR-002): at render
+        time, ``ContextHelper`` collects all centroids in the
+        rendered subgraph that still have placeholder labels,
+        gathers each centroid's two children's labels into a pair,
+        and asks the provider to name them all in one round-trip.
+
+        Each ``pair[i]`` is the labels of the two children that were
+        merged into cluster ``i``. The pairs are independent — each
+        name depends only on the two labels in its own slot, not on
+        cross-pair context.
+
+        **Contract**:
+
+        - Returns a list of one-word strings, one per input pair, in
+          the same order. ``len(return_value) == len(pairs)`` is a
+          hard invariant — the resolver uses ``zip(..., strict=True)``
+          and will raise on length mismatch (which falls through to
+          numpy nearest-neighbour, by design).
+        - Empty input → empty output, no LLM call.
+
+        **Default implementation**: loops over :meth:`generate_category_name`,
+        once per pair. Same correctness fallback pattern as
+        :meth:`extract_tags_batch`. Concrete providers SHOULD override
+        with a single batched LLM call (one prompt asking for N
+        one-word names) — the speedup matters for the dream-cycle
+        render path where dozens of names may need resolving in one
+        query.
+        """
+        return [self.generate_category_name(pair) for pair in pairs]
