@@ -136,6 +136,17 @@ class GeminiLLMProvider(LLMProvider):
     ``LLMProvider`` ABC asks for.
     """
 
+    # Max items per single batched LLM call. Gemini flash tier output
+    # tokens are bounded (~8K for flash-lite). Each one-word category
+    # name is ~5-15 output tokens including JSON quoting; 30 names is
+    # ~300-500 tokens — comfortably inside the budget. Increasing
+    # past 50 risks silent truncation at the response-tail.
+    _BATCH_CHUNK_SIZE = 30
+    # Concurrent chunks per outer batched call. Multiple chunks fire
+    # in parallel via ThreadPoolExecutor; with the token bucket they
+    # still respect the shared RPM budget.
+    _BATCH_WORKERS = 10
+
     def __init__(
         self,
         api_key: str,
@@ -460,3 +471,90 @@ class GeminiLLMProvider(LLMProvider):
             tokens = concepts[0].split() if concepts[0] else []
             return tokens[0] if tokens else "concept"
         return raw.split()[0].strip(".,!?:;\"'").lower()
+
+    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+        """Name many independent clusters in one Gemini call (ADR-002).
+
+        Override of the ABC's per-pair loop. Sends one prompt
+        listing all numbered pairs and asks for a JSON array of N
+        one-word lowercase nouns in input order. Same shape as
+        ``extract_tags_batch`` — chunks at 30 pairs per call to
+        respect Gemini flash-lite's ~8K output token cap, and runs
+        chunks in parallel via a thread pool (10 workers).
+
+        Each chunk falls back per-pair to ``generate_category_name``
+        on JSON parse failure or length mismatch — invisible to the
+        caller, identical output shape.
+
+        Edge cases:
+        - Empty input → empty output, no LLM call.
+        - Single-pair input → delegates to ``generate_category_name``
+          so the prompt isn't wasted on a batch-shape for one item.
+        """
+        if not pairs:
+            return []
+        if len(pairs) == 1:
+            return [self.generate_category_name(pairs[0])]
+
+        if len(pairs) <= self._BATCH_CHUNK_SIZE:
+            return self._generate_category_names_one_chunk(pairs)
+
+        import concurrent.futures  # noqa: PLC0415
+
+        chunks: list[list[list[str]]] = [
+            pairs[i : i + self._BATCH_CHUNK_SIZE]
+            for i in range(0, len(pairs), self._BATCH_CHUNK_SIZE)
+        ]
+        workers = min(self._BATCH_WORKERS, len(chunks))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            chunk_results = list(pool.map(self._generate_category_names_one_chunk, chunks))
+        result: list[str] = []
+        for chunk_result in chunk_results:
+            result.extend(chunk_result)
+        return result
+
+    def _generate_category_names_one_chunk(self, pairs: list[list[str]]) -> list[str]:
+        """Internal: one ≤``_BATCH_CHUNK_SIZE`` slice of pairs.
+
+        Per-pair fallback on parse failure or length mismatch, same
+        defensive pattern as ``_extract_tags_one_chunk`` and
+        ``_extract_named_entities_one_chunk``.
+        """
+        if not pairs:
+            return []
+        if len(pairs) == 1:
+            return [self.generate_category_name(pairs[0])]
+
+        numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
+        prompt = (
+            f"For each of the {len(pairs)} numbered pairs of concepts "
+            "below, reply with EXACTLY ONE English noun (lowercase) "
+            "that names the category encompassing both concepts. "
+            "Return ONLY a JSON array of exactly "
+            f"{len(pairs)} string elements, in order. No explanation, "
+            "no markdown fences, no punctuation inside the names — "
+            "just the JSON array.\n\n"
+            f"{numbered}"
+        )
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
+        raw = _strip_markdown_fence((resp.text or "").strip())
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [self.generate_category_name(p) for p in pairs]
+
+        if not isinstance(parsed, list) or len(parsed) != len(pairs):
+            return [self.generate_category_name(p) for p in pairs]
+
+        result: list[str] = []
+        for i, name in enumerate(parsed):
+            if not isinstance(name, str):
+                result.append(self.generate_category_name(pairs[i]))
+                continue
+            cleaned = name.strip().split()
+            if not cleaned:
+                result.append(self.generate_category_name(pairs[i]))
+                continue
+            result.append(cleaned[0].strip(".,!?:;\"'").lower())
+        return result

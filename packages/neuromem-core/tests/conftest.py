@@ -305,6 +305,14 @@ class DictStorageAdapter(StorageAdapter):
             "is_centroid": bool(is_centroid),
         }
 
+    def update_node_labels(self, updates: dict[str, str]) -> None:
+        self._check_open()
+        if not updates:
+            return
+        for node_id, label in updates.items():
+            if node_id in self._nodes:
+                self._nodes[node_id]["label"] = label
+
     def get_all_nodes(self) -> list[dict[str, Any]]:
         self._check_open()
         return [self._copy_node(n) for n in sorted(self._nodes.values(), key=lambda n: n["id"])]

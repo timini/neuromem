@@ -89,6 +89,14 @@ class ContextHelper:
         root_ids = [n["id"] for n in nearest]
         subgraph = self.system.storage.get_subgraph(root_ids, depth=depth)
 
+        # ADR-002: lazily name any placeholder centroids in the rendered
+        # subgraph. The dream-cycle clustering loop writes centroids
+        # with placeholder labels (cluster_<hex>); this is where they
+        # get LLM-generated semantic ones — but ONLY for centroids
+        # actually appearing in this query's render. Mutates
+        # ``subgraph["nodes"]`` in place. NEVER raises.
+        self.system.resolve_centroid_names(subgraph["nodes"])
+
         # If the subgraph has no memories AND no node hierarchy above
         # the roots, the tree is degenerate. Return empty rather than
         # emit a header with no content.

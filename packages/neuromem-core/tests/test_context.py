@@ -564,6 +564,120 @@ class TestMemoryAnnotations:
         assert not beta_line.startswith("│")
 
 
+# ---------------------------------------------------------------------------
+# build_prompt_context invokes resolve_centroid_names (ADR-002)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPromptContextLazyNaming:
+    """ADR-002: ContextHelper.build_prompt_context calls
+    NeuroMemory.resolve_centroid_names on the loaded subgraph
+    before rendering, so placeholder centroids in the rendered tree
+    get LLM-generated semantic names. Tests:
+
+    - First render after a dream cycle invokes the batched LLM
+      naming exactly once.
+    - Second render of the same query touches the same centroid
+      but does NOT re-invoke the LLM (cache hit via storage
+      persistence).
+    - The rendered tree string contains the resolved label, not
+      the placeholder.
+    """
+
+    def test_first_render_resolves_placeholders(self) -> None:
+        """A render that touches a placeholder centroid invokes
+        generate_category_names_batch ONCE and the rendered tree
+        shows the resolved label, not the placeholder."""
+
+        class FixedNamerLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_call_count = 0
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return [f"named_{i}" for i in range(len(pairs))]
+
+        # ControlledEmbedder is defined in tests/conftest.py-style
+        # tests/test_system.py. Import it via the test module path.
+        from tests.test_system import ControlledEmbedder  # noqa: PLC0415
+
+        # Build a system with two near-identical tags so clustering
+        # produces a centroid. Embedder also serves the query.
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.999, 0.01, 0.0, 0.0],
+                # Query embedding routes to alpha, which surfaces the
+                # centroid via depth-1 walk up the child_of edges.
+                "alpha query": [1.0, 0.0, 0.0, 0.0],
+            }
+        )
+        llm = FixedNamerLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+
+        helper = ContextHelper(system)
+        rendered = helper.build_prompt_context("alpha query", top_k=1, depth=2)
+
+        # The render fired the batched LLM naming exactly once.
+        assert llm.batch_call_count == 1
+        # The rendered tree shows the resolved label, not the
+        # placeholder. A literal `cluster_` substring would mean
+        # naming didn't happen.
+        assert "cluster_" not in rendered
+        assert "named_0" in rendered
+
+    def test_second_render_does_not_re_resolve(self) -> None:
+        """Running the same query twice should only fire the LLM
+        naming on the first render. Subsequent renders see the
+        already-named centroid via storage persistence."""
+
+        class CountingNamerLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_call_count = 0
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return [f"first_run_{i}" for i in range(len(pairs))]
+
+        from tests.test_system import ControlledEmbedder  # noqa: PLC0415
+
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.999, 0.01, 0.0, 0.0],
+                "alpha query": [1.0, 0.0, 0.0, 0.0],
+            }
+        )
+        llm = CountingNamerLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+
+        helper = ContextHelper(system)
+        helper.build_prompt_context("alpha query", top_k=1, depth=2)
+        assert llm.batch_call_count == 1
+
+        # Second render of the same query: storage now has the resolved
+        # label, so resolve_centroid_names sees no placeholders → no
+        # LLM call.
+        helper.build_prompt_context("alpha query", top_k=1, depth=2)
+        assert llm.batch_call_count == 1
+
+
 # Silence unused-import: np and EmbeddingProvider are used in type
 # hints by ControlledEmbedder in sibling test files. Kept here for
 # readability and to guard against future imports breaking this file.

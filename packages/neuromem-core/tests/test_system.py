@@ -810,10 +810,13 @@ class TestAgglomerativeClustering:
         assert leaf_labels >= {"alpha", "beta", "gamma"}
         assert len(centroids) >= 1
 
-        # MockLLMProvider.generate_category_name(["alpha","beta"]) → "CatAB"
-        # or "CatBA" depending on argmax ordering; both are valid.
-        centroid_labels = {n["label"] for n in centroids}
-        assert centroid_labels & {"CatAB", "CatBA"}
+        # ADR-002 (lazy centroid naming): _run_clustering writes
+        # centroids with placeholder labels. Naming happens lazily at
+        # render time via ContextHelper. So at this point — directly
+        # after force_dream, no render — the centroids should have
+        # placeholder labels of the form "cluster_<12-hex-chars>".
+        for centroid in centroids:
+            assert centroid["label"].startswith("cluster_")
 
     def test_clustering_does_not_merge_below_threshold(
         self,
@@ -878,6 +881,55 @@ class TestAgglomerativeClustering:
         assert any(
             e["source_id"] == mem_id and e["target_id"] == alpha_leaf["id"] for e in has_tag_edges
         )
+
+    def test_clustering_does_not_call_generate_category_name(
+        self,
+    ) -> None:
+        """ADR-002: the dream-cycle clustering loop MUST NOT call
+        generate_category_name. Centroids are written with placeholder
+        labels and named lazily at render time. Verified via a
+        counting LLMProvider stub — count must be exactly zero
+        across an entire force_dream that produces multiple centroids."""
+
+        class CountingNamerLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.name_call_count = 0
+
+            def generate_category_name(self, concepts: list[str]) -> str:
+                self.name_call_count += 1
+                return "Should-Not-Be-Called"
+
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.999, 0.01, 0.0, 0.0],
+                "gamma": [0.998, 0.02, 0.0, 0.0],
+            }
+        )
+        llm = CountingNamerLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta gamma")
+        system.force_dream()
+
+        # Multiple centroids should have been produced (alpha+beta first,
+        # then that centroid+gamma) but ZERO LLM naming calls happened.
+        nodes = system.storage.get_all_nodes()
+        centroids = [n for n in nodes if n["is_centroid"]]
+        assert len(centroids) >= 1
+        assert llm.name_call_count == 0
+        # Every centroid carries the placeholder format.
+        for centroid in centroids:
+            label = centroid["label"]
+            assert label.startswith("cluster_")
+            # 12-hex suffix from the centroid UUID.
+            suffix = label[len("cluster_") :]
+            assert len(suffix) == 12
 
     def test_child_of_edges_wired_centroid_to_members(
         self,
@@ -1619,6 +1671,170 @@ class TestNamedEntityExtractionInDreamCycle:
         # outcome: zero consolidated memories.
         with pytest.raises(ValueError, match="shorter than argument"):
             system.force_dream(block=True)
+
+
+# ---------------------------------------------------------------------------
+# resolve_centroid_names — lazy LLM centroid naming (ADR-002)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveCentroidNames:
+    """resolve_centroid_names is the render-time naming hook from
+    ADR-002. After clustering writes placeholder labels like
+    ``cluster_a3f8b1c01234``, this method renames them to LLM-quality
+    semantic strings — but only for centroids that appear in the
+    rendered subgraph.
+
+    Behaviour invariants:
+    1. Empty placeholder list → no LLM call, no storage write.
+    2. Happy path: ONE batched LLM call names every placeholder
+       centroid; storage update_node_labels persists; input nodes
+       list is mutated in place.
+    3. LLM failure (exception, length mismatch): falls back to numpy
+       nearest-neighbour over the centroid's children. Centroids
+       still get a (degraded) name. Persistence still happens.
+    4. NEVER raises out.
+    5. Cache hit: a second call on the same nodes after the first is
+       a no-op because the placeholders have already been replaced.
+    """
+
+    def test_no_placeholders_is_noop(self) -> None:
+        class CountingNamerLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_call_count = 0
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return ["x"] * len(pairs)
+
+        ctrl = ControlledEmbedder({"a": [1.0, 0.0]})
+        llm = CountingNamerLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+        )
+        system.resolve_centroid_names(
+            [
+                {
+                    "id": "n1",
+                    "label": "retail",
+                    "is_centroid": True,
+                    "embedding": np.array([1.0]),
+                }
+            ]
+        )
+        assert llm.batch_call_count == 0
+
+    def test_happy_path_names_via_batched_llm(self) -> None:
+        class FixedNamerLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_calls: list[list[list[str]]] = []
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_calls.append([list(p) for p in pairs])
+                return ["+".join(label[:1] for label in pair) for pair in pairs]
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0, 0.0, 0.0], "beta": [0.999, 0.01, 0.0, 0.0]})
+        llm = FixedNamerLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+        nodes = system.storage.get_all_nodes()
+
+        system.resolve_centroid_names(nodes)
+
+        assert len(llm.batch_calls) == 1
+        centroid = next(n for n in nodes if n["is_centroid"])
+        assert not centroid["label"].startswith("cluster_")
+        from_storage = next(n for n in system.storage.get_all_nodes() if n["is_centroid"])
+        assert from_storage["label"] == centroid["label"]
+
+    def test_second_call_is_cache_hit(self) -> None:
+        class CountingNamerLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_call_count = 0
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return [f"named{i}" for i in range(len(pairs))]
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
+        llm = CountingNamerLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+
+        system.resolve_centroid_names(system.storage.get_all_nodes())
+        assert llm.batch_call_count == 1
+        # Re-fetch: labels persisted, no placeholders → no LLM call.
+        system.resolve_centroid_names(system.storage.get_all_nodes())
+        assert llm.batch_call_count == 1
+
+    def test_falls_back_to_numpy_when_llm_raises(self) -> None:
+        class FailingLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.attempts = 0
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.attempts += 1
+                raise RuntimeError("simulated LLM outage")
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0, 0.0, 0.0], "beta": [0.999, 0.01, 0.0, 0.0]})
+        llm = FailingLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+        nodes = system.storage.get_all_nodes()
+
+        # MUST NOT raise.
+        system.resolve_centroid_names(nodes)
+        assert llm.attempts == 1
+        centroid = next(n for n in nodes if n["is_centroid"])
+        assert not centroid["label"].startswith("cluster_")
+        # Numpy fallback picks one of the children's labels.
+        assert centroid["label"] in {"alpha", "beta"}
+        from_storage = next(n for n in system.storage.get_all_nodes() if n["is_centroid"])
+        assert from_storage["label"] == centroid["label"]
+
+    def test_falls_back_on_length_mismatch(self) -> None:
+        class WrongLengthLLM(MockLLMProvider):
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                return []  # always wrong length
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=WrongLengthLLM(),
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+        nodes = system.storage.get_all_nodes()
+
+        system.resolve_centroid_names(nodes)
+        centroid = next(n for n in nodes if n["is_centroid"])
+        assert centroid["label"] in {"alpha", "beta"}
 
 
 def test_explicit_ignore_unused_embedding_provider_import() -> None:

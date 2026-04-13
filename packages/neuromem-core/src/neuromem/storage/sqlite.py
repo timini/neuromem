@@ -386,6 +386,26 @@ class SQLiteAdapter(StorageAdapter):
         except sqlite3.Error as exc:
             raise StorageError(f"upsert_node failed: {exc}") from exc
 
+    def update_node_labels(self, updates: dict[str, str]) -> None:
+        """Batch-rename node labels in a single transaction.
+
+        Used by lazy centroid naming (ADR-002) to persist render-time-
+        generated labels back to storage. Matches ``set_named_entities``
+        semantics: empty dict no-op, missing IDs silently skipped.
+        """
+        self._check_open()
+        if not updates:
+            return
+        try:
+            with self._conn:
+                for node_id, label in updates.items():
+                    self._conn.execute(
+                        "UPDATE nodes SET label = ? WHERE id = ?",
+                        (label, node_id),
+                    )
+        except sqlite3.Error as exc:
+            raise StorageError(f"update_node_labels failed: {exc}") from exc
+
     def get_all_nodes(self) -> list[dict[str, Any]]:
         self._check_open()
         try:

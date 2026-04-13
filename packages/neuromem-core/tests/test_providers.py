@@ -296,3 +296,99 @@ class TestExtractNamedEntitiesDefaults:
         assert result == [["batched0"], ["batched1"]]
         assert stub.batch_call_count == 1
         assert stub.per_call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# generate_category_names_batch default fallback (ADR-002)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateCategoryNamesBatchDefault:
+    """The default ``generate_category_names_batch`` is a correctness
+    fallback that loops over ``generate_category_name``. Providers
+    SHOULD override with a real batched LLM call (one prompt asking
+    for N names) but the per-pair loop must keep working unchanged
+    so existing providers aren't broken by the new method.
+
+    Same shape of contract as ``extract_tags_batch`` — input length
+    equals output length, in order, no LLM call on empty input.
+    """
+
+    class _CountingStub(LLMProvider):
+        """Tracks every call to ``generate_category_name`` so we can
+        assert the default ``generate_category_names_batch`` is a
+        faithful wrapper, not a silent no-op."""
+
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        def generate_summary(self, raw_text: str) -> str:
+            return raw_text
+
+        def extract_tags(self, summary: str) -> list[str]:
+            return summary.split()[:2]
+
+        def generate_category_name(self, concepts: list[str]) -> str:
+            self.calls.append(list(concepts))
+            # Return the first concept's first letter as a deterministic
+            # one-word "name" — enough to assert ordering is preserved.
+            return concepts[0][:1] if concepts else "x"
+
+    def test_empty_batch_returns_empty_list(self) -> None:
+        stub = self._CountingStub()
+        assert stub.generate_category_names_batch([]) == []
+        assert stub.calls == []
+
+    def test_single_pair_invokes_once(self) -> None:
+        stub = self._CountingStub()
+        result = stub.generate_category_names_batch([["alpha", "beta"]])
+        assert result == ["a"]
+        assert stub.calls == [["alpha", "beta"]]
+
+    def test_multi_pair_preserves_order_and_length(self) -> None:
+        """The default fallback calls generate_category_name once per
+        pair in input order. Return value length must equal input
+        length exactly — the lazy-naming resolver uses
+        zip(..., strict=True) and falls back to numpy on mismatch."""
+        stub = self._CountingStub()
+        pairs = [
+            ["alpha", "beta"],
+            ["one", "two"],
+            ["x", "y"],
+        ]
+        result = stub.generate_category_names_batch(pairs)
+        assert len(result) == len(pairs)
+        assert result == ["a", "o", "x"]
+        # Per-call invocations happened in input order.
+        assert stub.calls == pairs
+
+    def test_overridden_batch_is_used_directly(self) -> None:
+        """A provider that overrides ``generate_category_names_batch``
+        with a real batched implementation should NOT trigger the
+        per-pair path. Verified by counting generate_category_name
+        invocations — a correct batched override never touches them."""
+
+        class BatchedStub(LLMProvider):
+            def __init__(self) -> None:
+                self.per_call_count = 0
+                self.batch_call_count = 0
+
+            def generate_summary(self, raw_text: str) -> str:
+                return raw_text
+
+            def extract_tags(self, summary: str) -> list[str]:
+                return ["x"]
+
+            def generate_category_name(self, concepts: list[str]) -> str:
+                self.per_call_count += 1
+                return "from-per-call"
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return [f"batched{i}" for i in range(len(pairs))]
+
+        stub = BatchedStub()
+        result = stub.generate_category_names_batch([["a", "b"], ["c", "d"], ["e", "f"]])
+        assert result == ["batched0", "batched1", "batched2"]
+        assert stub.batch_call_count == 1
+        assert stub.per_call_count == 0  # override bypassed per-pair entirely

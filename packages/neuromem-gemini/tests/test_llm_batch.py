@@ -378,3 +378,84 @@ class TestExtractNamedEntitiesBatch:
         assert len(result[0]) == 8
         assert result[0] == ["A", "B", "C", "D", "E", "F", "G", "H"]
         assert result[1] == []
+
+
+# ---------------------------------------------------------------------------
+# generate_category_names_batch — ADR-002 lazy-naming Gemini override
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateCategoryNamesBatch:
+    """Gemini override of the batched naming method used by
+    NeuroMemory.resolve_centroid_names. Same chunking + parallelism
+    + per-chunk fallback shape as extract_tags_batch.
+
+    Mocked client; no Gemini API calls.
+    """
+
+    def test_empty_input_no_llm_call(self) -> None:
+        provider, generate = _make_llm_with_stub_client()
+        assert provider.generate_category_names_batch([]) == []
+        assert generate.call_count == 0
+
+    def test_single_pair_delegates_to_per_call(self) -> None:
+        """One-pair input takes the per-call generate_category_name
+        path; no batched prompt is wasted on a single-item batch."""
+        provider, generate = _make_llm_with_stub_client(single_responses=["voucher"])
+        result = provider.generate_category_names_batch([["coupon", "discount"]])
+        assert result == ["voucher"]
+        assert generate.call_count == 1
+
+    def test_batch_happy_path(self) -> None:
+        """Well-formed JSON array → parsed, lowercased, first-word-only."""
+        provider, _ = _make_llm_with_stub_client(
+            batch_responses=['["voucher", "canine", "country"]']
+        )
+        result = provider.generate_category_names_batch(
+            [["coupon", "discount"], ["dog", "puppy"], ["paris", "france"]]
+        )
+        assert result == ["voucher", "canine", "country"]
+
+    def test_markdown_fenced_response_is_stripped(self) -> None:
+        provider, _ = _make_llm_with_stub_client(batch_responses=['```json\n["one", "two"]\n```'])
+        result = provider.generate_category_names_batch([["a", "b"], ["c", "d"]])
+        assert result == ["one", "two"]
+
+    def test_first_word_only_extracted(self) -> None:
+        """Multi-word reply → first word only, lowercased, punctuation stripped."""
+        provider, _ = _make_llm_with_stub_client(
+            batch_responses=['["voucher type", "Canine animals."]']
+        )
+        result = provider.generate_category_names_batch([["coupon", "discount"], ["dog", "puppy"]])
+        assert result == ["voucher", "canine"]
+
+    def test_malformed_json_falls_back_per_pair(self) -> None:
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=["not even json"],
+            single_responses=["alpha", "beta"],
+        )
+        result = provider.generate_category_names_batch([["a", "b"], ["c", "d"]])
+        assert result == ["alpha", "beta"]
+        # 1 failed batch + 2 per-pair fallback.
+        assert generate.call_count == 3
+
+    def test_wrong_length_response_falls_back(self) -> None:
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=['["only-one"]'],
+            single_responses=["x", "y"],
+        )
+        result = provider.generate_category_names_batch([["a", "b"], ["c", "d"]])
+        assert result == ["x", "y"]
+        assert generate.call_count == 3
+
+    def test_non_string_inner_element_per_pair_fallback(self) -> None:
+        """One bad inner element falls back per-pair just for THAT
+        slot, not the whole batch."""
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=['["good", 42, "fine"]'],
+            single_responses=["recovered"],
+        )
+        result = provider.generate_category_names_batch([["a", "b"], ["c", "d"], ["e", "f"]])
+        assert result == ["good", "recovered", "fine"]
+        # 1 batch + 1 per-pair fallback for the bad middle slot.
+        assert generate.call_count == 2
