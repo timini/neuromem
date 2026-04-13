@@ -397,3 +397,118 @@ class TestManualProviderOverride:
                 embedder=MockEmbeddingProvider(),
                 # llm omitted → falls back to default → credential check
             )
+
+
+# ---------------------------------------------------------------------------
+# NeuroMemory tuning kwargs — cluster_threshold + dream_threshold
+# ---------------------------------------------------------------------------
+
+
+class TestNeuroMemoryTuningKwargs:
+    """``enable_memory`` forwards ``cluster_threshold`` and
+    ``dream_threshold`` to ``NeuroMemory.__init__`` when supplied.
+    When omitted, ``NeuroMemory`` uses its own defaults — the kwargs
+    are truly optional (no silent substitution of surprising values).
+
+    Background: benchmark harnesses and long-running test setups need
+    to set ``dream_threshold`` high enough that auto-dreaming doesn't
+    fire mid-ingestion, and sometimes need a lower ``cluster_threshold``
+    for small corpora. Before these kwargs existed, callers had to
+    mutate ``memory.dream_threshold`` / ``memory.cluster_threshold``
+    post-hoc on the returned instance — correct (both are plain
+    public attributes) but awkward and error-prone.
+    """
+
+    def test_defaults_unchanged_when_kwargs_omitted(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """Regression guard: callers that don't pass the new kwargs
+        get exactly the same NeuroMemory config as before."""
+        from neuromem.system import (  # noqa: PLC0415
+            DEFAULT_CLUSTER_THRESHOLD,
+            DEFAULT_DREAM_THRESHOLD,
+        )
+
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+        )
+        assert memory.cluster_threshold == DEFAULT_CLUSTER_THRESHOLD
+        assert memory.dream_threshold == DEFAULT_DREAM_THRESHOLD
+
+    def test_cluster_threshold_forwarded(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+            cluster_threshold=0.55,
+        )
+        assert memory.cluster_threshold == 0.55
+
+    def test_dream_threshold_forwarded(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+            dream_threshold=9999,
+        )
+        assert memory.dream_threshold == 9999
+
+    def test_both_kwargs_together(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """The two kwargs are independent — passing both flows both
+        through."""
+        memory = enable_memory(
+            mock_adk_agent,
+            ":memory:",
+            llm=MockLLMProvider(),
+            embedder=MockEmbeddingProvider(),
+            cluster_threshold=0.7,
+            dream_threshold=42,
+        )
+        assert memory.cluster_threshold == 0.7
+        assert memory.dream_threshold == 42
+
+    def test_invalid_cluster_threshold_raises_from_core(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """``NeuroMemory.__init__`` validates cluster_threshold ∈ (0, 1].
+        enable_memory doesn't re-validate — it propagates the core's
+        ValueError unchanged, so callers get the authoritative
+        error message. Verify the propagation path works."""
+        with pytest.raises(ValueError, match="cluster_threshold"):
+            enable_memory(
+                mock_adk_agent,
+                ":memory:",
+                llm=MockLLMProvider(),
+                embedder=MockEmbeddingProvider(),
+                cluster_threshold=1.5,  # out of range
+            )
+
+    def test_invalid_dream_threshold_raises_from_core(
+        self,
+        mock_adk_agent: Agent,
+    ) -> None:
+        """Same propagation check for dream_threshold's ``>= 1`` rule."""
+        with pytest.raises(ValueError, match="dream_threshold"):
+            enable_memory(
+                mock_adk_agent,
+                ":memory:",
+                llm=MockLLMProvider(),
+                embedder=MockEmbeddingProvider(),
+                dream_threshold=0,  # must be >= 1
+            )

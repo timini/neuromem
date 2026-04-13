@@ -82,6 +82,8 @@ def enable_memory(
     *,
     llm: LLMProvider | None = None,
     embedder: EmbeddingProvider | None = None,
+    cluster_threshold: float | None = None,
+    dream_threshold: int | None = None,
 ) -> NeuroMemory:
     """Attach persistent long-term memory to an existing ADK agent.
 
@@ -111,6 +113,18 @@ def enable_memory(
             environment.
         embedder: Optional ``EmbeddingProvider`` override. Same
             default fallback as ``llm``.
+        cluster_threshold: Optional ``NeuroMemory`` clustering-similarity
+            threshold override. When omitted, the ``NeuroMemory``
+            default is used. Lower values (e.g. 0.55) encourage more
+            hierarchical clustering of tags and are useful for small
+            corpora. See ``NeuroMemory`` docstring for the full
+            behaviour of this knob.
+        dream_threshold: Optional override for the inbox size at
+            which an auto-dream-cycle fires. Pass a very high value
+            (e.g. 9999) to effectively disable auto-dreaming when the
+            caller intends to drive ``force_dream`` explicitly —
+            typical for benchmark harnesses and tests that want
+            deterministic consolidation boundaries.
 
     Returns:
         The ``NeuroMemory`` instance wired to the agent. Callers can
@@ -119,7 +133,9 @@ def enable_memory(
         introspect for debugging.
 
     Raises:
-        ValueError: The agent already has memory attached.
+        ValueError: The agent already has memory attached, or a
+            supplied ``cluster_threshold`` / ``dream_threshold`` is
+            outside the range accepted by ``NeuroMemory.__init__``.
         KeyError: ``llm`` or ``embedder`` was not supplied and neither
             ``GOOGLE_API_KEY`` nor ``GEMINI_API_KEY`` is set.
         StorageError: The SQLite database at ``db_path`` is corrupt
@@ -148,10 +164,21 @@ def enable_memory(
     # Build the memory system. SQLiteAdapter raises StorageError with
     # the db_path in the message on I/O failure, so we don't need to
     # wrap it ourselves — propagation is cleanest here.
+    #
+    # cluster_threshold + dream_threshold: only forwarded if supplied
+    # so callers who don't care inherit NeuroMemory's own defaults.
+    # Range validation lives in NeuroMemory.__init__; we pass the
+    # raw value through and let the core's ValueError propagate.
+    nm_kwargs: dict[str, Any] = {}
+    if cluster_threshold is not None:
+        nm_kwargs["cluster_threshold"] = cluster_threshold
+    if dream_threshold is not None:
+        nm_kwargs["dream_threshold"] = dream_threshold
     memory = NeuroMemory(
         storage=SQLiteAdapter(str(db_path)),
         llm=llm,
         embedder=embedder,
+        **nm_kwargs,
     )
 
     # Attach the two callbacks (T010 + T011). ADK's callback fields
