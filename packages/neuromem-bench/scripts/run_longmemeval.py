@@ -25,8 +25,11 @@ Options:
                      Defaults to contains (cheap, deterministic,
                      tolerant of phrasing differences).
     --model          Gemini model for the agents. Defaults to
-                     gemini-flash-latest. Avoid preview-tier models
-                     for long runs — their rate limits are punishing.
+                     gemini-2.0-flash-001 (explicit stable pin).
+                     Rolling aliases (gemini-flash-latest) and
+                     preview tiers 504 on long runs — Gemini's
+                     per-request deadline fires on individual calls.
+                     Stick to explicit pins for reproducible runs.
 
 Cost note: a 5-instance smoke run against LongMemEval_s burns
 roughly 15–30K tokens through the neuromem agent (each instance
@@ -205,13 +208,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gemini-flash-latest",
+        default="gemini-2.0-flash-001",
         help=(
-            "Gemini model name (default: gemini-flash-latest — rolling "
-            "alias for the current stable flash tier). Preview models "
-            "(e.g. gemini-3.1-flash-lite-preview) have aggressive "
-            "rate limits and are NOT recommended for long benchmark "
-            "runs — they can stall indefinitely under sustained load."
+            "Gemini model name. Default is gemini-2.0-flash-001 — the "
+            "explicit stable pin that completed the original 90-min "
+            "LongMemEval_s sample run reliably. Rolling aliases "
+            "(gemini-flash-latest) and preview tiers "
+            "(gemini-3.1-flash-lite-preview, etc.) have been observed "
+            "to 504 DEADLINE_EXCEEDED on individual calls under "
+            "sustained load — Gemini's own per-request deadline "
+            "expires before the model produces a response. A rate "
+            "limiter doesn't help with that; only model stability "
+            "does. Stick to explicit pins for reproducible runs."
         ),
     )
     args = parser.parse_args()
