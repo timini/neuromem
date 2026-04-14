@@ -1,0 +1,11 @@
+For each of the {n} numbered groups of concepts below, reply with EXACTLY ONE English noun (lowercase) that names the category encompassing the concepts.
+
+## Rules
+- ONE word per group. No punctuation inside the names.
+- Do NOT use generic placeholder nouns like 'thing', 'aspect', 'factor', 'element', 'item', 'entity', 'topic', 'concept', 'stuff', 'misc', 'other', 'various'. A useful name describes what the concepts HAVE IN COMMON, not that they are 'things'. Prefer the shared domain (e.g. 'finance', 'shopping', 'education').
+
+## Output
+Return ONLY a JSON array of exactly {n} string elements, in order. No markdown fences, no explanation.
+
+## Groups
+{numbered}
