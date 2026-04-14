@@ -366,7 +366,12 @@ class NeuromemAgent(BaseAgent):
         from neuromem.context import ContextHelper  # noqa: PLC0415
 
         helper = ContextHelper(self._memory)
-        context_tree = helper.build_prompt_context(question)
+        # top_k=5 (the default) is too tight: when the question's
+        # nearest tag node ("degree") falls behind 5 generic centroids
+        # in cosine ranking, the relevant memory becomes invisible to
+        # the answer LLM. Bumping to 20 widens the seed set so the
+        # depth-2 subgraph walk reaches the right memory more reliably.
+        context_tree = helper.build_prompt_context(question, top_k=20)
 
         system_instruction = (
             "You are a helpful assistant. The following is a tree of "
