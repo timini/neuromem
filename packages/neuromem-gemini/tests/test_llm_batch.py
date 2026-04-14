@@ -137,23 +137,35 @@ class TestExtractTagsBatchHappyPath:
         assert result == [["a"], ["b"]]
         assert generate.call_count == 1
 
-    def test_caps_each_tag_list_at_5_entries(self) -> None:
-        """Per the original ``extract_tags`` contract, we cap at
-        5 tags per item. The batch path enforces the same."""
-        provider, generate = _make_llm_with_stub_client(
-            batch_responses=['[["t1","t2","t3","t4","t5","t6","t7"]]'],
-        )
-        result = provider.extract_tags_batch(["text"])
-        # Wait — single-item batches use the single-call path,
-        # which has its own cap. Use 2 items to exercise the
-        # batch path with oversize inner lists.
-        # Rebuild the provider for a fresh call history.
-        provider, generate = _make_llm_with_stub_client(
-            batch_responses=['[["a","b","c","d","e","f","g"],["x","y","z"]]'],
+    def test_caps_each_tag_list_at_12_entries(self) -> None:
+        """The cap was bumped from 5 → 12 to accommodate dense
+        session-level summaries with many fact-bearing topics.
+        Below the cap → unchanged. Above the cap → truncated."""
+        # Use 2 items to exercise the batch path (single-item batches
+        # delegate to the single-call extract_tags).
+        provider, _ = _make_llm_with_stub_client(
+            batch_responses=[
+                '[["a","b","c","d","e","f","g","h","i","j","k","l","m","n"],["x","y","z"]]'
+            ],
         )
         result = provider.extract_tags_batch(["t1", "t2"])
-        assert result[0] == ["a", "b", "c", "d", "e"]  # capped
-        assert result[1] == ["x", "y", "z"]  # under cap, unchanged
+        # First item has 14 entries → capped at 12.
+        assert result[0] == [
+            "a",
+            "b",
+            "c",
+            "d",
+            "e",
+            "f",
+            "g",
+            "h",
+            "i",
+            "j",
+            "k",
+            "l",
+        ]
+        # Second item under cap → unchanged.
+        assert result[1] == ["x", "y", "z"]
 
     def test_strips_quote_characters_from_tags(self) -> None:
         """Gemini sometimes wraps individual strings in extra quotes

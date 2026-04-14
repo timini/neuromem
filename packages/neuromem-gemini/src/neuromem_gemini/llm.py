@@ -196,28 +196,77 @@ class GeminiLLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def generate_summary(self, raw_text: str) -> str:
-        """Return a 1–2 sentence episodic summary of ``raw_text``.
+        """Return a fact-preserving episodic summary of ``raw_text``.
 
-        Uses a tight prompt that suppresses preambles like "Here's a
-        summary:" — the docstring on the ABC says this is on the hot
-        path inside ``enqueue``, so fewer tokens is always better.
+        Used both for individual turns and (since per-session ingestion
+        landed) for whole multi-turn conversation transcripts. The
+        critical job for a memory-system summariser is **preserving
+        every fact** in the source — not just classic proper nouns,
+        but also implied biographical details (degree, age, family,
+        job, hobbies), decisions stated, actions taken, dates, places,
+        preferences, and any numbers — even if they appear briefly
+        amid lots of other content.
 
-        **Entity preservation**: the prompt explicitly instructs the
-        model to preserve proper nouns (brand names, places, people,
-        organisations) and specific numeric values from the source.
-        Without this, the 1–2 sentence compression tends to drop
-        named entities in favour of abstract nouns — see the Instance
-        3 investigation at ``docs/investigations/instance3-target-loss.md``
-        for a concrete failure mode.
+        Bias-correction this prompt makes vs a generic "summarise":
+
+        - LLMs default to summarising the **dominant topic** of a long
+          text and dropping briefly-mentioned details. For a memory
+          system, *those briefly-mentioned details ARE the value* —
+          they're the things the user might ask about later.
+        - Generic "summarise" tends to produce list-of-recommendations
+          summaries (e.g. "Todoist, Trello, Asana...") when the source
+          contains both recommendations and personal facts. We instruct
+          the model to favour facts about the user / their world over
+          recommendations / advice / generic content.
+
+        The prompt also gives a worked example so the model can pattern-
+        match against the desired shape rather than improvise.
         """
         prompt = (
-            "Summarise the following text in one or two sentences. "
-            "Preserve all proper nouns — brand names, places, people, "
-            "organisations — and specific numeric values exactly as "
-            "they appear in the text. "
+            "You are summarising a piece of text into a memory record "
+            "that the user will be able to ask questions about later.\n\n"
+            "## Preserve EVERY fact\n"
+            "Your job is to preserve every concrete piece of information "
+            "the text contains, especially:\n"
+            "- **Personal facts about the user**: degree, age, family "
+            "members, job, employer, hobbies, location, preferences, "
+            "decisions stated, actions taken, events attended.\n"
+            "- **Proper nouns**: brand names, places, people, "
+            "organisations, products.\n"
+            "- **Specific numbers and dates**: amounts, prices, ages, "
+            "dates, counts.\n"
+            "- **Implied facts**: if the user says 'when I graduated', "
+            "they graduated; if they say 'my wife', they have a wife.\n\n"
+            "## Bias toward user facts over generic content\n"
+            "If the text mixes a personal fact with a list of "
+            "recommendations or generic advice, the personal fact is "
+            "MORE important. Drop generic advice before dropping a "
+            "personal detail. A summary that omits a brand list is "
+            "fine; a summary that omits 'I graduated with Business "
+            "Administration' has FAILED.\n\n"
+            "## Length\n"
+            "2–4 sentences. Use as much length as needed to fit every "
+            "fact. Do NOT pad with generic content. Do NOT add a "
+            "preamble like 'This text discusses...'.\n\n"
+            "## Worked example\n"
+            "Source: 'I graduated with a degree in Business "
+            "Administration last year and started at Acme Corp as a "
+            "junior analyst. I'm looking for advice on how to organise "
+            "my workspace — should I get a standing desk? My friend "
+            "Sarah recommends Todoist for task management, and I also "
+            "like Trello and Asana.'\n"
+            "GOOD summary: 'The user graduated with a Business "
+            "Administration degree last year and now works at Acme "
+            "Corp as a junior analyst. They are organising their "
+            "workspace and considering a standing desk. Sarah "
+            "recommends Todoist; the user also likes Trello and "
+            "Asana.'\n"
+            "BAD summary (drops the personal facts): 'Recommended task "
+            "management apps include Todoist, Trello, and Asana. "
+            "Standing desks help with workspace organisation.'\n\n"
             "Respond with ONLY the summary — no preamble, no markdown, "
             "no quotation marks.\n\n"
-            f"Text: {raw_text}"
+            f"Text:\n{raw_text}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
@@ -227,34 +276,75 @@ class GeminiLLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def extract_tags(self, summary: str) -> list[str]:
-        """Extract 3–5 key concepts from a memory summary.
+        """Extract 5–12 key concepts from a memory summary.
 
-        Prompt explicitly excludes stopwords and articles — this is
-        the direct fix for the "how can `is` / `a` be a tag?" issue
-        the deterministic MockLLMProvider shows in unit tests.
+        Memory-system tags are the **anchors that retrieval lands
+        on**. A memory whose tags don't include the topic the user
+        later asks about is invisible to vector search even if its
+        summary contains the answer. So the prompt's job is to make
+        sure every fact-bearing topic in the summary appears as at
+        least one tag.
 
-        Also positively instructs the model to prioritise proper nouns
-        (brand names, places, people, organisations) when present, so
-        that an entity-preserving summary doesn't then get its
-        entities discarded at the tag stage.
+        Bias-correction this prompt makes vs a generic "extract concepts":
+
+        - LLMs default to extracting the **dominant topic** of a text
+          and skipping briefly-mentioned details. For a memory's tags,
+          *those briefly-mentioned details ARE the recall hook* —
+          they're the tags that match a user query 6 months later.
+        - The previous prompt asked for "3-5 key concepts", which
+          forced the LLM to pick a small number — meaning multi-topic
+          session summaries (post per-session ingestion) silently
+          dropped the personal facts ("graduated", "degree",
+          "Business Administration") in favour of the lengthier
+          generic content ("Todoist", "Trello", "task management").
+          Allowing 5-12 tags removes the artificial scarcity.
         """
         prompt = (
-            "Extract between 3 and 5 key concepts from the following text "
-            "and return them as a comma-separated list. "
-            "Exclude stopwords, articles, prepositions, and generic words "
-            '(e.g. "the", "is", "a", "of", "to", "for"). '
-            "When the text mentions proper nouns — brand names, places, "
-            "people, organisations — include them as concepts; prefer "
-            "specific entities over the abstract category they belong to. "
-            "Respond with ONLY the concepts, no numbering, no explanation, "
-            "no bullet points, no markdown.\n\n"
+            "Extract every distinct topic, fact, or named thing from "
+            "the following text as a tag — these tags are the anchors "
+            "a memory-retrieval system will use to find this text "
+            "later, so missed topics become unanswerable questions.\n\n"
+            "## Tag every fact, not just the dominant topic\n"
+            "If the text mentions both a personal fact ('graduated "
+            "with Business Administration') AND a list of "
+            "recommendations ('Todoist, Trello, Asana'), tag BOTH. "
+            "Do not skip a personal fact just because it appears "
+            "briefly amid lots of other content.\n\n"
+            "## Include\n"
+            "- Personal facts: degree, age, family, job, employer, "
+            "hobbies, location.\n"
+            "- Proper nouns: brand names, places, people, "
+            "organisations, products.\n"
+            "- Domain topics: 'task management', 'expense tracking', "
+            "'workspace setup', 'meal prep' etc.\n"
+            "- Specific events: 'baby shower', 'craft fair'.\n\n"
+            "## Exclude\n"
+            "Stopwords, articles, prepositions, and generic filler "
+            'words ("the", "is", "a", "of", "to", "for", "thing", '
+            '"stuff", "item").\n\n'
+            "## Format\n"
+            "Return BETWEEN 5 AND 12 tags as a comma-separated list. "
+            "Use as many tags as the text deserves — do not pad, do "
+            "not over-prune. Each tag should be 1-4 words.\n\n"
+            "## Worked example\n"
+            "Source: 'The user graduated with a Business "
+            "Administration degree last year and now works at Acme "
+            "Corp as a junior analyst. Sarah recommends Todoist for "
+            "task management; the user also likes Trello and Asana.'\n"
+            "GOOD tags: Business Administration, degree, graduation, "
+            "Acme Corp, junior analyst, Sarah, Todoist, Trello, "
+            "Asana, task management\n"
+            "BAD tags (drops personal facts): task management, "
+            "Todoist, Trello, Asana, recommendations\n\n"
+            "Respond with ONLY the comma-separated tag list — no "
+            "numbering, no explanation, no bullet points, no markdown.\n\n"
             f"Text: {summary}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
-        # Robust split: strip each token, drop empties, cap at 5.
+        # Robust split: strip each token, drop empties, cap at 12.
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
-        return [t for t in tags if t][:5]
+        return [t for t in tags if t][:12]
 
     def extract_tags_batch(self, summaries: list[str]) -> list[list[str]]:
         """Extract tags for many summaries in ONE LLM call.
@@ -302,17 +392,41 @@ class GeminiLLMProvider(LLMProvider):
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
         prompt = (
             f"For each of the {len(summaries)} numbered texts below, "
-            "extract between 3 and 5 key concepts. Return ONLY a JSON "
-            "array containing one inner array per numbered text, in "
-            "order: the first inner array for text [1], the second "
-            "for text [2], and so on. Each inner array contains only "
-            "the concept strings. Exclude stopwords, articles, "
-            "prepositions, and generic words. When a text mentions "
-            "proper nouns — brand names, places, people, "
-            "organisations — include them as concepts; prefer "
-            "specific entities over the abstract category they "
-            "belong to. No preamble, no markdown fences, no "
+            "extract every distinct topic, fact, or named thing as a "
+            "tag — these tags are the anchors a memory-retrieval "
+            "system will use to find each text later, so missed "
+            "topics become unanswerable questions.\n\n"
+            "## Tag every fact, not just the dominant topic\n"
+            "If a text mentions both a personal fact ('graduated "
+            "with Business Administration') AND a list of "
+            "recommendations ('Todoist, Trello, Asana'), tag BOTH. "
+            "Do not skip a personal fact just because it appears "
+            "briefly amid lots of other content.\n\n"
+            "## Include\n"
+            "Personal facts (degree, age, family, job, hobbies, "
+            "location), proper nouns (brand names, places, people, "
+            "organisations), domain topics, specific events.\n\n"
+            "## Exclude\n"
+            'Stopwords, articles, prepositions, generic filler "the", '
+            '"is", "a", "of", "to", "for", "thing", "stuff", "item".\n\n'
+            "## Format\n"
+            "Return ONLY a JSON array of arrays. The outer array has "
+            f"exactly {len(summaries)} entries — one per numbered "
+            "text in order (text [1] → first inner array, text [2] → "
+            "second inner array, etc.). Each inner array contains "
+            "BETWEEN 5 AND 12 tag strings (1-4 words each). Use as "
+            "many tags as the text deserves — do not pad, do not "
+            "over-prune. No preamble, no markdown fences, no "
             "explanation — ONLY the JSON.\n\n"
+            "## Worked example (one text only)\n"
+            "Source [1]: 'The user graduated with a Business "
+            "Administration degree last year and now works at Acme "
+            "Corp. Sarah recommends Todoist for task management.'\n"
+            'GOOD: [["Business Administration", "degree", '
+            '"graduation", "Acme Corp", "Sarah", "Todoist", "task '
+            'management"]]\n'
+            'BAD (drops personal facts): [["task management", '
+            '"Todoist", "recommendations"]]\n\n'
             f"{numbered}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
@@ -341,7 +455,10 @@ class GeminiLLMProvider(LLMProvider):
                 for t in inner
                 if t is not None and str(t).strip()
             ]
-            result.append(tags[:5])
+            # Cap at 12 (matches the new single-call cap; bumped from 5
+            # so dense session-level summaries don't lose briefly-
+            # mentioned facts).
+            result.append(tags[:12])
         return result
 
     # ------------------------------------------------------------------
