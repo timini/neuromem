@@ -142,6 +142,11 @@ class GeminiLLMProvider(LLMProvider):
     # ~300-500 tokens — comfortably inside the budget. Increasing
     # past 50 risks silent truncation at the response-tail.
     _BATCH_CHUNK_SIZE = 30
+    # Junction paragraph summaries (ADR-003) are 2-4 sentences each —
+    # roughly 50-150 output tokens per item. A 30-item chunk would
+    # blow past the flash-lite cap; 8 is conservative and keeps the
+    # tail reliable. If token budgets grow, raise this.
+    _JUNCTION_BATCH_CHUNK_SIZE = 8
     # Concurrent chunks per outer batched call. Multiple chunks fire
     # in parallel via ThreadPoolExecutor; with the token bucket they
     # still respect the shared RPM budget.
@@ -675,3 +680,142 @@ class GeminiLLMProvider(LLMProvider):
                 continue
             result.append(cleaned[0].strip(".,!?:;\"'").lower())
         return result
+
+    # ------------------------------------------------------------------
+    # Junction paragraph summaries (ADR-003 D2)
+    # ------------------------------------------------------------------
+
+    def generate_junction_summary(self, children_summaries: list[str]) -> str:
+        """Produce a 2-4 sentence summary of the children that sit
+        under a centroid (ADR-003 D2).
+
+        Called from both the dream cycle's eager trunk-summary pass and
+        from ``NeuroMemory.resolve_junction_summaries`` at render time.
+        Each input is a child's "content snippet" — a leaf tag's
+        attached-memory summaries, or a deeper centroid's own summary
+        (or a raw label as a fallback).
+
+        The prompt emphasises **concrete facts over abstractions**,
+        reusing the same fact-preserving guidance that went into
+        ``generate_summary``: briefly-mentioned user facts (degree,
+        dates, places, brands) are MORE important than the dominant
+        topic. A junction summary that drops "Business Administration"
+        for "career topics" is a failure — the point of the summary
+        is to let the answering LLM skim the tree and see what's
+        actually inside each branch.
+        """
+        if not children_summaries:
+            return ""
+        joined = "\n- ".join(s.strip() for s in children_summaries if s)
+        prompt = (
+            "You are summarising a set of related memory snippets into "
+            "a compact description of what this branch of a memory "
+            "hierarchy contains. The answering LLM will use this "
+            "description to decide whether to drill deeper into this "
+            "branch.\n\n"
+            "## Rules\n"
+            "- 2-4 sentences. Dense with facts, no filler.\n"
+            "- Preserve personal facts (degree, age, family, job, "
+            "decisions, places) and proper nouns (brands, people, "
+            "products). A summary that omits these has FAILED.\n"
+            "- Don't write 'The user...' at the start of every "
+            "sentence — vary phrasing.\n"
+            "- No preamble, no markdown, no quotation marks. Just "
+            "the summary text.\n\n"
+            f"## Snippets to summarise\n- {joined}"
+        )
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
+        return (resp.text or "").strip()
+
+    def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+        """Summarise many independent groups in one (or a few) Gemini
+        calls (ADR-003 D2).
+
+        Mirrors the shape of ``generate_category_names_batch`` /
+        ``extract_tags_batch``: chunks at ``_JUNCTION_BATCH_CHUNK_SIZE``
+        groups per call, runs chunks in parallel via
+        ``ThreadPoolExecutor`` (``_BATCH_WORKERS``), each chunk falls
+        back per-group to :meth:`generate_junction_summary` on parse
+        failure or length mismatch.
+
+        Empty input → empty output, no LLM call. Single-group input →
+        single ``generate_junction_summary`` delegation (cheaper than
+        the batch-shaped prompt).
+        """
+        if not groups:
+            return []
+        if len(groups) == 1:
+            return [self.generate_junction_summary(groups[0])]
+
+        if len(groups) <= self._JUNCTION_BATCH_CHUNK_SIZE:
+            return self._generate_junction_summaries_one_chunk(groups)
+
+        import concurrent.futures  # noqa: PLC0415
+
+        chunks: list[list[list[str]]] = [
+            groups[i : i + self._JUNCTION_BATCH_CHUNK_SIZE]
+            for i in range(0, len(groups), self._JUNCTION_BATCH_CHUNK_SIZE)
+        ]
+        workers = min(self._BATCH_WORKERS, len(chunks))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            chunk_results = list(pool.map(self._generate_junction_summaries_one_chunk, chunks))
+        out: list[str] = []
+        for chunk_result in chunk_results:
+            out.extend(chunk_result)
+        return out
+
+    def _generate_junction_summaries_one_chunk(self, groups: list[list[str]]) -> list[str]:
+        """Internal: one ≤``_JUNCTION_BATCH_CHUNK_SIZE`` slice of groups.
+
+        Per-group fallback on JSON parse failure or length mismatch,
+        same defensive pattern as the sibling batched calls.
+        """
+        if not groups:
+            return []
+        if len(groups) == 1:
+            return [self.generate_junction_summary(groups[0])]
+
+        numbered_blocks: list[str] = []
+        for i, group in enumerate(groups):
+            bullets = "\n  - ".join(s.strip() for s in group if s)
+            numbered_blocks.append(f"[{i + 1}]\n  - {bullets}")
+        numbered = "\n\n".join(numbered_blocks)
+
+        prompt = (
+            f"Summarise each of the {len(groups)} numbered groups of "
+            "memory snippets below. Each group represents one branch "
+            "of a memory hierarchy; the summary you produce will be "
+            "attached to that branch so the answering LLM can skim "
+            "the tree and decide whether to drill deeper.\n\n"
+            "## Rules for each summary\n"
+            "- 2-4 sentences. Dense with facts, no filler.\n"
+            "- Preserve personal facts (degree, age, family, job, "
+            "decisions, places, dates) and proper nouns (brands, "
+            "people, products). A summary that omits these has FAILED.\n"
+            "- No preamble; don't repeat the group number; don't "
+            "quote back the snippets.\n\n"
+            "## Output format\n"
+            f"Return ONLY a JSON array of exactly {len(groups)} "
+            "strings, in the same order as the numbered groups. No "
+            "markdown fences, no trailing commentary, no keys — just "
+            "the array.\n\n"
+            f"## Groups\n{numbered}"
+        )
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
+        raw = _strip_markdown_fence((resp.text or "").strip())
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [self.generate_junction_summary(g) for g in groups]
+
+        if not isinstance(parsed, list) or len(parsed) != len(groups):
+            return [self.generate_junction_summary(g) for g in groups]
+
+        out: list[str] = []
+        for i, summary in enumerate(parsed):
+            if not isinstance(summary, str) or not summary.strip():
+                out.append(self.generate_junction_summary(groups[i]))
+                continue
+            out.append(summary.strip())
+        return out
