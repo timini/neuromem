@@ -556,6 +556,78 @@ class TestUpdateNodeLabels:
         assert nodes[0]["label"] == "second"
 
 
+# ---------------------------------------------------------------------------
+# update_junction_summaries — hybrid trunk/lazy centroid summaries (ADR-003)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateJunctionSummaries:
+    """``update_junction_summaries`` persists per-centroid paragraph
+    summaries generated either eagerly during the dream cycle's trunk
+    pass or lazily via ``resolve_junction_summaries`` at render time
+    (ADR-003). Mirrors ``update_node_labels`` contract.
+    """
+
+    def test_round_trips(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        adapter.upsert_node("n_a", "retail", embedding=np.array([1.0, 0.0]), is_centroid=True)
+        adapter.upsert_node("n_b", "groceries", embedding=np.array([0.0, 1.0]), is_centroid=True)
+
+        adapter.update_junction_summaries(
+            {
+                "n_a": "Covers the user's retail and shopping activity across several sessions.",
+                "n_b": "Groceries and food-shopping memories, including the Target coffee creamer coupon.",
+            }
+        )
+
+        nodes = {n["id"]: n for n in adapter.get_all_nodes()}
+        assert nodes["n_a"]["paragraph_summary"].startswith("Covers the user")
+        assert "Target coffee creamer" in nodes["n_b"]["paragraph_summary"]
+
+    def test_fresh_node_has_null_summary(self) -> None:
+        """Upserting a node does NOT touch paragraph_summary — it starts
+        as NULL and only gets populated by the dream cycle or by lazy
+        render-time resolution."""
+        adapter = SQLiteAdapter(":memory:")
+        adapter.upsert_node("n_c", "fresh", embedding=np.array([1.0]), is_centroid=True)
+        node = adapter.get_all_nodes()[0]
+        assert node["paragraph_summary"] is None
+
+    def test_empty_dict_is_noop(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        adapter.update_junction_summaries({})
+
+    def test_missing_ids_silently_skipped(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        adapter.update_junction_summaries({"node_does_not_exist": "anything"})
+        assert adapter.get_all_nodes() == []
+
+    def test_preserves_other_node_fields(self) -> None:
+        adapter = SQLiteAdapter(":memory:")
+        original_emb = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+        adapter.upsert_node("n_x", "shopping", embedding=original_emb, is_centroid=True)
+
+        adapter.update_junction_summaries({"n_x": "Summary text."})
+
+        nodes = adapter.get_all_nodes()
+        node = nodes[0]
+        assert node["label"] == "shopping"
+        assert node["is_centroid"] is True
+        np.testing.assert_array_equal(node["embedding"], original_emb)
+        assert node["paragraph_summary"] == "Summary text."
+
+    def test_overwrites_prior_summary(self) -> None:
+        """Regeneration case: a new dream cycle updating a subtree's
+        summary must replace the prior one, not append."""
+        adapter = SQLiteAdapter(":memory:")
+        adapter.upsert_node("n_y", "topic", embedding=np.array([1.0]), is_centroid=True)
+        adapter.update_junction_summaries({"n_y": "first version"})
+        adapter.update_junction_summaries({"n_y": "second version"})
+
+        nodes = adapter.get_all_nodes()
+        assert nodes[0]["paragraph_summary"] == "second version"
+
+
 # Silence unused-import lint rule on sqlite3 — it's imported above for
 # the type context and used directly in TestLifecycle for the
 # ProgrammingError assertion.

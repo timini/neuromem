@@ -2,10 +2,11 @@
 # neuromem monorepo. Published to PyPI as `neuromem-core`. Import
 # name: `neuromem`.
 #
-# Runtime dependencies are limited to the Python stdlib + numpy +
-# pandas per Constitution v2.0.0 Principle II (Lean Dependency Set).
-# Adding a new runtime dependency requires a constitutional
-# amendment.
+# Runtime dependencies follow Constitution v2.0.0 Principle II
+# (Lean Dependency Set), read pragmatically as "minimal, not zero":
+# Python stdlib + numpy + pandas + hdbscan. See ADR-003 for the
+# hdbscan addition rationale. Any further additions require a
+# documented justification in an ADR.
 
 [project]
 name = "neuromem-core"
@@ -40,6 +41,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.1",
+    "hdbscan>=0.8.33",
 ]
 
 [project.urls]

@@ -1,11 +1,11 @@
 """T028 — SC-006 enforcement: ``neuromem-core`` runtime dependencies are frozen.
 
 Constitution v2.0.0 Principle II (Lean Dependency Set) pins the core
-library's runtime dependency list to exactly ``numpy + pandas`` plus
-the Python stdlib. Any addition — even a "small" one like tenacity,
-orjson, or structlog — expands the transitive closure every downstream
-agent has to carry, and needs to go through a constitutional amendment
-first.
+library's runtime dependency list. Reading ADR-003, "lean" is treated
+as "minimal, not zero" — the current locked set is numpy + pandas +
+hdbscan, where hdbscan is justified as the clustering algorithm per
+ADR-003 D1. Any *further* addition — even a "small" one like tenacity,
+orjson, or structlog — needs a documented ADR first.
 
 This test parses ``packages/neuromem-core/pyproject.toml`` with
 stdlib ``tomllib`` and asserts ``[project].dependencies`` is
@@ -44,6 +44,8 @@ LOCKED_RUNTIME_DEPS: frozenset[str] = frozenset(
     {
         "numpy>=1.26",
         "pandas>=2.1",
+        # ADR-003 D1: HDBSCAN for non-binary clustering in the dream cycle.
+        "hdbscan>=0.8.33",
     }
 )
 

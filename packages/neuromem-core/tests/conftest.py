@@ -183,6 +183,7 @@ class DictStorageAdapter(StorageAdapter):
             "label": n["label"],
             "embedding": n["embedding"].copy(),
             "is_centroid": n["is_centroid"],
+            "paragraph_summary": n.get("paragraph_summary"),
         }
 
     # ------------------------------------------------------------------
@@ -312,6 +313,14 @@ class DictStorageAdapter(StorageAdapter):
         for node_id, label in updates.items():
             if node_id in self._nodes:
                 self._nodes[node_id]["label"] = label
+
+    def update_junction_summaries(self, updates: dict[str, str]) -> None:
+        self._check_open()
+        if not updates:
+            return
+        for node_id, summary in updates.items():
+            if node_id in self._nodes:
+                self._nodes[node_id]["paragraph_summary"] = summary
 
     def get_all_nodes(self) -> list[dict[str, Any]]:
         self._check_open()
