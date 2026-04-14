@@ -314,16 +314,18 @@ class NeuromemAgent(BaseAgent):
         embedder_provider: str | None = None,
         llm_api_key: str | None = None,
         embedder_api_key: str | None = None,
+        memory_model: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
+        # memory_model decouples the memory-layer LLM model from the
+        # answer-LLM model. Used when --llm-provider is something
+        # other than gemini (e.g. gemma via Ollama) but the answer
+        # LLM is still Gemini (because GeminiAnsweringClient is the
+        # only answer client wired in the one-shot agent path).
+        self._memory_model = memory_model or model
         self._embedder_model = embedder_model
         self._cluster_threshold = cluster_threshold
-        # Provider wiring (ADR-005 multi-provider): memory-layer LLM
-        # and embedder can be any of gemini/openai/anthropic/gemma.
-        # The answer-LLM (used by this one-shot agent via
-        # GeminiAnsweringClient) stays Gemini — the ADK variant is
-        # the one that benefits most from non-Gemini answer models.
         self._llm_provider = llm_provider
         self._embedder_provider = embedder_provider or llm_provider
         self._llm_api_key = llm_api_key or api_key
@@ -344,7 +346,7 @@ class NeuromemAgent(BaseAgent):
         pair = build_pair(
             llm_provider=self._llm_provider,
             llm_api_key=self._llm_api_key,
-            llm_model=self._model,
+            llm_model=self._memory_model,
             embedder_provider=self._embedder_provider,
             embedder_api_key=self._embedder_api_key,
             embedder_model=self._embedder_model,
@@ -492,16 +494,13 @@ class NeuromemAdkAgent(BaseAgent):
         embedder_provider: str | None = None,
         llm_api_key: str | None = None,
         embedder_api_key: str | None = None,
+        memory_model: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
+        self._memory_model = memory_model or model
         self._embedder_model = embedder_model
         self._cluster_threshold = cluster_threshold
-        # Provider wiring (ADR-005 multi-provider). Memory-layer LLM
-        # + embedder can be any of gemini/openai/anthropic/gemma. The
-        # ADK answer-LLM model is still ``self._model`` (ADK accepts
-        # LiteLLM-prefixed strings like ``openai/gpt-4.1-mini`` to
-        # drive non-Gemini answer models).
         self._llm_provider = llm_provider
         self._embedder_provider = embedder_provider or (
             "openai" if llm_provider == "anthropic" else llm_provider
@@ -575,7 +574,7 @@ class NeuromemAdkAgent(BaseAgent):
         pair = build_pair(
             llm_provider=self._llm_provider,
             llm_api_key=self._llm_api_key,
-            llm_model=self._model,
+            llm_model=self._memory_model,
             embedder_provider=self._embedder_provider,
             embedder_api_key=self._embedder_api_key,
             embedder_model=self._embedder_model,
