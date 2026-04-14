@@ -52,13 +52,20 @@ class GemmaLLMProvider(OpenAILLMProvider):
     ignores but the openai SDK requires non-empty.
     """
 
+    # Local Ollama serves a single model instance with a small
+    # (default 1–4) parallelism budget; flooding it with the parent
+    # class's 10-way threadpool causes queued requests to time out.
+    # Cap at 2 concurrent in-flight calls — matches Ollama's default
+    # OLLAMA_NUM_PARALLEL without starving it.
+    _BATCH_WORKERS = 2
+
     def __init__(
         self,
         model: str = _DEFAULT_LLM_MODEL,
         *,
         base_url: str = _DEFAULT_BASE_URL,
         api_key: str = "ollama",
-        request_timeout_s: float = 60.0,
+        request_timeout_s: float = 600.0,
     ) -> None:
         super().__init__(
             api_key=api_key,
@@ -83,7 +90,7 @@ class GemmaEmbeddingProvider(OpenAIEmbeddingProvider):
         *,
         base_url: str = _DEFAULT_BASE_URL,
         api_key: str = "ollama",
-        request_timeout_s: float = 60.0,
+        request_timeout_s: float = 600.0,
     ) -> None:
         super().__init__(
             api_key=api_key,
