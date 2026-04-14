@@ -35,9 +35,10 @@ import uuid
 
 import numpy as np
 
-from .providers import EmbeddingProvider, LLMProvider
+from .clustering import HDBSCANClusteringProvider
+from .providers import ClusteringProvider, EmbeddingProvider, LLMProvider
 from .storage.base import StorageAdapter
-from .vectors import compute_centroid
+from .vectors import compute_centroid  # noqa: F401 — retained for backwards-compatible imports
 
 logger = logging.getLogger("neuromem.system")
 
@@ -80,6 +81,7 @@ class NeuroMemory:
         decay_lambda: float = DEFAULT_DECAY_LAMBDA,
         archive_threshold: float = DEFAULT_ARCHIVE_THRESHOLD,
         cluster_threshold: float = DEFAULT_CLUSTER_THRESHOLD,
+        clusterer: ClusteringProvider | None = None,
     ) -> None:
         if not isinstance(storage, StorageAdapter):
             raise TypeError(f"storage must be a StorageAdapter, got {type(storage).__name__}")
@@ -87,6 +89,10 @@ class NeuroMemory:
             raise TypeError(f"llm must be an LLMProvider, got {type(llm).__name__}")
         if not isinstance(embedder, EmbeddingProvider):
             raise TypeError(f"embedder must be an EmbeddingProvider, got {type(embedder).__name__}")
+        if clusterer is not None and not isinstance(clusterer, ClusteringProvider):
+            raise TypeError(
+                f"clusterer must be a ClusteringProvider, got {type(clusterer).__name__}"
+            )
         if dream_threshold < 1:
             raise ValueError(f"dream_threshold must be >= 1, got {dream_threshold}")
         if decay_lambda <= 0:
@@ -102,7 +108,16 @@ class NeuroMemory:
         self.dream_threshold = dream_threshold
         self.decay_lambda = decay_lambda
         self.archive_threshold = archive_threshold
+        # `cluster_threshold` was the stop-condition for the ADR-001 era
+        # binary agglomerative loop. Under ADR-003, clustering is
+        # delegated to a ``ClusteringProvider`` whose own configuration
+        # (e.g. HDBSCAN's min_cluster_size) governs cluster formation.
+        # The threshold is still accepted for backwards-compatible
+        # constructor signatures but no longer consulted by the default
+        # HDBSCAN provider. Callers who really need threshold-based
+        # behaviour can inject a custom ``ClusteringProvider``.
         self.cluster_threshold = cluster_threshold
+        self.clusterer: ClusteringProvider = clusterer or HDBSCANClusteringProvider()
 
         # Single lock gating the dreaming cycle. _is_dreaming is the
         # authoritative "is a cycle in flight" flag; _dream_lock is
@@ -614,128 +629,77 @@ class NeuroMemory:
         return label_to_node
 
     def _run_clustering(self, label_to_node: dict[str, dict]) -> None:
-        """Greedy agglomerative clustering over all current nodes.
+        """Cluster leaf tag nodes into a hierarchy via ``self.clusterer``.
 
-        Builds a pairwise cosine-similarity matrix via numpy, finds
-        the highest-similarity pair, merges them into a centroid
-        node (``is_centroid=True``) with an LLM-generated one-word
-        label, writes ``child_of`` edges from the centroid to both
-        members, and repeats until no remaining pair exceeds
-        ``cluster_threshold``.
+        ADR-003 D1 replaced the hand-rolled binary agglomerative loop
+        (documented in ADR-001) with a pluggable ``ClusteringProvider``
+        — default ``HDBSCANClusteringProvider`` — that produces
+        natural-fanout multi-level centroids (2-8 children typically)
+        instead of forced pairwise merges.
 
-        The method MUTATES storage (upserts centroid nodes, inserts
-        child_of edges) but does NOT mutate ``label_to_node`` — leaf
-        tag nodes stay addressable so ``_run_dream_cycle`` can still
-        wire ``has_tag`` edges from memories to their direct tags
-        (not to their centroid ancestors).
+        This method does no clustering math itself: it collects the
+        current nodes, delegates to ``self.clusterer.cluster``, and
+        walks the returned dependency-ordered list of :class:`Cluster`
+        records, materialising each as a centroid node with
+        ``is_centroid=True``, a placeholder label (lazy naming per
+        ADR-002), and ``child_of`` edges to its children. Children's
+        temporary ids (``c_...`` from the provider) are rewritten to
+        the storage-side UUIDs as centroids are created.
 
-        Safety bound: the loop runs at most ``2 * len(candidates)``
-        iterations so a pathological similarity matrix cannot hang.
-
-        Design rationale — why hand-rolled numpy and not scipy /
-        sklearn / HDBSCAN: see ``docs/decisions/ADR-001-clustering-
-        library-choice.md``. TL;DR: numpy is already a mandatory
-        runtime dep (Principle II); the per-merge
-        ``llm.generate_category_name`` callback is the reason the
-        loop is custom (libraries expose dendrograms, not merge
-        hooks); and at k ≤ 5000 the dense pairwise matrix is
-        single-digit milliseconds — the libraries would add install
-        surface without changing the hot-path cost. Revisit when any
-        of (a) k > 5000 hits SC-003, (b) LongMemEval shows cluster-
-        quality regressions vs. a library baseline, or (c) a
-        downstream wrapper needs Ward linkage / soft clustering /
-        noise labels. See the ADR for the full trade-off analysis
-        and the amendment procedure required to swap.
+        Leaf tag nodes in ``label_to_node`` are not mutated — the
+        has-tag wiring in ``_run_dream_cycle`` still connects memories
+        to leaves directly, not to centroid ancestors.
         """
-        # Copy the starting nodes into a working list. Appending
-        # centroids to this list grows the pool — a centroid can
-        # itself merge with another node on a later iteration,
-        # producing a multi-level hierarchy.
-        candidates: list[dict] = [
-            {
-                "id": node["id"],
-                "label": node["label"],
-                "embedding": np.asarray(node["embedding"], dtype=np.float64),
-                "is_centroid": bool(node["is_centroid"]),
-            }
+        if not label_to_node:
+            return
+
+        # 1. Build the (id, embedding) input for the clusterer.
+        leaves = [
+            (node["id"], np.asarray(node["embedding"], dtype=np.float64))
             for node in label_to_node.values()
         ]
-        alive = [True] * len(candidates)
+        if len(leaves) < 2:
+            # Nothing to cluster — a single leaf stays as-is.
+            return
 
-        max_iterations = max(2, 2 * len(candidates))
-        for _iteration in range(max_iterations):
-            alive_indices = [i for i, a in enumerate(alive) if a]
-            if len(alive_indices) < 2:
-                break
+        clusters = self.clusterer.cluster(leaves)
+        if not clusters:
+            logger.debug(
+                "_run_clustering: clusterer produced 0 clusters over %d leaves "
+                "(noise-only configuration or degenerate input)",
+                len(leaves),
+            )
+            return
 
-            # Build a (k, D) matrix of only the alive embeddings.
-            alive_embs = np.stack([candidates[i]["embedding"] for i in alive_indices])
-
-            # Pairwise cosine similarity: normalise rows, then dot-product.
-            row_norms = np.linalg.norm(alive_embs, axis=1, keepdims=True)
-            safe_norms = np.where(row_norms > 0.0, row_norms, 1.0)
-            normed = alive_embs / safe_norms
-            sim = normed @ normed.T
-            np.fill_diagonal(sim, -np.inf)  # never merge with self
-
-            # Find the highest-similarity pair.
-            flat_idx = int(np.argmax(sim))
-            k = len(alive_indices)
-            i_rel, j_rel = divmod(flat_idx, k)
-            best_sim = float(sim[i_rel, j_rel])
-            if best_sim < self.cluster_threshold:
-                break
-
-            # Resolve back to indices in the full candidates list.
-            i = alive_indices[i_rel]
-            j = alive_indices[j_rel]
-            a = candidates[i]
-            b = candidates[j]
-
-            # Merge: compute centroid, write with placeholder label,
-            # persist. ADR-002 (lazy centroid naming) defers naming to
-            # render time — see ``ContextHelper.build_prompt_context``
-            # which calls ``NeuroMemory.resolve_centroid_names`` to
-            # rename placeholders to LLM-generated semantic ones, but
-            # only for centroids that actually appear in the rendered
-            # subgraph. The placeholder format is recognised by the
-            # resolver via the "cluster_" prefix.
-            centroid_emb = compute_centroid([a["embedding"], b["embedding"]])
+        # 2. Walk clusters in dependency order. The provider guarantees
+        # children appear before the parents that reference them, so a
+        # single forward pass suffices. Map each provider-minted id to
+        # the storage-side UUID we create for it.
+        id_map: dict[str, str] = {}
+        for cluster in clusters:
             centroid_id = f"node_{uuid.uuid4()}"
-            parent_label = _PLACEHOLDER_LABEL_PREFIX + centroid_id[5:17]
+            placeholder_label = _PLACEHOLDER_LABEL_PREFIX + centroid_id[5:17]
 
             self.storage.upsert_node(
                 node_id=centroid_id,
-                label=parent_label,
-                embedding=centroid_emb,
+                label=placeholder_label,
+                embedding=cluster.embedding,
                 is_centroid=True,
             )
-            self.storage.insert_edge(
-                source_id=centroid_id,
-                target_id=a["id"],
-                weight=best_sim,
-                relationship="child_of",
-            )
-            self.storage.insert_edge(
-                source_id=centroid_id,
-                target_id=b["id"],
-                weight=best_sim,
-                relationship="child_of",
-            )
 
-            # Retire the two members and add the centroid as a new
-            # live candidate so the next iteration can merge IT too.
-            alive[i] = False
-            alive[j] = False
-            candidates.append(
-                {
-                    "id": centroid_id,
-                    "label": parent_label,
-                    "embedding": centroid_emb,
-                    "is_centroid": True,
-                }
-            )
-            alive.append(True)
+            # Rewrite any provider-minted child ids to their storage
+            # UUIDs. Children that are leaf ids (not in id_map) pass
+            # through unchanged.
+            for child_id in cluster.child_ids:
+                resolved_child = id_map.get(child_id, child_id)
+                self.storage.insert_edge(
+                    source_id=centroid_id,
+                    target_id=resolved_child,
+                    weight=float(cluster.cohesion),
+                    relationship="child_of",
+                )
+
+            id_map[cluster.id] = centroid_id
 
 
 def _sanitise_category_name(raw: str) -> str:

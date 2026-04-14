@@ -688,10 +688,13 @@ class TestRunDreamCycleHappyPath:
             assert row is not None
             assert row["status"] == "consolidated"
 
-        # 2. Nine distinct tag nodes (one per unique token) exist and
-        #    are leaf tags, not centroids (clustering lands in Half B).
+        # 2. Nine distinct tag nodes (one per unique token) exist as
+        #    leaves. Under ADR-003, clustering (default HDBSCAN) may
+        #    ALSO emit centroid nodes above the leaves — those are
+        #    fine and expected. The invariant here is just that every
+        #    extracted tag label exists as a leaf.
         nodes = memory_system.storage.get_all_nodes()
-        labels = {n["label"] for n in nodes}
+        leaf_labels = {n["label"] for n in nodes if not n["is_centroid"]}
         expected = {
             "alpha",
             "beta",
@@ -703,9 +706,7 @@ class TestRunDreamCycleHappyPath:
             "theta",
             "iota",
         }
-        assert expected <= labels
-        for node in nodes:
-            assert node["is_centroid"] is False
+        assert expected <= leaf_labels
 
         # 3. has_tag edges wired from each memory to its 3 tags.
         #    get_subgraph traverses from a node and collects reachable
@@ -917,15 +918,29 @@ class TestAgglomerativeClustering:
         for centroid in centroids:
             assert centroid["label"].startswith("cluster_")
 
-    def test_clustering_does_not_merge_below_threshold(
+    def test_clustering_delegated_to_injected_provider(
         self,
         mock_llm: MockLLMProvider,
     ) -> None:
-        """With cluster_threshold=0.99, cos=0.5 pairs are not merged."""
+        """ADR-003: clustering is delegated to the injected
+        ``ClusteringProvider``. If a caller injects one that returns
+        no clusters (a simple way to disable clustering), the dream
+        cycle leaves all tag nodes as leaves with no centroids.
+
+        Replaces the former ADR-001-era test that asserted
+        ``cluster_threshold`` suppressed merges — the threshold is
+        now vestigial (see ``NeuroMemory.__init__`` docstring).
+        """
+        from neuromem.providers import Cluster, ClusteringProvider  # noqa: PLC0415
+
+        class NullClusterer(ClusteringProvider):
+            def cluster(self, nodes):  # type: ignore[override]
+                return []
+
         ctrl = ControlledEmbedder(
             {
                 "alpha": [1.0, 0.0, 0.0, 0.0],
-                "beta": [0.5, 0.866, 0.0, 0.0],  # cos(alpha, beta) = 0.5
+                "beta": [0.5, 0.866, 0.0, 0.0],
                 "gamma": [0.0, 0.5, 0.866, 0.0],
             }
         )
@@ -933,14 +948,17 @@ class TestAgglomerativeClustering:
             storage=SQLiteAdapter(":memory:"),
             llm=mock_llm,
             embedder=ctrl,
-            cluster_threshold=0.99,
+            clusterer=NullClusterer(),
         )
         system.enqueue("alpha beta gamma")
         system.force_dream()
 
         nodes = system.storage.get_all_nodes()
         centroids = [n for n in nodes if n["is_centroid"]]
-        assert len(centroids) == 0
+        assert len(centroids) == 0, "NullClusterer injected — no centroids should exist"
+        # Suppress unused-import lint — Cluster is imported to keep the
+        # Cluster/ClusteringProvider pair visible next to the test.
+        _ = Cluster
 
     def test_has_tag_edges_still_point_to_leaves_after_clustering(
         self,
