@@ -78,11 +78,31 @@ class LLMProvider(ABC):
     def generate_summary(self, raw_text: str) -> str:
         """Return a 1–2 sentence episodic summary of ``raw_text``.
 
-        Called from the caller's thread inside ``enqueue()``. If the
-        caller cannot afford real LLM latency on the hot path, they
-        should inject a fast/local/no-op provider here and do the
-        real summarisation upstream.
+        Called from the dream-cycle worker thread (ADR-004: summary
+        generation moved off the caller thread). If a sibling caller
+        invokes this directly they get the old synchronous behaviour
+        — but ``NeuroMemory.enqueue`` no longer does.
         """
+
+    def generate_summary_batch(self, raw_texts: list[str]) -> list[str]:
+        """Summarise many raw texts in a single operation (ADR-004).
+
+        Called from the dream-cycle worker once per cycle to
+        backfill the ``summary`` column on every inbox memory. The
+        default implementation loops over :meth:`generate_summary`;
+        concrete providers SHOULD override with a chunked + parallel
+        batched LLM call for real speedup.
+
+        **Contract**:
+
+        - Returns a list of strings, one per input text, in the
+          same order. ``len(return_value) == len(raw_texts)`` is a
+          hard invariant.
+        - Empty input → empty output. No LLM call.
+        - Each returned string is a 1–2 sentence episodic summary
+          of the corresponding raw text.
+        """
+        return [self.generate_summary(t) for t in raw_texts]
 
     @abstractmethod
     def extract_tags(self, summary: str) -> list[str]:

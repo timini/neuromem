@@ -272,6 +272,14 @@ class DictStorageAdapter(StorageAdapter):
             if mem_id in self._memories:
                 self._memories[mem_id]["named_entities"] = [str(e) for e in entities]
 
+    def set_summaries(self, updates: dict[str, str]) -> None:
+        """ADR-004: in-memory override so tests can assert the worker
+        backfilled summaries on memories enqueued with empty summary."""
+        self._check_open()
+        for mem_id, summary in updates.items():
+            if mem_id in self._memories:
+                self._memories[mem_id]["summary"] = summary
+
     # ------------------------------------------------------------------
     # Consolidation (Neocortex / Graph)
     # ------------------------------------------------------------------
