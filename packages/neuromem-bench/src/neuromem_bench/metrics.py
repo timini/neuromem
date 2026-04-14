@@ -107,18 +107,10 @@ def llm_judge(
     signal and the llm_judge metric for end-of-milestone
     validation.
     """
+    from neuromem_bench.prompts import load_prompt  # noqa: PLC0415
+
     client = GeminiAnsweringClient(api_key=api_key, model=model)
-    prompt = (
-        "You are grading an answer. Given the question, the reference "
-        "(correct) answer, and the submitted prediction, respond with "
-        "exactly one word: 'correct' if the prediction is a correct "
-        "answer to the question (even if phrased differently from the "
-        "reference), or 'incorrect' otherwise.\n\n"
-        f"Question: {question}\n"
-        f"Reference answer: {gold}\n"
-        f"Submitted prediction: {prediction}\n\n"
-        "Respond with exactly one word: correct or incorrect."
-    )
+    prompt = load_prompt("llm_judge").format(question=question, gold=gold, prediction=prediction)
     verdict = (
         client.generate(
             system_instruction=None,

@@ -39,6 +39,7 @@ generate_summary LLM call on the hot path). Estimated cost per
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 import warnings
@@ -94,7 +95,15 @@ def _parse_dotenv(path: Path) -> dict[str, str]:
 
 
 def _resolve_api_key() -> str:
-    """Load GOOGLE_API_KEY (or GEMINI_API_KEY) from env or .env."""
+    """Load GOOGLE_API_KEY (or GEMINI_API_KEY) from env or .env.
+
+    Also EXPORTS the discovered key back to ``os.environ`` so child
+    libraries that read the env directly (notably the Google ADK
+    Runner, which instantiates its own genai client from the env
+    rather than accepting a kwarg) find it. Without this, the ADK
+    agent path failed immediately on every answer with
+    "No API key was provided".
+    """
     for env_name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
         value = os.environ.get(env_name, "").strip()
         if value:
@@ -105,6 +114,9 @@ def _resolve_api_key() -> str:
     for env_name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
         value = env_vars.get(env_name, "").strip()
         if value:
+            # Export so downstream ADK / genai clients pick it up.
+            os.environ.setdefault("GOOGLE_API_KEY", value)
+            os.environ.setdefault("GEMINI_API_KEY", value)
             return value
     print(
         "ERROR: no GOOGLE_API_KEY / GEMINI_API_KEY in env or repo-root .env",
@@ -164,7 +176,24 @@ def _build_metric(name: str, api_key: str):
     raise ValueError(f"unknown metric name: {name!r}. Valid: exact / contains / llm-judge")
 
 
+def _configure_logging() -> None:
+    """Wire ``neuromem_bench.*`` loggers up to stderr at INFO.
+
+    Used for per-instance observability events (e.g. ADK tool-call
+    tallies) without drowning the runner's own timestamped stdout
+    stream. Other library loggers (neuromem, google.adk, httpx) stay
+    at WARNING so their internals don't spam the transcript.
+    """
+    handler = logging.StreamHandler(stream=sys.stderr)
+    handler.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
+    bench_logger = logging.getLogger("neuromem_bench")
+    bench_logger.setLevel(logging.INFO)
+    bench_logger.addHandler(handler)
+    bench_logger.propagate = False
+
+
 def main() -> None:
+    _configure_logging()
     parser = argparse.ArgumentParser(
         description="Run LongMemEval against one or more neuromem agents."
     )
@@ -186,9 +215,12 @@ def main() -> None:
         default=None,
         help=(
             "Agent backend (repeatable). One of: null, naive-rag, "
-            "neuromem, neuromem-adk. Default: neuromem. "
-            "neuromem-adk is the real ADK-backed variant with tools "
-            "and is significantly slower per answer."
+            "neuromem, neuromem-adk. Default: neuromem-adk — the "
+            "real ADK-backed variant with search_memory / "
+            "retrieve_memories / expand_node tools. Pass "
+            "--agent neuromem for the one-shot baseline that "
+            "injects the tree as a system prompt and cannot use "
+            "tools."
         ),
     )
     parser.add_argument(
@@ -216,7 +248,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    agents = args.agent or ["neuromem"]
+    # Default changed to neuromem-adk (ADR-003): the one-shot `neuromem`
+    # agent cannot call expand_node / search_memory / retrieve_memories
+    # and so doesn't exercise the ontology-tree-v2 work. The ADK agent
+    # is slower per instance but measures what the rework actually
+    # delivers. Pass `--agent neuromem` explicitly for the one-shot
+    # baseline.
+    agents = args.agent or ["neuromem-adk"]
     limit = args.sample_size if args.sample_size > 0 else None
 
     api_key = _resolve_api_key()

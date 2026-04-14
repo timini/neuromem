@@ -45,6 +45,7 @@ under the hood. For unit-testable agents, use mock providers.
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol
 
 import numpy as np
@@ -52,6 +53,8 @@ from neuromem import NeuroMemory, SQLiteAdapter
 from neuromem_gemini import GeminiEmbeddingProvider, GeminiLLMProvider
 
 from neuromem_bench._client import GeminiAnsweringClient
+
+logger = logging.getLogger("neuromem_bench.agent")
 
 
 class BaseAgent(Protocol):
@@ -517,25 +520,12 @@ class NeuromemAdkAgent(BaseAgent):
         # before every model call; the instruction below nudges the
         # LLM to fall through to the tools when the injected summaries
         # aren't enough.
+        from neuromem_bench.prompts import load_prompt  # noqa: PLC0415
+
         agent = Agent(
             model=self._model,
             name=self._agent_name,
-            instruction=(
-                "You are a helpful assistant with access to long-term "
-                "memory. Before each of your responses, a tree of "
-                "relevant memories from prior conversations is "
-                "automatically injected into your context. Read it "
-                "first. If the injected memories contain the answer, "
-                "respond directly and specifically. If the summaries "
-                "are too compressed to answer precisely, call the "
-                "retrieve_memories tool with the specific memory IDs "
-                "shown in the tree to fetch their full original text. "
-                "If the tree doesn't surface the relevant topic at "
-                "all, call search_memory with a focused query. Always "
-                "answer the user's question directly — no hedging, no "
-                "'I don't have access' responses unless the memories "
-                "genuinely don't cover the topic."
-            ),
+            instruction=load_prompt("adk_agent_instruction"),
         )
 
         # Thresholds go in as kwargs via enable_memory (PR #49). No
@@ -601,6 +591,31 @@ class NeuromemAdkAgent(BaseAgent):
                 quiet=True,
             )
         )
+
+        # Tally tool calls so we can see whether the ADK agent is
+        # actually exercising the ADR-003 ontology tools or just
+        # answering from the injected context tree. Persisted on
+        # ``self.last_tool_calls`` so the benchmark runner can pull
+        # them into the per-instance JSONL metadata, and also emitted
+        # at INFO on the ``neuromem_bench.agent`` logger for live
+        # observability during long runs.
+        tool_calls: dict[str, int] = {}
+        for event in events:
+            content = getattr(event, "content", None)
+            parts = getattr(content, "parts", None) or []
+            for part in parts:
+                fn_call = getattr(part, "function_call", None)
+                if fn_call is not None:
+                    name = getattr(fn_call, "name", "") or "<unnamed>"
+                    tool_calls[name] = tool_calls.get(name, 0) + 1
+        self.last_tool_calls: dict[str, int] = tool_calls
+        if tool_calls:
+            logger.info(
+                "adk tool calls: %s",
+                ", ".join(f"{k}×{v}" for k, v in sorted(tool_calls.items())),
+            )
+        else:
+            logger.info("adk tool calls: none")
 
         # CRITICAL: filter by author. ADK emits events for tool calls
         # AND tool RESULTS, both of which can have text-bearing

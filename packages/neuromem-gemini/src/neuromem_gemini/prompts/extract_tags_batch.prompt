@@ -1,0 +1,20 @@
+For each of the {n} numbered texts below, extract every distinct topic, fact, or named thing as a tag — these tags are the anchors a memory-retrieval system will use to find each text later, so missed topics become unanswerable questions.
+
+## Tag every fact, not just the dominant topic
+If a text mentions both a personal fact ('graduated with Business Administration') AND a list of recommendations ('Todoist, Trello, Asana'), tag BOTH. Do not skip a personal fact just because it appears briefly amid lots of other content.
+
+## Include
+Personal facts (degree, age, family, job, hobbies, location), proper nouns (brand names, places, people, organisations), domain topics, specific events.
+
+## Exclude
+Stopwords, articles, prepositions, generic filler "the", "is", "a", "of", "to", "for", "thing", "stuff", "item".
+
+## Format
+Return ONLY a JSON array of arrays. The outer array has exactly {n} entries — one per numbered text in order (text [1] → first inner array, text [2] → second inner array, etc.). Each inner array contains BETWEEN 5 AND 12 tag strings (1-4 words each). Use as many tags as the text deserves — do not pad, do not over-prune. No preamble, no markdown fences, no explanation — ONLY the JSON.
+
+## Worked example (one text only)
+Source [1]: 'The user graduated with a Business Administration degree last year and now works at Acme Corp. Sarah recommends Todoist for task management.'
+GOOD: [["Business Administration", "degree", "graduation", "Acme Corp", "Sarah", "Todoist", "task management"]]
+BAD (drops personal facts): [["task management", "Todoist", "recommendations"]]
+
+{numbered}

@@ -27,6 +27,8 @@ from google import genai
 from google.genai.errors import ServerError
 from neuromem.providers import LLMProvider
 
+from neuromem_gemini.prompts import load_prompt
+
 # Transient errors we retry on. ServerError covers 5xx from the Gemini API.
 # The remaining entries cover transport-level connection issues (server
 # dropped the TCP connection, SSL handshake failure, DNS timeout, etc.)
@@ -227,52 +229,7 @@ class GeminiLLMProvider(LLMProvider):
         The prompt also gives a worked example so the model can pattern-
         match against the desired shape rather than improvise.
         """
-        prompt = (
-            "You are summarising a piece of text into a memory record "
-            "that the user will be able to ask questions about later.\n\n"
-            "## Preserve EVERY fact\n"
-            "Your job is to preserve every concrete piece of information "
-            "the text contains, especially:\n"
-            "- **Personal facts about the user**: degree, age, family "
-            "members, job, employer, hobbies, location, preferences, "
-            "decisions stated, actions taken, events attended.\n"
-            "- **Proper nouns**: brand names, places, people, "
-            "organisations, products.\n"
-            "- **Specific numbers and dates**: amounts, prices, ages, "
-            "dates, counts.\n"
-            "- **Implied facts**: if the user says 'when I graduated', "
-            "they graduated; if they say 'my wife', they have a wife.\n\n"
-            "## Bias toward user facts over generic content\n"
-            "If the text mixes a personal fact with a list of "
-            "recommendations or generic advice, the personal fact is "
-            "MORE important. Drop generic advice before dropping a "
-            "personal detail. A summary that omits a brand list is "
-            "fine; a summary that omits 'I graduated with Business "
-            "Administration' has FAILED.\n\n"
-            "## Length\n"
-            "2–4 sentences. Use as much length as needed to fit every "
-            "fact. Do NOT pad with generic content. Do NOT add a "
-            "preamble like 'This text discusses...'.\n\n"
-            "## Worked example\n"
-            "Source: 'I graduated with a degree in Business "
-            "Administration last year and started at Acme Corp as a "
-            "junior analyst. I'm looking for advice on how to organise "
-            "my workspace — should I get a standing desk? My friend "
-            "Sarah recommends Todoist for task management, and I also "
-            "like Trello and Asana.'\n"
-            "GOOD summary: 'The user graduated with a Business "
-            "Administration degree last year and now works at Acme "
-            "Corp as a junior analyst. They are organising their "
-            "workspace and considering a standing desk. Sarah "
-            "recommends Todoist; the user also likes Trello and "
-            "Asana.'\n"
-            "BAD summary (drops the personal facts): 'Recommended task "
-            "management apps include Todoist, Trello, and Asana. "
-            "Standing desks help with workspace organisation.'\n\n"
-            "Respond with ONLY the summary — no preamble, no markdown, "
-            "no quotation marks.\n\n"
-            f"Text:\n{raw_text}"
-        )
+        prompt = load_prompt("generate_summary").format(raw_text=raw_text)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
 
@@ -304,47 +261,7 @@ class GeminiLLMProvider(LLMProvider):
           generic content ("Todoist", "Trello", "task management").
           Allowing 5-12 tags removes the artificial scarcity.
         """
-        prompt = (
-            "Extract every distinct topic, fact, or named thing from "
-            "the following text as a tag — these tags are the anchors "
-            "a memory-retrieval system will use to find this text "
-            "later, so missed topics become unanswerable questions.\n\n"
-            "## Tag every fact, not just the dominant topic\n"
-            "If the text mentions both a personal fact ('graduated "
-            "with Business Administration') AND a list of "
-            "recommendations ('Todoist, Trello, Asana'), tag BOTH. "
-            "Do not skip a personal fact just because it appears "
-            "briefly amid lots of other content.\n\n"
-            "## Include\n"
-            "- Personal facts: degree, age, family, job, employer, "
-            "hobbies, location.\n"
-            "- Proper nouns: brand names, places, people, "
-            "organisations, products.\n"
-            "- Domain topics: 'task management', 'expense tracking', "
-            "'workspace setup', 'meal prep' etc.\n"
-            "- Specific events: 'baby shower', 'craft fair'.\n\n"
-            "## Exclude\n"
-            "Stopwords, articles, prepositions, and generic filler "
-            'words ("the", "is", "a", "of", "to", "for", "thing", '
-            '"stuff", "item").\n\n'
-            "## Format\n"
-            "Return BETWEEN 5 AND 12 tags as a comma-separated list. "
-            "Use as many tags as the text deserves — do not pad, do "
-            "not over-prune. Each tag should be 1-4 words.\n\n"
-            "## Worked example\n"
-            "Source: 'The user graduated with a Business "
-            "Administration degree last year and now works at Acme "
-            "Corp as a junior analyst. Sarah recommends Todoist for "
-            "task management; the user also likes Trello and Asana.'\n"
-            "GOOD tags: Business Administration, degree, graduation, "
-            "Acme Corp, junior analyst, Sarah, Todoist, Trello, "
-            "Asana, task management\n"
-            "BAD tags (drops personal facts): task management, "
-            "Todoist, Trello, Asana, recommendations\n\n"
-            "Respond with ONLY the comma-separated tag list — no "
-            "numbering, no explanation, no bullet points, no markdown.\n\n"
-            f"Text: {summary}"
-        )
+        prompt = load_prompt("extract_tags").format(summary=summary)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         # Robust split: strip each token, drop empties, cap at 12.
@@ -395,45 +312,7 @@ class GeminiLLMProvider(LLMProvider):
             return [self.extract_tags(summaries[0])]
 
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
-        prompt = (
-            f"For each of the {len(summaries)} numbered texts below, "
-            "extract every distinct topic, fact, or named thing as a "
-            "tag — these tags are the anchors a memory-retrieval "
-            "system will use to find each text later, so missed "
-            "topics become unanswerable questions.\n\n"
-            "## Tag every fact, not just the dominant topic\n"
-            "If a text mentions both a personal fact ('graduated "
-            "with Business Administration') AND a list of "
-            "recommendations ('Todoist, Trello, Asana'), tag BOTH. "
-            "Do not skip a personal fact just because it appears "
-            "briefly amid lots of other content.\n\n"
-            "## Include\n"
-            "Personal facts (degree, age, family, job, hobbies, "
-            "location), proper nouns (brand names, places, people, "
-            "organisations), domain topics, specific events.\n\n"
-            "## Exclude\n"
-            'Stopwords, articles, prepositions, generic filler "the", '
-            '"is", "a", "of", "to", "for", "thing", "stuff", "item".\n\n'
-            "## Format\n"
-            "Return ONLY a JSON array of arrays. The outer array has "
-            f"exactly {len(summaries)} entries — one per numbered "
-            "text in order (text [1] → first inner array, text [2] → "
-            "second inner array, etc.). Each inner array contains "
-            "BETWEEN 5 AND 12 tag strings (1-4 words each). Use as "
-            "many tags as the text deserves — do not pad, do not "
-            "over-prune. No preamble, no markdown fences, no "
-            "explanation — ONLY the JSON.\n\n"
-            "## Worked example (one text only)\n"
-            "Source [1]: 'The user graduated with a Business "
-            "Administration degree last year and now works at Acme "
-            "Corp. Sarah recommends Todoist for task management.'\n"
-            'GOOD: [["Business Administration", "degree", '
-            '"graduation", "Acme Corp", "Sarah", "Todoist", "task '
-            'management"]]\n'
-            'BAD (drops personal facts): [["task management", '
-            '"Todoist", "recommendations"]]\n\n'
-            f"{numbered}"
-        )
+        prompt = load_prompt("extract_tags_batch").format(n=len(summaries), numbered=numbered)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
 
@@ -485,18 +364,7 @@ class GeminiLLMProvider(LLMProvider):
         entities (slightly higher than tags' 5 since real prose
         sometimes packs multiple brands per turn).
         """
-        prompt = (
-            "List the proper-noun named entities mentioned in the "
-            "following text. Include brand names, products, places, "
-            "people, and organisations. EXCLUDE common nouns (e.g., "
-            "'coupon', 'creamer', 'user', 'email'). "
-            "If there are NO named entities, respond with the single "
-            "token: NONE\n"
-            "Otherwise respond with ONLY the entity names as a "
-            "comma-separated list, in the order they appear. No "
-            "numbering, no explanation, no bullet points, no markdown.\n\n"
-            f"Text: {summary}"
-        )
+        prompt = load_prompt("extract_named_entities").format(summary=summary)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         if not raw or raw.upper().strip(".,!?\"'") == "NONE":
@@ -525,17 +393,8 @@ class GeminiLLMProvider(LLMProvider):
             return [self.extract_named_entities(summaries[0])]
 
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
-        prompt = (
-            f"For each of the {len(summaries)} numbered texts below, "
-            "list the proper-noun named entities mentioned (brand names, "
-            "products, places, people, organisations). EXCLUDE common "
-            "nouns. Return ONLY a JSON array containing one inner array "
-            "per numbered text, in order: the first inner array for "
-            "text [1], the second for text [2], and so on. Each inner "
-            "array contains only the entity name strings. If a text "
-            "has no entities, its inner array is []. No preamble, no "
-            "markdown fences, no explanation — ONLY the JSON.\n\n"
-            f"{numbered}"
+        prompt = load_prompt("extract_named_entities_batch").format(
+            n=len(summaries), numbered=numbered
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
@@ -632,20 +491,7 @@ class GeminiLLMProvider(LLMProvider):
         """
         if not concepts:
             raise ValueError("concepts must be non-empty")
-        prompt = (
-            "Reply with EXACTLY ONE English noun (lowercase) that names "
-            "the category encompassing the following concepts.\n\n"
-            "## Rules\n"
-            "- ONE word only. No explanation, no punctuation, no markdown.\n"
-            "- Do NOT use generic placeholder nouns like 'thing', "
-            "'aspect', 'factor', 'element', 'item', 'entity', 'topic', "
-            "'concept', 'stuff', 'misc', 'other', 'various'. A useful "
-            "name describes what the concepts HAVE IN COMMON, not that "
-            "they are 'things'.\n"
-            "- Prefer the shared domain (e.g. 'finance' over 'aspect', "
-            "'shopping' over 'thing', 'education' over 'category').\n\n"
-            f"Concepts: {', '.join(concepts)}"
-        )
+        prompt = load_prompt("generate_category_name").format(concepts=", ".join(concepts))
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         cleaned = self._clean_name(resp.text or "")
         # Blocked term or empty response → fallback to first concept
@@ -709,22 +555,8 @@ class GeminiLLMProvider(LLMProvider):
             return [self.generate_category_name(pairs[0])]
 
         numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
-        prompt = (
-            f"For each of the {len(pairs)} numbered groups of concepts "
-            "below, reply with EXACTLY ONE English noun (lowercase) "
-            "that names the category encompassing the concepts.\n\n"
-            "## Rules\n"
-            "- ONE word per group. No punctuation inside the names.\n"
-            "- Do NOT use generic placeholder nouns like 'thing', "
-            "'aspect', 'factor', 'element', 'item', 'entity', 'topic', "
-            "'concept', 'stuff', 'misc', 'other', 'various'. A useful "
-            "name describes what the concepts HAVE IN COMMON, not that "
-            "they are 'things'. Prefer the shared domain (e.g. "
-            "'finance', 'shopping', 'education').\n\n"
-            "## Output\n"
-            f"Return ONLY a JSON array of exactly {len(pairs)} string "
-            "elements, in order. No markdown fences, no explanation.\n\n"
-            f"## Groups\n{numbered}"
+        prompt = load_prompt("generate_category_names_batch").format(
+            n=len(pairs), numbered=numbered
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
@@ -799,23 +631,7 @@ class GeminiLLMProvider(LLMProvider):
         if not children_summaries:
             return ""
         joined = "\n- ".join(self._sanitise_snippet(s.strip()) for s in children_summaries if s)
-        prompt = (
-            "You are summarising a set of related memory snippets into "
-            "a compact description of what this branch of a memory "
-            "hierarchy contains. The answering LLM will use this "
-            "description to decide whether to drill deeper into this "
-            "branch.\n\n"
-            "## Rules\n"
-            "- 2-4 sentences. Dense with facts, no filler.\n"
-            "- Preserve personal facts (degree, age, family, job, "
-            "decisions, places) and proper nouns (brands, people, "
-            "products). A summary that omits these has FAILED.\n"
-            "- Don't write 'The user...' at the start of every "
-            "sentence — vary phrasing.\n"
-            "- No preamble, no markdown, no quotation marks. Just "
-            "the summary text.\n\n"
-            f"## Snippets to summarise\n- {joined}"
-        )
+        prompt = load_prompt("generate_junction_summary").format(joined=joined)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
 
@@ -873,25 +689,8 @@ class GeminiLLMProvider(LLMProvider):
             numbered_blocks.append(f"[{i + 1}]\n  - {bullets}")
         numbered = "\n\n".join(numbered_blocks)
 
-        prompt = (
-            f"Summarise each of the {len(groups)} numbered groups of "
-            "memory snippets below. Each group represents one branch "
-            "of a memory hierarchy; the summary you produce will be "
-            "attached to that branch so the answering LLM can skim "
-            "the tree and decide whether to drill deeper.\n\n"
-            "## Rules for each summary\n"
-            "- 2-4 sentences. Dense with facts, no filler.\n"
-            "- Preserve personal facts (degree, age, family, job, "
-            "decisions, places, dates) and proper nouns (brands, "
-            "people, products). A summary that omits these has FAILED.\n"
-            "- No preamble; don't repeat the group number; don't "
-            "quote back the snippets.\n\n"
-            "## Output format\n"
-            f"Return ONLY a JSON array of exactly {len(groups)} "
-            "strings, in the same order as the numbered groups. No "
-            "markdown fences, no trailing commentary, no keys — just "
-            "the array.\n\n"
-            f"## Groups\n{numbered}"
+        prompt = load_prompt("generate_junction_summaries_batch").format(
+            n=len(groups), numbered=numbered
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
