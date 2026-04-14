@@ -135,6 +135,7 @@ def _build_agent(
     embedder_provider: str | None = None,
     llm_api_key: str | None = None,
     embedder_api_key: str | None = None,
+    memory_model: str | None = None,
 ):
     """Construct an agent by name. Imports lazily so baselines that
     don't need the google-adk stack don't pay its import cost.
@@ -161,6 +162,7 @@ def _build_agent(
             embedder_provider=embedder_provider,
             llm_api_key=llm_api_key,
             embedder_api_key=embedder_api_key,
+            memory_model=memory_model,
         )
     if name == "neuromem-adk":
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
@@ -172,6 +174,7 @@ def _build_agent(
             embedder_provider=embedder_provider,
             llm_api_key=llm_api_key,
             embedder_api_key=embedder_api_key,
+            memory_model=memory_model,
         )
     raise ValueError(
         f"unknown agent name: {name!r}. Valid: null / naive-rag / neuromem / neuromem-adk"
@@ -321,6 +324,16 @@ def main() -> None:
         default=None,
         help="Override the embedder model (default: provider-specific).",
     )
+    parser.add_argument(
+        "--memory-model",
+        default=None,
+        help=(
+            "Override the memory-layer LLM model independently of "
+            "--model. Defaults to --model if unset. Useful when the "
+            "answer LLM and memory LLM should be different providers "
+            "(e.g. Gemma for memory, Gemini for answering)."
+        ),
+    )
     args = parser.parse_args()
 
     # Default changed to neuromem-adk (ADR-003): the one-shot `neuromem`
@@ -362,6 +375,7 @@ def main() -> None:
             embedder_provider=args.embedder_provider,
             llm_api_key=llm_api_key,
             embedder_api_key=embedder_api_key,
+            memory_model=args.memory_model,
         )
 
         if args.output is not None:
