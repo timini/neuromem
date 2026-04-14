@@ -21,7 +21,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from neuromem import NeuroMemory, SQLiteAdapter
-from neuromem.tools import retrieve_memories, search_memory
+from neuromem.tools import expand_node, retrieve_memories, search_memory
 
 from neuromem_adk.callbacks import (
     build_after_agent_turn_capturer,
@@ -284,8 +284,34 @@ def _register_memory_tools(agent: Agent, memory: NeuroMemory) -> None:
         """
         return retrieve_memories(memory_ids=memory_ids, system=memory)
 
+    def expand_node_tool(node_id: str, depth: int = 2) -> str:
+        """Zoom into a memory-hierarchy node to see its subtree.
+
+        Use after ``search_memory`` when an injected tree shows an
+        interesting concept node (e.g. "degree", "shopping") but you
+        need to see what's under it in more detail before answering.
+        Returns a fresh ASCII tree rooted at ``node_id`` with paragraph
+        summaries for each junction.
+
+        Unlike ``retrieve_memories``, ``expand_node`` does NOT
+        reinforce individual memories' recency — browsing the ontology
+        is not the same action as recalling a specific fact.
+
+        Arguments:
+            node_id: The node ID (centroid or leaf, NOT a memory ID)
+                shown as ``📁 <label>`` in a prior tree render.
+            depth: How many hops below ``node_id`` to render.
+                Defaults to 2.
+
+        Returns:
+            An ASCII tree string rooted at ``node_id``, or an empty
+            string if the node doesn't exist or has no descendants.
+        """
+        return expand_node(node_id=node_id, system=memory, depth=depth)
+
     agent.tools.append(search_memory_tool)
     agent.tools.append(retrieve_memories_tool)
+    agent.tools.append(expand_node_tool)
 
 
 def _chain_callback(agent: Agent, slot_name: str, new_cb: Any) -> None:

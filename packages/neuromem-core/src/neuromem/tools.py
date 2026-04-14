@@ -80,6 +80,68 @@ def search_memory(
     )
 
 
+def expand_node(
+    node_id: str,
+    system: NeuroMemory,
+    depth: int = 2,
+) -> str:
+    """Render the subtree rooted at ``node_id`` as an ASCII tree.
+
+    The ``expand_node`` tool (ADR-003 F6) is the agent-facing
+    "zoom in" primitive. After reading the tree returned by
+    :func:`search_memory` the agent may decide that one branch
+    (e.g. a ``degree`` centroid) looks relevant but the injected
+    depth-3 render doesn't have enough content to answer the
+    question. Calling ``expand_node(node_id)`` returns a fresh
+    render rooted at that node, lazily resolving any uncached
+    paragraph_summaries touched by the render along the way.
+
+    Semantics:
+
+    - Renders exactly the same way :meth:`ContextHelper.build_prompt_context`
+      does — seeded on ``node_id``, traversed to ``depth`` hops,
+      80-node cap, centroid names + paragraph summaries lazy-resolved
+      and cached.
+    - Does NOT trigger Long-Term Potentiation. Browsing the ontology
+      is not the same action as recalling a specific memory; LTP
+      fires only on :func:`retrieve_memories`.
+    - Returns the empty string when ``node_id`` doesn't exist or has
+      no renderable content.
+    - Does NOT embed a query vector — the subgraph is seeded directly
+      on the provided node id.
+
+    Arguments:
+        node_id: The centroid (or leaf) node id to root the subtree on.
+        system: The ``NeuroMemory`` instance to query.
+        depth: BFS depth from ``node_id``. Defaults to 2.
+
+    Returns:
+        An ASCII tree string, or ``""`` if the node doesn't exist or
+        has no descendants to render.
+
+    Raises:
+        ValueError: on empty ``node_id`` or ``depth < 0``.
+    """
+    if not node_id:
+        raise ValueError("node_id must be non-empty")
+    if depth < 0:
+        raise ValueError(f"depth must be >= 0, got {depth}")
+
+    subgraph = system.storage.get_subgraph([node_id], depth=depth)
+    if not subgraph.get("nodes"):
+        return ""
+
+    # Cap + resolve names + resolve summaries — same contract as
+    # ContextHelper.build_prompt_context, minus the query-embedding
+    # + top-k-seed step.
+    from neuromem.context import _NODE_CAP, _enforce_node_cap, _render_ascii_tree  # noqa: PLC0415
+
+    _enforce_node_cap(subgraph, seed_ids=[node_id], cap=_NODE_CAP)
+    system.resolve_centroid_names(subgraph["nodes"])
+    system.resolve_junction_summaries(subgraph["nodes"])
+    return _render_ascii_tree(subgraph)
+
+
 def retrieve_memories(
     memory_ids: list[str],
     system: NeuroMemory,

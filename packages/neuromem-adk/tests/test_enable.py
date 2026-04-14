@@ -195,8 +195,9 @@ class TestEnableMemoryRegistersFunctionTools:
         self,
         mock_adk_agent: Agent,
     ) -> None:
-        """agent.tools goes from empty to a 2-element list after
-        enable_memory."""
+        """agent.tools goes from empty to a 3-element list after
+        enable_memory (search_memory, retrieve_memories, expand_node
+        per ADR-003 F6)."""
         assert mock_adk_agent.tools == []
         enable_memory(
             mock_adk_agent,
@@ -204,7 +205,13 @@ class TestEnableMemoryRegistersFunctionTools:
             llm=MockLLMProvider(),
             embedder=MockEmbeddingProvider(),
         )
-        assert len(mock_adk_agent.tools) == 2
+        assert len(mock_adk_agent.tools) == 3
+        tool_names = {t.__name__ for t in mock_adk_agent.tools}
+        assert tool_names == {
+            "search_memory_tool",
+            "retrieve_memories_tool",
+            "expand_node_tool",
+        }
 
     def test_tool_signatures_hide_internal_system_handle(
         self,
@@ -231,22 +238,26 @@ class TestEnableMemoryRegistersFunctionTools:
             embedder=MockEmbeddingProvider(),
         )
 
-        search_tool, retrieve_tool = mock_adk_agent.tools
+        search_tool, retrieve_tool, expand_tool = mock_adk_agent.tools
 
-        # Both are plain callables (closures), not partials.
+        # All three are plain callables (closures), not partials.
         assert callable(search_tool)
         assert callable(retrieve_tool)
+        assert callable(expand_tool)
 
         # Signature inspection — what ADK's schema generator sees.
         search_params = set(inspect.signature(search_tool).parameters.keys())
         retrieve_params = set(inspect.signature(retrieve_tool).parameters.keys())
+        expand_params = set(inspect.signature(expand_tool).parameters.keys())
 
         # Internal plumbing is hidden.
         assert "system" not in search_params
         assert "system" not in retrieve_params
+        assert "system" not in expand_params
         # Exactly the user-facing args.
         assert search_params == {"query", "top_k", "depth"}
         assert retrieve_params == {"memory_ids"}
+        assert expand_params == {"node_id", "depth"}
 
         # Docstrings are preserved — ADK uses the docstring as the
         # tool description sent to the LLM.
@@ -323,8 +334,9 @@ class TestEnableMemoryRegistersFunctionTools:
         )
 
         # Pre-existing tool still present at index 0; neuromem's
-        # two tools appended at 1 and 2.
-        assert len(mock_adk_agent.tools) == 3
+        # three tools (search_memory, retrieve_memories, expand_node)
+        # appended at 1, 2, 3.
+        assert len(mock_adk_agent.tools) == 4
         assert mock_adk_agent.tools[0] is my_existing_tool
 
 
