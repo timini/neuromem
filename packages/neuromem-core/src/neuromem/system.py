@@ -347,8 +347,15 @@ class NeuroMemory:
         failure — the caller falls back to numpy nearest-neighbour for
         every still-unnamed centroid.
         """
+        # Pass ALL child labels per centroid. The [:2] cap that used to
+        # live here was an ADR-001 binary-merge artifact and became
+        # wrong under ADR-003 where a centroid can have 2-20 children;
+        # naming a 15-child cluster from only the first 2 labels
+        # systematically produces poor labels at high fanout. Cap at 20
+        # to bound prompt size — clusters exceeding 20 are rare and the
+        # first 20 labels are still better input than just 2.
         pair_list: list[list[str]] = [
-            [c["label"] for c in children_by_centroid[cid][:2]] for cid in ordered_centroid_ids
+            [c["label"] for c in children_by_centroid[cid][:20]] for cid in ordered_centroid_ids
         ]
         try:
             names = self.llm.generate_category_names_batch(pair_list)
