@@ -388,6 +388,183 @@ class NeuroMemory:
         ]
         return [nodes_by_id[cid] for cid in child_ids if cid in nodes_by_id]
 
+    # ------------------------------------------------------------------
+    # resolve_junction_summaries — ADR-003 D2 (lazy trunk-or-deep fill)
+    # ------------------------------------------------------------------
+
+    def resolve_junction_summaries(self, nodes: list[dict]) -> None:
+        """Lazily populate per-centroid paragraph summaries.
+
+        Mirror of :meth:`resolve_centroid_names` for the paragraph
+        summary field introduced in ADR-003 D2. Called from
+        ``ContextHelper.build_prompt_context`` (and, once wired, from
+        ``expand_node``) at render time: for every centroid in the
+        rendered subgraph whose ``paragraph_summary`` is still NULL,
+        build a list of child-summary snippets and send them to the
+        LLM in a single batched call; persist the generated summaries
+        so subsequent renders are a cache hit.
+
+        Child-snippet resolution for each centroid:
+          - Leaf child (is_centroid=False): the leaf is a tag node;
+            its "content" is the set of memory summaries linked via
+            has_tag. Collect up to a small N of those summaries.
+          - Centroid child: prefer its own ``paragraph_summary``; if
+            null (deeper level hasn't been resolved yet), fall back
+            to its label.
+
+        Algorithm (mirror of resolve_centroid_names):
+          1. Filter ``nodes`` to centroids with NULL paragraph_summary.
+          2. For each, gather its child snippets as described above.
+          3. Try ``llm.generate_junction_summaries_batch(groups)`` —
+             one round-trip.
+          4. On any failure (exception, length mismatch, empty result
+             for a slot), fall back to ``generate_junction_summary``'s
+             default for that slot (concatenate-truncate).
+          5. Persist via ``storage.update_junction_summaries`` — one
+             transaction.
+          6. Mutate the in-memory ``nodes`` dicts so the immediate
+             render sees the new summaries.
+
+        NEVER raises. Worst case: centroids keep NULL summaries and
+        the renderer renders only the label. Same contract as
+        resolve_centroid_names.
+        """
+        try:
+            self._do_resolve_junction_summaries(nodes)
+        except Exception:
+            logger.exception(
+                "resolve_junction_summaries: unexpected error, leaving "
+                "paragraph_summary fields as NULL. Render will still "
+                "succeed with label-only centroids."
+            )
+
+    def _do_resolve_junction_summaries(self, nodes: list[dict]) -> None:
+        """Inner implementation. May raise — the public wrapper catches."""
+        needs_summary = [
+            n for n in nodes if n.get("is_centroid") and not n.get("paragraph_summary")
+        ]
+        if not needs_summary:
+            return
+
+        groups_by_id: dict[str, list[str]] = {}
+        for centroid in needs_summary:
+            snippets = self._gather_child_snippets(centroid["id"])
+            if snippets:
+                groups_by_id[centroid["id"]] = snippets
+        if not groups_by_id:
+            return
+
+        ordered_ids = list(groups_by_id.keys())
+        groups = [groups_by_id[cid] for cid in ordered_ids]
+        summaries = self._try_batched_junction_summaries(groups)
+        updates = self._build_junction_summary_updates(ordered_ids, groups, summaries)
+        if not updates:
+            return
+
+        self.storage.update_junction_summaries(updates)
+        for node in nodes:
+            new_summary = updates.get(node["id"])
+            if new_summary is not None:
+                node["paragraph_summary"] = new_summary
+
+    def _try_batched_junction_summaries(self, groups: list[list[str]]) -> list[str]:
+        """Try the batched LLM summariser; on any failure, fall back
+        per-group to the concat-truncate default. Always returns a
+        list of ``len(groups)`` summaries."""
+        try:
+            summaries = self.llm.generate_junction_summaries_batch(groups)
+            if len(summaries) != len(groups):
+                raise ValueError(
+                    f"generate_junction_summaries_batch returned "
+                    f"{len(summaries)} summaries for {len(groups)} groups"
+                )
+            return summaries
+        except Exception:
+            logger.warning(
+                "resolve_junction_summaries: batched LLM summarisation "
+                "failed; falling back to concat-truncate for %d group(s)",
+                len(groups),
+                exc_info=True,
+            )
+            return [self.llm.generate_junction_summary(g) for g in groups]
+
+    def _build_junction_summary_updates(
+        self,
+        ordered_ids: list[str],
+        groups: list[list[str]],
+        summaries: list[str],
+    ) -> dict[str, str]:
+        """Zip centroid ids with their generated summaries, substituting
+        the concat-truncate default for any empty response so the cache
+        is populated (no infinite retries on subsequent renders)."""
+        updates: dict[str, str] = {}
+        for cid, group, summary in zip(ordered_ids, groups, summaries, strict=True):
+            text = (summary or "").strip()
+            if not text:
+                text = self.llm.generate_junction_summary(group)
+            if text:
+                updates[cid] = text
+        return updates
+
+    def _gather_child_snippets(self, centroid_id: str) -> list[str]:
+        """Return a list of text snippets (one per child) describing
+        what sits under the given centroid. Used as input to the
+        junction-summary LLM call.
+
+        Leaf child → up to 3 memory summaries attached via has_tag.
+        Centroid child → its paragraph_summary or (fallback) its label.
+
+        Returns [] if the centroid has no children at all — in which
+        case the caller skips summary generation entirely.
+        """
+        # Walk one hop down from the centroid, pulling node + edge rows.
+        # A depth-1 subgraph gives us the centroid, its children (nodes
+        # via child_of), AND any has_tag-linked memories to the leaves
+        # at once.
+        sub = self.storage.get_subgraph([centroid_id], depth=1)
+        nodes_by_id = {n["id"]: n for n in sub.get("nodes", [])}
+        memories_by_id = {m["id"]: m for m in sub.get("memories", [])}
+        edges = sub.get("edges", [])
+
+        child_ids = [
+            e["target_id"]
+            for e in edges
+            if e.get("relationship") == "child_of" and e.get("source_id") == centroid_id
+        ]
+        # has_tag goes memory → node. For each leaf child, gather its
+        # memory summaries.
+        tag_to_memories: dict[str, list[str]] = {}
+        for edge in edges:
+            if edge.get("relationship") != "has_tag":
+                continue
+            mem = memories_by_id.get(edge.get("source_id", ""))
+            if mem is None:
+                continue
+            tag_id = edge.get("target_id", "")
+            tag_to_memories.setdefault(tag_id, []).append(mem.get("summary", "") or "")
+
+        snippets: list[str] = []
+        for cid in child_ids:
+            child = nodes_by_id.get(cid)
+            if child is None:
+                continue
+            if child.get("is_centroid"):
+                text = child.get("paragraph_summary") or child.get("label", "")
+                if text:
+                    snippets.append(str(text))
+            else:
+                # Leaf tag node. Use its memory summaries as the content
+                # since the label alone is just a one-word concept.
+                # Cap at 3 to keep the prompt bounded.
+                mem_summaries = [s for s in tag_to_memories.get(cid, []) if s][:3]
+                if mem_summaries:
+                    snippets.append(
+                        f"Memories tagged '{child.get('label', '')}': " + " | ".join(mem_summaries)
+                    )
+                elif child.get("label"):
+                    snippets.append(str(child["label"]))
+        return snippets
+
     @staticmethod
     def _nearest_child_label(centroid: dict, children: list[dict]) -> str:
         """Return the label of whichever child has the highest cosine

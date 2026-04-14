@@ -42,6 +42,22 @@ logger = logging.getLogger("neuromem.context")
 # different.
 _MEMORY_SNIPPET_MAX_CHARS = 300
 
+# Max characters of a per-centroid paragraph summary (ADR-003 D2) to
+# include inline in the rendered tree. Summaries come out of
+# ``LLMProvider.generate_junction_summary`` at 2-4 sentences each
+# (~400-600 chars). Cap here is slightly higher than memory snippets
+# because junctions abstract over more content, so the summary
+# carries proportionally more signal per character.
+_JUNCTION_SUMMARY_MAX_CHARS = 400
+
+# ADR-003 F5/D3: hard cap on the rendered subgraph's node count.
+# Depth-3 renders on a busy graph can easily touch hundreds of nodes
+# and overwhelm the answer LLM's prompt window. 80 nodes × ~400 chars
+# of tree-row text ≈ 32 KB, comfortably inside Gemini Flash's window.
+# Seeds (originally retrieved top_k nodes) are never dropped; other
+# nodes are dropped farthest-from-seed-first until the cap is met.
+_NODE_CAP = 80
+
 
 class ContextHelper:
     """Prompt-injection helper backed by a ``NeuroMemory`` instance."""
@@ -53,7 +69,7 @@ class ContextHelper:
         self,
         current_task_description: str,
         top_k: int = 5,
-        depth: int = 2,
+        depth: int = 3,
     ) -> str:
         """Embed the task, find the nearest nodes, render the sub-graph.
 
@@ -89,6 +105,13 @@ class ContextHelper:
         root_ids = [n["id"] for n in nearest]
         subgraph = self.system.storage.get_subgraph(root_ids, depth=depth)
 
+        # ADR-003 F5: cap the rendered subgraph at a fixed node count
+        # so depth-3 renders never blow up on pathological graphs. The
+        # top-k seeds are protected (never dropped); other nodes are
+        # dropped in reverse-priority order (farthest from a seed
+        # first). Mutates subgraph in place.
+        _enforce_node_cap(subgraph, seed_ids=root_ids, cap=_NODE_CAP)
+
         # ADR-002: lazily name any placeholder centroids in the rendered
         # subgraph. The dream-cycle clustering loop writes centroids
         # with placeholder labels (cluster_<hex>); this is where they
@@ -97,6 +120,12 @@ class ContextHelper:
         # ``subgraph["nodes"]`` in place. NEVER raises.
         self.system.resolve_centroid_names(subgraph["nodes"])
 
+        # ADR-003 D2: lazily populate per-centroid paragraph summaries
+        # for centroids whose trunk-pass eager summarisation didn't
+        # cover (deeper levels). Same lazy-cache pattern: batched LLM
+        # call, persist, mutate in place. NEVER raises.
+        self.system.resolve_junction_summaries(subgraph["nodes"])
+
         # If the subgraph has no memories AND no node hierarchy above
         # the roots, the tree is degenerate. Return empty rather than
         # emit a header with no content.
@@ -104,6 +133,83 @@ class ContextHelper:
             return ""
 
         return _render_ascii_tree(subgraph)
+
+
+def _enforce_node_cap(
+    subgraph: dict[str, Any],
+    *,
+    seed_ids: list[str],
+    cap: int,
+) -> None:
+    """Drop far-from-seed nodes until the subgraph has ≤ ``cap`` nodes.
+
+    Priority order for retention:
+      1. Seed nodes (original top_k retrieved) — NEVER dropped.
+      2. Remaining nodes, ranked by a simple BFS distance from any
+         seed (closer = higher priority).
+
+    Mutates ``subgraph`` in place. Also prunes ``edges`` referring to
+    dropped nodes and ``memories`` that are only reachable via
+    dropped nodes (via has_tag edges).
+
+    No-op when the subgraph already has ≤ ``cap`` nodes.
+    """
+    nodes = subgraph.get("nodes", [])
+    if len(nodes) <= cap:
+        return
+
+    nodes_by_id = {n["id"]: n for n in nodes}
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    for edge in subgraph.get("edges", []):
+        if edge.get("relationship") != "child_of":
+            continue
+        src = edge.get("source_id")
+        tgt = edge.get("target_id")
+        if src in nodes_by_id and tgt in nodes_by_id:
+            adjacency[src].add(tgt)
+            adjacency[tgt].add(src)
+
+    # BFS distance from the seed set. Unreachable nodes get infinity.
+    distance: dict[str, int] = {sid: 0 for sid in seed_ids if sid in nodes_by_id}
+    frontier = list(distance.keys())
+    while frontier:
+        next_frontier: list[str] = []
+        for nid in frontier:
+            for neighbour in adjacency[nid]:
+                if neighbour not in distance:
+                    distance[neighbour] = distance[nid] + 1
+                    next_frontier.append(neighbour)
+        frontier = next_frontier
+
+    # Rank: closer first, unreachable last. Stable by id for
+    # determinism.
+    def _priority(node_id: str) -> tuple[int, str]:
+        return (distance.get(node_id, 10_000), node_id)
+
+    kept_ids = set(sorted(nodes_by_id.keys(), key=_priority)[:cap])
+    subgraph["nodes"] = [n for n in nodes if n["id"] in kept_ids]
+    subgraph["edges"] = [
+        e
+        for e in subgraph.get("edges", [])
+        if (
+            # Keep child_of edges only when both endpoints are kept.
+            e.get("relationship") == "child_of"
+            and e.get("source_id") in kept_ids
+            and e.get("target_id") in kept_ids
+        )
+        or (
+            # Keep has_tag edges only when the target (node) is kept.
+            # Memory source is a memory id, not a node id.
+            e.get("relationship") == "has_tag" and e.get("target_id") in kept_ids
+        )
+    ]
+    # Drop memories no longer reachable via kept has_tag edges.
+    reachable_memory_ids = {
+        e.get("source_id") for e in subgraph["edges"] if e.get("relationship") == "has_tag"
+    }
+    subgraph["memories"] = [
+        m for m in subgraph.get("memories", []) if m["id"] in reachable_memory_ids
+    ]
 
 
 def _render_ascii_tree(subgraph: dict[str, Any]) -> str:
@@ -287,6 +393,33 @@ def _format_also_under(first_parent_label_value: str | None) -> str:
     return f" (also under: {first_parent_label_value})"
 
 
+def _emit_paragraph_summary_line(
+    node: dict,
+    lines: list[str],
+    connector_prefix: str,
+    is_last_sibling: bool,
+) -> None:
+    """Emit a ``para: "..."`` continuation row just after a centroid's
+    folder line, if the centroid has a ``paragraph_summary`` (ADR-003).
+
+    Matches the memory annotation shape in :func:`_emit_memory_row`:
+    the row uses ``connector_prefix`` (the folder's own prefix) plus
+    a ``cont_gap`` that extends the tree art down to the paragraph.
+    ``cont_gap`` is ``│   `` when the folder has siblings still to
+    come below it, and ``    `` when the folder was the last sibling.
+
+    No-op when the centroid has no summary — the tree still renders
+    just the label, preserving the pre-ADR-003 shape.
+    """
+    summary = (node.get("paragraph_summary") or "").strip()
+    if not summary:
+        return
+    if len(summary) > _JUNCTION_SUMMARY_MAX_CHARS:
+        summary = summary[: _JUNCTION_SUMMARY_MAX_CHARS - 1] + "…"
+    cont_gap = "    " if is_last_sibling else "│   "
+    lines.append(f'{connector_prefix}{cont_gap}para: "{summary}"')
+
+
 def _render_root(
     nodes_by_id: dict[str, dict],
     node_id: str,
@@ -328,6 +461,18 @@ def _render_root(
         items.append(("node", cid))
     for mid in mem_ids:
         items.append(("memory", mid))
+
+    # Emit the centroid's paragraph summary (ADR-003 D2) as a
+    # continuation row just below the folder line, before children.
+    # Roots have no sibling tree-art above them, so render the gap
+    # as blank (the paragraph is visually "under" the root, not
+    # indented for a deeper level).
+    _emit_paragraph_summary_line(
+        node=node,
+        lines=lines,
+        connector_prefix="",
+        is_last_sibling=True,
+    )
 
     for i, (kind, item_id) in enumerate(items):
         is_last_item = i == len(items) - 1
@@ -405,6 +550,18 @@ def _render_descendant(
         items.append(("memory", mid))
 
     child_prefix = prefix + ("    " if is_last_sibling else "│   ")
+
+    # Emit the centroid's paragraph summary (ADR-003 D2) as a
+    # continuation row just below the folder line, before children.
+    # Mirrors the memory annotation pattern: use the folder's prefix
+    # plus a cont_gap driven by whether the folder has siblings below.
+    _emit_paragraph_summary_line(
+        node=node,
+        lines=lines,
+        connector_prefix=prefix,
+        is_last_sibling=is_last_sibling,
+    )
+
     for i, (kind, item_id) in enumerate(items):
         is_last_item = i == len(items) - 1
         if kind == "node":
