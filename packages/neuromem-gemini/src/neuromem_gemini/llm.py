@@ -149,6 +149,12 @@ class GeminiLLMProvider(LLMProvider):
     # blow past the flash-lite cap; 8 is conservative and keeps the
     # tail reliable. If token budgets grow, raise this.
     _JUNCTION_BATCH_CHUNK_SIZE = 8
+    # Memory-level summaries (ADR-004 step 2) are 2-4 sentence
+    # fact-preserving summaries of sometimes-multi-KB transcripts.
+    # Output is 150-400 chars per item (~40-100 tokens). Chunk size
+    # 6 keeps input and output comfortably inside Gemini flash-lite's
+    # prompt + output budgets.
+    _MEMORY_SUMMARY_BATCH_CHUNK_SIZE = 6
     # Concurrent chunks per outer batched call. Multiple chunks fire
     # in parallel via ThreadPoolExecutor; with the token bucket they
     # still respect the shared RPM budget.
@@ -199,7 +205,7 @@ class GeminiLLMProvider(LLMProvider):
         self._bucket = get_bucket(api_key, rate_per_minute)
 
     # ------------------------------------------------------------------
-    # Summary — caller-thread hot path
+    # Summary — dream-cycle worker (ADR-004 moved off the caller thread)
     # ------------------------------------------------------------------
 
     def generate_summary(self, raw_text: str) -> str:
@@ -232,6 +238,82 @@ class GeminiLLMProvider(LLMProvider):
         prompt = load_prompt("generate_summary").format(raw_text=raw_text)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
+
+    def generate_summary_batch(self, raw_texts: list[str]) -> list[str]:
+        """Summarise many raw texts in one (or a few) Gemini calls (ADR-004).
+
+        Override of the ABC's per-text loop. Called from the dream
+        cycle's step 2 to backfill summary columns for every inbox
+        memory. Uses the same chunk + parallel ThreadPoolExecutor
+        shape as the sibling batch methods; falls back per-item to
+        ``generate_summary`` on JSON parse failure or length mismatch.
+
+        Edge cases:
+        - Empty input → empty output, no LLM call.
+        - Single-text input → delegates to ``generate_summary`` so
+          the prompt isn't padded with the batch-shape wrapper.
+        """
+        if not raw_texts:
+            return []
+        if len(raw_texts) == 1:
+            return [self.generate_summary(raw_texts[0])]
+
+        if len(raw_texts) <= self._MEMORY_SUMMARY_BATCH_CHUNK_SIZE:
+            return self._generate_summary_one_chunk(raw_texts)
+
+        import concurrent.futures  # noqa: PLC0415
+
+        chunks: list[list[str]] = [
+            raw_texts[i : i + self._MEMORY_SUMMARY_BATCH_CHUNK_SIZE]
+            for i in range(0, len(raw_texts), self._MEMORY_SUMMARY_BATCH_CHUNK_SIZE)
+        ]
+        workers = min(self._BATCH_WORKERS, len(chunks))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            chunk_results = list(pool.map(self._generate_summary_one_chunk, chunks))
+        out: list[str] = []
+        for chunk_result in chunk_results:
+            out.extend(chunk_result)
+        return out
+
+    def _generate_summary_one_chunk(self, raw_texts: list[str]) -> list[str]:
+        """Internal: one ≤_MEMORY_SUMMARY_BATCH_CHUNK_SIZE slice.
+
+        Per-item fallback on JSON parse failure or length mismatch,
+        same defensive pattern as the sibling batched methods.
+        """
+        if not raw_texts:
+            return []
+        if len(raw_texts) == 1:
+            return [self.generate_summary(raw_texts[0])]
+
+        numbered_blocks: list[str] = []
+        for i, text in enumerate(raw_texts):
+            # Snippet-sanitise the same way junction summaries do — a
+            # memory's raw_content can contain Markdown headers that
+            # would otherwise shadow our prompt's ## sections.
+            safe = self._sanitise_snippet(text)
+            numbered_blocks.append(f"[{i + 1}]\n{safe}")
+        numbered = "\n\n".join(numbered_blocks)
+
+        prompt = load_prompt("generate_summary_batch").format(n=len(raw_texts), numbered=numbered)
+        resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
+        raw = _strip_markdown_fence((resp.text or "").strip())
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [self.generate_summary(t) for t in raw_texts]
+
+        if not isinstance(parsed, list) or len(parsed) != len(raw_texts):
+            return [self.generate_summary(t) for t in raw_texts]
+
+        out: list[str] = []
+        for i, item in enumerate(parsed):
+            if not isinstance(item, str) or not item.strip():
+                out.append(self.generate_summary(raw_texts[i]))
+                continue
+            out.append(item.strip())
+        return out
 
     # ------------------------------------------------------------------
     # Tag extraction — dream-thread
