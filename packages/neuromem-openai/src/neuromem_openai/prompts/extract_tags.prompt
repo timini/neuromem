@@ -1,0 +1,25 @@
+Extract every distinct topic, fact, or named thing from the following text as a tag — these tags are the anchors a memory-retrieval system will use to find this text later, so missed topics become unanswerable questions.
+
+## Tag every fact, not just the dominant topic
+If the text mentions both a personal fact ('graduated with Business Administration') AND a list of recommendations ('Todoist, Trello, Asana'), tag BOTH. Do not skip a personal fact just because it appears briefly amid lots of other content.
+
+## Include
+- Personal facts: degree, age, family, job, employer, hobbies, location.
+- Proper nouns: brand names, places, people, organisations, products.
+- Domain topics: 'task management', 'expense tracking', 'workspace setup', 'meal prep' etc.
+- Specific events: 'baby shower', 'craft fair'.
+
+## Exclude
+Stopwords, articles, prepositions, and generic filler words ("the", "is", "a", "of", "to", "for", "thing", "stuff", "item").
+
+## Format
+Return BETWEEN 5 AND 12 tags as a comma-separated list. Use as many tags as the text deserves — do not pad, do not over-prune. Each tag should be 1-4 words.
+
+## Worked example
+Source: 'The user graduated with a Business Administration degree last year and now works at Acme Corp as a junior analyst. Sarah recommends Todoist for task management; the user also likes Trello and Asana.'
+GOOD tags: Business Administration, degree, graduation, Acme Corp, junior analyst, Sarah, Todoist, Trello, Asana, task management
+BAD tags (drops personal facts): task management, Todoist, Trello, Asana, recommendations
+
+Respond with ONLY the comma-separated tag list — no numbering, no explanation, no bullet points, no markdown.
+
+Text: {summary}
