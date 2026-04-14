@@ -183,14 +183,29 @@ class TestEnqueueSync:
         assert row["access_weight"] == pytest.approx(1.0)
         assert row["raw_content"] == "raw content"
 
-    def test_summary_populated_from_llm(
+    def test_summary_empty_at_enqueue_time(
         self,
         memory_system: NeuroMemory,
     ) -> None:
-        # MockLLMProvider returns raw_text[:80] as the summary.
+        """ADR-004: enqueue does NOT call generate_summary. The summary
+        column starts empty and gets backfilled by the dream cycle."""
         long_text = "a" * 200
         mem_id = memory_system.enqueue(long_text)
         row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["summary"] == ""
+
+    def test_summary_backfilled_after_dream(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """ADR-004: after force_dream the worker's batched
+        generate_summary_batch backfills every inbox memory."""
+        long_text = "a" * 200
+        mem_id = memory_system.enqueue(long_text)
+        memory_system.force_dream(block=True)
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        # MockLLMProvider.generate_summary returns raw_text[:80]; the
+        # default generate_summary_batch loops over it.
         assert row["summary"] == "a" * 80
 
     def test_metadata_round_trip(self, memory_system: NeuroMemory) -> None:
@@ -240,7 +255,8 @@ class TestEnqueueSync:
         self,
         mock_embedder: MockEmbeddingProvider,
     ) -> None:
-        """Custom subclasses of the ABCs must work."""
+        """Custom subclasses of the ABCs must work. ADR-004: summary
+        lands via the background dream cycle, not at enqueue time."""
 
         class TerseLLM(LLMProvider):
             def generate_summary(self, raw_text: str) -> str:
@@ -258,11 +274,10 @@ class TestEnqueueSync:
             embedder=mock_embedder,
         )
         mem_id = system.enqueue("hello world this is a long sentence")
+        system.force_dream(block=True)
         row = system.storage.get_memory_by_id(mem_id)
-        # TerseLLM returns raw_text[:20]. Index 20 of the input is the
-        # space character AFTER "is", so the slice is 20 chars with a
-        # trailing space — exactly what Python produces. No off-by-one
-        # adjustment in the assertion.
+        # TerseLLM returns raw_text[:20]; the default
+        # generate_summary_batch loops over it.
         assert row["summary"] == "hello world this is "
 
 
@@ -316,7 +331,11 @@ class TestEnqueueSession:
         mock_embedder: MockEmbeddingProvider,
     ) -> None:
         """The whole point of this method: a 10-turn session should
-        produce exactly ONE generate_summary call, not 10."""
+        produce exactly ONE generate_summary call, not 10.
+
+        ADR-004: the call now happens in the background dream cycle,
+        not on the caller thread. Same total count — just deferred.
+        """
 
         class CountingLLM(MockLLMProvider):
             def __init__(self) -> None:
@@ -337,6 +356,11 @@ class TestEnqueueSession:
             {"role": "user" if i % 2 == 0 else "assistant", "text": f"turn {i}"} for i in range(10)
         ]
         system.enqueue_session(turns)
+        # Enqueue is non-blocking (ADR-004): zero summary calls so far.
+        assert llm.summary_call_count == 0
+        # Dream cycle runs one batched summary call (default loops over
+        # generate_summary for each inbox memory — just one here).
+        system.force_dream(block=True)
         assert llm.summary_call_count == 1
 
     def test_metadata_attached_to_session_memory(

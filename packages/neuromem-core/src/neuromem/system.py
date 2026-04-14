@@ -142,32 +142,39 @@ class NeuroMemory:
     def enqueue(self, raw_text: str, metadata: dict | None = None) -> str:
         """Insert ``raw_text`` into the inbox and return its memory id.
 
-        Calls ``llm.generate_summary`` synchronously on the caller's
-        thread (per Resolved Design Decision #3 — KISS), inserts the
-        memory with ``status='inbox'`` via the storage adapter, and
-        then — if the post-insert inbox count meets ``dream_threshold``
-        AND no dream cycle is currently in flight — spawns a daemon
-        background thread to run ``_run_dream_cycle``.
+        **ADR-004: non-blocking.** This call does not invoke the LLM.
+        The memory row is inserted with ``raw_content`` set and
+        ``summary = NULL``; the dream-cycle worker fills the
+        ``summary`` column in a batched call once the inbox crosses
+        ``dream_threshold``. On the caller thread this is one SQL
+        insert + a cheap inbox-count check.
+
+        If the post-insert inbox count meets ``dream_threshold`` AND
+        no dream cycle is currently in flight, a daemon background
+        thread is spawned to run ``_run_dream_cycle``. That thread's
+        first step is ``generate_summary_batch`` over every inbox
+        memory, so the NULL ``summary`` column is backfilled before
+        any other consolidation step runs.
 
         The ``and not self._is_dreaming`` guard is a cheap optimisation
-        to avoid creating a thread that will immediately no-op. It is
-        a soft check (there's a small race between the test and the
-        spawn), but the authoritative serialisation is
-        ``_run_dream_cycle``'s own non-blocking lock acquire — a second
-        thread sees the lock held and returns immediately. Correctness
-        comes from the lock, not from this check.
+        to avoid creating a thread that will immediately no-op. The
+        authoritative serialisation is ``_run_dream_cycle``'s own
+        non-blocking lock acquire.
 
         Raises ``ValueError`` on empty ``raw_text`` or non-JSON-
-        serialisable metadata. Propagates any provider or storage
-        exceptions.
+        serialisable metadata. Propagates any storage exceptions.
         """
         if not raw_text:
             raise ValueError("raw_text must be non-empty")
 
-        summary = self.llm.generate_summary(raw_text)
         memory_id = self.storage.insert_memory(
             raw_content=raw_text,
-            summary=summary,
+            # ADR-004: summary is NULL at insert time; the dream cycle's
+            # step 2 (generate_summary_batch) populates it. The storage
+            # contract for insert_memory accepts empty string as "no
+            # summary yet" — rows get a real summary before leaving
+            # status='inbox'.
+            summary="",
             metadata=metadata,
         )
 
@@ -763,13 +770,13 @@ class NeuroMemory:
             dreaming_ids = [m["id"] for m in inbox_memories]
             self.storage.update_memory_status(dreaming_ids, "dreaming")
 
-            # 2a. Extract tag labels per memory in one batched call.
+            # 2. Backfill summaries via batched provider call (ADR-004).
+            self._backfill_summaries(inbox_memories)
+
+            # 3. Extract tag labels per memory in one batched call.
             # Providers that override LLMProvider.extract_tags_batch
             # with a real batched LLM call (GeminiLLMProvider, etc.)
-            # turn this from N serial requests into O(1). Providers
-            # that don't override get a default implementation that
-            # loops over extract_tags — correctness-identical to
-            # the pre-#44 behaviour, just slower. See issue #44.
+            # turn this from N serial requests into O(1).
             summaries = [m["summary"] for m in inbox_memories]
             tag_lists = self.llm.extract_tags_batch(summaries)
             memories_with_tags = list(zip(inbox_memories, tag_lists, strict=True))
@@ -854,6 +861,35 @@ class NeuroMemory:
         finally:
             self._is_dreaming = False
             self._dream_lock.release()
+
+    def _backfill_summaries(self, inbox_memories: list[dict]) -> None:
+        """Dream-cycle step 2 (ADR-004): batched summary generation.
+
+        Reads ``raw_content`` off every inbox memory, calls the
+        provider's batched summariser, persists via
+        ``storage.set_summaries``, and mutates the in-memory memory
+        dicts in place so downstream dream-cycle steps (tag
+        extraction, NER, clustering) read the fresh summaries.
+
+        Providers that override ``generate_summary_batch``
+        (GeminiLLMProvider) get chunked parallel calls; the ABC
+        default loops serially. Either way, the ``summary`` column
+        is populated before any downstream step reads it.
+        """
+        if not inbox_memories:
+            return
+        raw_contents = [m["raw_content"] for m in inbox_memories]
+        fresh = self.llm.generate_summary_batch(raw_contents)
+        if len(fresh) != len(inbox_memories):
+            raise ValueError(
+                f"generate_summary_batch returned {len(fresh)} "
+                f"summaries for {len(inbox_memories)} memories"
+            )
+        self.storage.set_summaries(
+            {mem["id"]: s for mem, s in zip(inbox_memories, fresh, strict=True)}
+        )
+        for mem, s in zip(inbox_memories, fresh, strict=True):
+            mem["summary"] = s
 
     def _ensure_tag_nodes(
         self,

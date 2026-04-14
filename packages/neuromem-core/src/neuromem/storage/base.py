@@ -118,6 +118,29 @@ class StorageAdapter(ABC):
         rely on silent skip.
         """
 
+    def set_summaries(self, updates: dict[str, str]) -> None:
+        """Batch-write summary text onto existing memory rows (ADR-004).
+
+        ``updates`` maps memory_id → summary string. Called from the
+        dream cycle's step 2 to backfill the ``summary`` column for
+        memories inserted via the new non-blocking ``enqueue`` path
+        (which writes them with an empty summary).
+
+        Contract for overrides:
+        - Empty ``updates`` → no-op.
+        - Missing memory IDs are silently skipped.
+        - Atomic per call (single transaction in supporting backends).
+        - Overwrites any existing summary value (the dream cycle is
+          the authoritative summariser; previous values were either
+          empty placeholders or stale from a rolled-back cycle).
+
+        NON-abstract with a no-op default so test stubs that don't
+        care about summary persistence aren't forced to implement it.
+        Persistent adapters (SQLite) MUST override.
+        """
+        _ = updates
+        return
+
     def set_named_entities(self, updates: dict[str, list[str]]) -> None:
         """Batch-write named-entity lists onto existing memory rows.
 

@@ -358,6 +358,14 @@ class DictStorageAdapter(StorageAdapter):
             "is_centroid": bool(is_centroid),
         }
 
+    def set_summaries(self, updates: dict[str, str]) -> None:
+        """ADR-004: in-memory override so dream-cycle step 2 actually
+        backfills summaries on the test stub adapter."""
+        self._check_open()
+        for mem_id, summary in updates.items():
+            if mem_id in self._memories:
+                self._memories[mem_id]["summary"] = summary
+
     def update_node_labels(self, updates: dict[str, str]) -> None:
         self._check_open()
         if not updates:
