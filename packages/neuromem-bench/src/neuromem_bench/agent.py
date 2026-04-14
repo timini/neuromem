@@ -50,7 +50,7 @@ from typing import Protocol
 
 import numpy as np
 from neuromem import NeuroMemory, SQLiteAdapter
-from neuromem_gemini import GeminiEmbeddingProvider, GeminiLLMProvider
+from neuromem_gemini import GeminiEmbeddingProvider
 
 from neuromem_bench._client import GeminiAnsweringClient
 
@@ -310,26 +310,50 @@ class NeuromemAgent(BaseAgent):
         model: str = "gemini-2.0-flash-001",
         embedder_model: str = "gemini-embedding-001",
         cluster_threshold: float = 0.55,
+        llm_provider: str = "gemini",
+        embedder_provider: str | None = None,
+        llm_api_key: str | None = None,
+        embedder_api_key: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._embedder_model = embedder_model
         self._cluster_threshold = cluster_threshold
+        # Provider wiring (ADR-005 multi-provider): memory-layer LLM
+        # and embedder can be any of gemini/openai/anthropic/gemma.
+        # The answer-LLM (used by this one-shot agent via
+        # GeminiAnsweringClient) stays Gemini — the ADK variant is
+        # the one that benefits most from non-Gemini answer models.
+        self._llm_provider = llm_provider
+        self._embedder_provider = embedder_provider or llm_provider
+        self._llm_api_key = llm_api_key or api_key
+        self._embedder_api_key = embedder_api_key or llm_api_key or api_key
         self._client = GeminiAnsweringClient(api_key=api_key, model=model)
         self._memory: NeuroMemory | None = None
-        # Per-session ordinal written into each memory's metadata
-        # (starts at 1 on the first process_session call, resets on
-        # reset()). Useful for downstream filtering/analytics.
         self._session_index = 0
         self._build_memory()
 
     def _build_memory(self) -> None:
-        """(Re-)instantiate a fresh NeuroMemory with in-memory storage
-        backed by real Gemini providers."""
+        """(Re-)instantiate a fresh NeuroMemory with in-memory storage.
+
+        LLM + embedder come from the provider factory so callers can
+        pick openai/anthropic/gemma as well as gemini.
+        """
+        from neuromem_bench._providers import build_pair  # noqa: PLC0415
+
+        pair = build_pair(
+            llm_provider=self._llm_provider,
+            llm_api_key=self._llm_api_key,
+            llm_model=self._model,
+            embedder_provider=self._embedder_provider,
+            embedder_api_key=self._embedder_api_key,
+            embedder_model=self._embedder_model,
+        )
+        assert pair.embedder is not None
         self._memory = NeuroMemory(
             storage=SQLiteAdapter(":memory:"),
-            llm=GeminiLLMProvider(api_key=self._api_key, model=self._model),
-            embedder=GeminiEmbeddingProvider(api_key=self._api_key, model=self._embedder_model),
+            llm=pair.llm,
+            embedder=pair.embedder,
             dream_threshold=9999,
             cluster_threshold=self._cluster_threshold,
         )
@@ -464,14 +488,26 @@ class NeuromemAdkAgent(BaseAgent):
         model: str = "gemini-2.0-flash-001",
         embedder_model: str = "gemini-embedding-001",
         cluster_threshold: float = 0.55,
+        llm_provider: str = "gemini",
+        embedder_provider: str | None = None,
+        llm_api_key: str | None = None,
+        embedder_api_key: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._embedder_model = embedder_model
         self._cluster_threshold = cluster_threshold
-        # Session identifiers are stable across turns within one
-        # benchmark instance; reset() re-rolls the session_id so
-        # the prior instance's session.events don't leak in.
+        # Provider wiring (ADR-005 multi-provider). Memory-layer LLM
+        # + embedder can be any of gemini/openai/anthropic/gemma. The
+        # ADK answer-LLM model is still ``self._model`` (ADK accepts
+        # LiteLLM-prefixed strings like ``openai/gpt-4.1-mini`` to
+        # drive non-Gemini answer models).
+        self._llm_provider = llm_provider
+        self._embedder_provider = embedder_provider or (
+            "openai" if llm_provider == "anthropic" else llm_provider
+        )
+        self._llm_api_key = llm_api_key or api_key
+        self._embedder_api_key = embedder_api_key or llm_api_key or api_key
         self._app_name = "neuromem-bench"
         self._user_id = "benchmark-user"
         self._session_id: str = ""  # populated in _build
@@ -534,11 +570,22 @@ class NeuromemAdkAgent(BaseAgent):
         # apples-to-apples benchmark comparison. dream_threshold=9999
         # effectively disables auto-dream during ingestion; we force
         # one consolidation at answer time, same as NeuromemAgent.
+        from neuromem_bench._providers import build_pair  # noqa: PLC0415
+
+        pair = build_pair(
+            llm_provider=self._llm_provider,
+            llm_api_key=self._llm_api_key,
+            llm_model=self._model,
+            embedder_provider=self._embedder_provider,
+            embedder_api_key=self._embedder_api_key,
+            embedder_model=self._embedder_model,
+        )
+        assert pair.embedder is not None
         memory = enable_memory(
             agent,
             db_path=":memory:",
-            llm=GeminiLLMProvider(api_key=self._api_key, model=self._model),
-            embedder=GeminiEmbeddingProvider(api_key=self._api_key, model=self._embedder_model),
+            llm=pair.llm,
+            embedder=pair.embedder,
             cluster_threshold=self._cluster_threshold,
             dream_threshold=9999,
         )
