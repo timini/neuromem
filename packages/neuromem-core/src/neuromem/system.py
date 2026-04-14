@@ -305,12 +305,31 @@ class NeuroMemory:
 
     def _do_resolve_centroid_names(self, nodes: list[dict]) -> None:
         """Inner implementation of resolve_centroid_names. May raise;
-        the public wrapper catches and logs."""
+        the public wrapper catches and logs.
+
+        ADR-004 fast-path: step 8 of the dream cycle names every
+        centroid eagerly, so under normal operation every node passed
+        here already has a non-placeholder label and this method has
+        nothing to do. If placeholders ARE found we log a WARNING —
+        it means the background worker didn't finish before this
+        hot-path read (invariant broken), and we proceed with the
+        lazy path as a safety net.
+        """
         placeholders = [
             n for n in nodes if n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
         ]
         if not placeholders:
+            # Common case post-ADR-004: full-baked storage. Nothing to do.
             return
+        # ADR-004 invariant broken: step 8 of the dream cycle should have
+        # named every placeholder eagerly. Log and fall through to the
+        # lazy resolve path as a safety net.
+        logger.warning(
+            "resolve_centroid_names: %d placeholder centroid(s) on hot path "
+            "— ADR-004 eager naming didn't run. Falling through to lazy "
+            "resolve as safety net.",
+            len(placeholders),
+        )
 
         # Gather each placeholder centroid's children once. Store the
         # full child node records (id, label, embedding) so the numpy
@@ -461,12 +480,25 @@ class NeuroMemory:
         already have paragraph_summary populated by the time the
         parent's snippets are gathered, rather than falling through
         to one-word labels (ADR-003 D2 intent).
+
+        ADR-004 fast-path: dream-cycle step 9 summarises every
+        centroid eagerly, so post-cycle there are no dirty nodes
+        here. If there ARE we log a WARNING — the hot-path invariant
+        is broken — and fall through to the lazy resolve as a safety
+        net.
         """
         needs_summary = [
             n for n in nodes if n.get("is_centroid") and not n.get("paragraph_summary")
         ]
         if not needs_summary:
+            # Common case post-ADR-004: full-baked storage.
             return
+        logger.warning(
+            "resolve_junction_summaries: %d unsummarised centroid(s) on hot "
+            "path — ADR-004 eager summarisation didn't run. Falling through "
+            "to lazy resolve as safety net.",
+            len(needs_summary),
+        )
 
         levels = self._group_by_level(needs_summary, nodes)
         for level_ids in levels:
@@ -826,17 +858,25 @@ class NeuroMemory:
                         relationship="has_tag",
                     )
 
-            # 7b. Eager trunk-summary pass (ADR-003 D2). Pre-populates
-            # paragraph_summary for the level-0 centroids (direct-above-
-            # leaf) and level-1 centroids (their parents). This pays
-            # the LLM cost at ingestion time so first-render latency
-            # doesn't amortise it across user-visible requests. Deeper
-            # centroids stay NULL and are resolved lazily at render
-            # time per ADR-003 D2. NEVER raises — if the pass fails the
-            # cycle continues, and lazy resolve covers the gap.
-            self._run_junction_summarisation_trunk()
+            # 8. Name every unnamed centroid (ADR-004 full-sweep).
+            # ADR-003 introduced lazy per-query naming; ADR-004 makes
+            # naming eager so the hot path never pays an LLM call for
+            # a centroid label. Full sweep: finds every node whose
+            # label still starts with "cluster_" (the placeholder
+            # prefix from _run_clustering) and runs the batched
+            # naming path over all of them.
+            self._run_all_centroid_naming()
 
-            # 8. Apply decay + archive.
+            # 9. Summarise every unsummarised centroid (ADR-004
+            # full-sweep). Replaces the ADR-003 trunk-only pass.
+            # Floor-up: leaf-adjacent centroids summarised first,
+            # then their parents read the just-written summaries.
+            # After this, every centroid has a non-NULL
+            # paragraph_summary and the hot-path resolve_*
+            # methods become no-ops.
+            self._run_all_junction_summarisation()
+
+            # 10. Apply decay + archive.
             now = int(time.time())
             self.storage.apply_decay_and_archive(
                 decay_lambda=self.decay_lambda,
@@ -844,7 +884,7 @@ class NeuroMemory:
                 current_timestamp=now,
             )
 
-            # 9. Flip dreaming → consolidated.
+            # 11. Flip dreaming → consolidated.
             self.storage.update_memory_status(dreaming_ids, "consolidated")
 
         except Exception:
@@ -1021,97 +1061,64 @@ class NeuroMemory:
             id_map[cluster.id] = centroid_id
 
     # ------------------------------------------------------------------
-    # _run_junction_summarisation_trunk — ADR-003 D2 eager trunk pass
+    # ADR-004 D2 — full-sweep eager consolidation passes
     # ------------------------------------------------------------------
 
-    def _run_junction_summarisation_trunk(self) -> None:
-        """Eagerly populate paragraph_summary for the bottom two levels
-        of the concept hierarchy (ADR-003 D2 trunk policy).
+    def _run_all_centroid_naming(self) -> None:
+        """Dream-cycle step 8 (ADR-004): name every placeholder centroid.
 
-        Level 0 = centroids that have at least one memory attached via
-        has_tag to any of their descendant leaves (i.e. the centroids
-        that actually cover the ingested memories).
-        Level 1 = direct parents of level-0 centroids.
+        Full-sweep variant of the ADR-002 lazy ``resolve_centroid_names``
+        resolver. Pulls every node from storage, filters to those whose
+        label still carries the ``cluster_*`` placeholder prefix, and
+        runs the batched LLM-naming path over the entire set. After
+        this step runs, no centroid retains a placeholder — so the
+        hot-path render-time resolver never has work to do.
 
-        Higher levels stay NULL and get lazy-resolved at render time.
-
-        Deliberately broad try/except: a failed summarisation must not
-        crash the dream cycle (the whole cycle rolls memories back to
-        inbox). On failure the lazy render path fills the gaps.
+        Deliberately broad try/except: a failed naming pass must not
+        crash the dream cycle. On failure the lazy render path fills
+        the gap (degraded-but-functional behaviour).
         """
         try:
-            self._do_run_junction_trunk()
+            all_nodes = self.storage.get_all_nodes()
+            placeholders = [
+                n
+                for n in all_nodes
+                if n.get("is_centroid") and n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
+            ]
+            if not placeholders:
+                return
+            self.resolve_centroid_names(placeholders)
         except Exception:
             logger.exception(
-                "_run_junction_summarisation_trunk: eager pass failed; "
+                "_run_all_centroid_naming: eager full-sweep failed; "
                 "lazy render-time resolution will cover the gap."
             )
 
-    def _do_run_junction_trunk(self) -> None:
-        """Inner implementation. May raise — the public wrapper catches."""
-        all_nodes = self.storage.get_all_nodes()
-        centroids = [n for n in all_nodes if n.get("is_centroid")]
-        if not centroids:
-            return
+    def _run_all_junction_summarisation(self) -> None:
+        """Dream-cycle step 9 (ADR-004): summarise every centroid.
 
-        level0 = self._find_level0_centroids(centroids)
-        if not level0:
-            return
+        Full-sweep variant of the ADR-003 lazy
+        ``resolve_junction_summaries``. Passes every centroid with
+        NULL ``paragraph_summary`` to the floor-up batched summariser.
+        After this step, no centroid has a NULL summary and the
+        hot-path resolver is a no-op.
 
-        level1 = self._find_level1_parents(level0, centroids)
-        nodes_by_id = {c["id"]: c for c in centroids}
-        staged = [nodes_by_id[cid] for cid in (*level0, *level1) if cid in nodes_by_id]
-
-        # Level 0 first, persist, then level 1 so parents see their
-        # just-written children.
-        self._resolve_level(level0, staged)
-        if level1:
-            self._resolve_level(level1, staged)
-
-    def _find_level0_centroids(self, centroids: list[dict]) -> list[str]:
-        """Return centroid ids whose subtree contains a has_tag-linked
-        memory and that don't yet have a paragraph_summary."""
-        level0: list[str] = []
-        for centroid in centroids:
-            if centroid.get("paragraph_summary"):
-                continue
-            sub = self.storage.get_subgraph([centroid["id"]], depth=1)
-            if any(e.get("relationship") == "has_tag" for e in sub.get("edges", [])):
-                level0.append(centroid["id"])
-        return level0
-
-    def _find_level1_parents(self, level0: list[str], centroids: list[dict]) -> list[str]:
-        """Return unique level-1 parent centroid ids (parents of any
-        level-0 centroid that aren't themselves level-0 and aren't yet
-        summarised). Preserves first-seen order."""
-        level0_set = set(level0)
-        centroid_by_id = {c["id"]: c for c in centroids}
-        seen: set[str] = set()
-        out: list[str] = []
-        for cid in level0:
-            sub = self.storage.get_subgraph([cid], depth=1)
-            for edge in sub.get("edges", []):
-                parent_id = self._extract_parent_id(edge, cid)
-                if not parent_id or parent_id in level0_set or parent_id in seen:
-                    continue
-                parent = centroid_by_id.get(parent_id)
-                if parent and not parent.get("paragraph_summary"):
-                    seen.add(parent_id)
-                    out.append(parent_id)
-        return out
-
-    @staticmethod
-    def _extract_parent_id(edge: dict, child_id: str) -> str | None:
-        """Return the parent id of ``child_id`` via this child_of edge,
-        or None if the edge doesn't describe that relationship."""
-        if edge.get("relationship") != "child_of":
-            return None
-        if edge.get("target_id") != child_id:
-            return None
-        parent_id = edge.get("source_id")
-        if not parent_id or parent_id == child_id:
-            return None
-        return str(parent_id)
+        Supersedes ``_run_junction_summarisation_trunk`` (which covered
+        only levels 0 and 1). Same NEVER-RAISES contract.
+        """
+        try:
+            all_nodes = self.storage.get_all_nodes()
+            dirty = [
+                n for n in all_nodes if n.get("is_centroid") and not n.get("paragraph_summary")
+            ]
+            if not dirty:
+                return
+            self.resolve_junction_summaries(dirty)
+        except Exception:
+            logger.exception(
+                "_run_all_junction_summarisation: eager full-sweep failed; "
+                "lazy render-time resolution will cover the gap."
+            )
 
 
 def _sanitise_category_name(raw: str) -> str:
