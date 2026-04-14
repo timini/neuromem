@@ -1,0 +1,10 @@
+You are summarising a set of related memory snippets into a compact description of what this branch of a memory hierarchy contains. The answering LLM will use this description to decide whether to drill deeper into this branch.
+
+## Rules
+- 2-4 sentences. Dense with facts, no filler.
+- Preserve personal facts (degree, age, family, job, decisions, places) and proper nouns (brands, people, products). A summary that omits these has FAILED.
+- Don't write 'The user...' at the start of every sentence — vary phrasing.
+- No preamble, no markdown, no quotation marks. Just the summary text.
+
+## Snippets to summarise
+- {joined}
