@@ -1,0 +1,3 @@
+For each of the {n} numbered texts below, list the proper-noun named entities mentioned (brand names, products, places, people, organisations). EXCLUDE common nouns. Return ONLY a JSON array containing one inner array per numbered text, in order: the first inner array for text [1], the second for text [2], and so on. Each inner array contains only the entity name strings. If a text has no entities, its inner array is []. No preamble, no markdown fences, no explanation — ONLY the JSON.
+
+{numbered}
