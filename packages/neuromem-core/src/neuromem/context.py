@@ -186,7 +186,15 @@ def _enforce_node_cap(
     def _priority(node_id: str) -> tuple[int, str]:
         return (distance.get(node_id, 10_000), node_id)
 
-    kept_ids = set(sorted(nodes_by_id.keys(), key=_priority)[:cap])
+    # Seed nodes are contractually NEVER dropped, even when cap is
+    # pathologically small (e.g. caller passed top_k=100 with the
+    # hard-coded cap of 80). Clamp the effective cap to at least the
+    # seed count so the sorted-slice keeps all of them. The seeds
+    # sort first (distance=0) so they occupy the head of the slice
+    # regardless — the clamp just ensures the slice is long enough.
+    seed_ids_in_graph = [sid for sid in seed_ids if sid in nodes_by_id]
+    effective_cap = max(cap, len(seed_ids_in_graph))
+    kept_ids = set(sorted(nodes_by_id.keys(), key=_priority)[:effective_cap])
     subgraph["nodes"] = [n for n in nodes if n["id"] in kept_ids]
     subgraph["edges"] = [
         e

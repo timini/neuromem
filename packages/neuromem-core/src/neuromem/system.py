@@ -867,8 +867,23 @@ class NeuroMemory:
             # Rewrite any provider-minted child ids to their storage
             # UUIDs. Children that are leaf ids (not in id_map) pass
             # through unchanged.
+            #
+            # Contract guard: if a child id looks like a provider-minted
+            # cluster id ("c_"-prefixed) but isn't yet in id_map, the
+            # provider violated the dependency-ordering contract and we
+            # would otherwise write an edge to a non-existent node.
+            # Raise loudly so misbehaving providers are caught in tests
+            # instead of silently corrupting storage with dangling edges.
             for child_id in cluster.child_ids:
                 resolved_child = id_map.get(child_id, child_id)
+                if child_id.startswith("c_") and child_id not in id_map:
+                    raise ValueError(
+                        f"ClusteringProvider contract violation: cluster "
+                        f"{cluster.id!r} references child {child_id!r} "
+                        f"before it was emitted. Providers MUST return "
+                        f"centroids in dependency order (children before "
+                        f"parents)."
+                    )
                 self.storage.insert_edge(
                     source_id=centroid_id,
                     target_id=resolved_child,

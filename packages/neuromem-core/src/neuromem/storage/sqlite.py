@@ -385,7 +385,13 @@ class SQLiteAdapter(StorageAdapter):
                         label = excluded.label,
                         embedding = excluded.embedding,
                         embedding_dim = excluded.embedding_dim,
-                        is_centroid = excluded.is_centroid
+                        is_centroid = excluded.is_centroid,
+                        -- ADR-003 D2: a re-upsert signals the centroid's
+                        -- membership or embedding changed, so the cached
+                        -- paragraph_summary no longer reflects the subtree.
+                        -- Clear it so the next render (or dream-cycle
+                        -- trunk pass) regenerates a fresh summary.
+                        paragraph_summary = NULL
                     """,
                     (node_id, label, blob, int(arr.size), int(is_centroid)),
                 )
