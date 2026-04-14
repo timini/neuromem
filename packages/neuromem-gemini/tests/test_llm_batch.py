@@ -471,3 +471,74 @@ class TestGenerateCategoryNamesBatch:
         assert result == ["good", "recovered", "fine"]
         # 1 batch + 1 per-pair fallback for the bad middle slot.
         assert generate.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# ADR-003 F3 — generic-noun blocklist in centroid naming
+# ---------------------------------------------------------------------------
+
+
+class TestGenericNounBlocklist:
+    """Generic single-word nouns that don't abstract over anything
+    (``thing``, ``aspect``, ``factor``, ...) are rejected post-LLM;
+    the fallback is the first non-empty concept's first word."""
+
+    def test_blocked_single_call_falls_back_to_first_concept(self) -> None:
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=None,
+            single_responses=["thing"],
+        )
+        result = provider.generate_category_name(["coupon", "voucher"])
+        # LLM returned "thing" → blocked → fallback to "coupon".
+        assert result == "coupon"
+        assert generate.call_count == 1
+
+    def test_non_blocked_single_call_passes_through(self) -> None:
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=None,
+            single_responses=["shopping"],
+        )
+        result = provider.generate_category_name(["coupon", "voucher"])
+        assert result == "shopping"
+        assert generate.call_count == 1
+
+    def test_blocked_batch_slot_rerolls_via_single_call(self) -> None:
+        """One blocklisted response in a batched call triggers the
+        per-slot fallback which calls generate_category_name for that
+        slot — ONE extra API call, not a re-batch."""
+        provider, generate = _make_llm_with_stub_client(
+            batch_responses=['["shopping", "aspect", "finance"]'],
+            single_responses=["education"],
+        )
+        result = provider.generate_category_names_batch([["a", "b"], ["c", "d"], ["e", "f"]])
+        assert result == ["shopping", "education", "finance"]
+        # 1 batch + 1 reroll for the blocked middle slot.
+        assert generate.call_count == 2
+
+    def test_full_blocklist_rejects_plurals_and_variants(self) -> None:
+        """Make sure plurals + common synonyms are all covered."""
+        blocked = [
+            "thing",
+            "things",
+            "stuff",
+            "misc",
+            "topic",
+            "topics",
+            "entity",
+            "entities",
+            "aspect",
+            "factor",
+            "concept",
+            "concepts",
+            "item",
+            "items",
+            "various",
+        ]
+        for term in blocked:
+            provider, _ = _make_llm_with_stub_client(
+                batch_responses=None,
+                single_responses=[term],
+            )
+            result = provider.generate_category_name(["alpha", "beta"])
+            assert result != term, f"blocklist should reject {term!r}"
+            assert result == "alpha"

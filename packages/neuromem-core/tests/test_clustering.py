@@ -256,12 +256,28 @@ class TestJunctionSummaryDefaults:
         provider = self._make_provider()
         assert provider.generate_junction_summary(["just one summary"]) == "just one summary"  # type: ignore[attr-defined]
 
-    def test_truncates_above_400_chars(self) -> None:
+    def test_truncates_per_item_not_mid_item(self) -> None:
+        """Each long child is individually truncated (with its own
+        ellipsis) BEFORE joining, so no single child is cut in half
+        by the fallback. Total output is bounded by
+        per_item_cap × N_items."""
         provider = self._make_provider()
         long_children = ["x" * 200, "y" * 200, "z" * 200]
         result = provider.generate_junction_summary(long_children)  # type: ignore[attr-defined]
-        assert len(result) <= 401  # 400 chars + trailing ellipsis
-        assert result.endswith("…")
+        # Each of the 3 items truncated to 120 chars (119 + ellipsis).
+        # Result contains three ellipsis-terminated chunks joined by spaces.
+        assert result.count("…") == 3, (
+            "each item should be individually truncated with its own ellipsis"
+        )
+        # No single chunk exceeds the per-item cap.
+        for chunk in result.split(" "):
+            assert len(chunk) <= 121  # cap + some leeway for boundary
+
+    def test_short_children_joined_without_truncation(self) -> None:
+        provider = self._make_provider()
+        result = provider.generate_junction_summary(["one", "two", "three"])  # type: ignore[attr-defined]
+        assert result == "one two three"
+        assert "…" not in result
 
     def test_batch_default_loops_per_group(self) -> None:
         provider = self._make_provider()

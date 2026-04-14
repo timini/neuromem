@@ -246,8 +246,23 @@ class LLMProvider(ABC):
         """
         if not children_summaries:
             return ""
-        joined = " ".join(s.strip() for s in children_summaries if s)
-        return joined[:400] + "…" if len(joined) > 400 else joined
+        # Truncate each child item to a per-item budget BEFORE joining,
+        # so the composite fallback summary doesn't cut a single child
+        # in half when the first item is already long (review finding).
+        # ~120 chars per item × 3 items = ~400 chars total. Items
+        # stripped of surrounding whitespace, ellipsised when truncated.
+        per_item_cap = 120
+        per_item_trimmed: list[str] = []
+        for raw in children_summaries:
+            if not raw:
+                continue
+            s = raw.strip()
+            if not s:
+                continue
+            if len(s) > per_item_cap:
+                s = s[: per_item_cap - 1] + "…"
+            per_item_trimmed.append(s)
+        return " ".join(per_item_trimmed)
 
     def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
         """Batch variant of :meth:`generate_junction_summary` (ADR-003).

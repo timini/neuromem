@@ -565,34 +565,95 @@ class GeminiLLMProvider(LLMProvider):
     # Category naming — dream-thread
     # ------------------------------------------------------------------
 
+    # Generic single-word nouns that don't actually abstract over
+    # anything (ADR-003 F3). The naming prompt explicitly forbids
+    # these; any LLM response in this set is rejected and the
+    # fallback path re-rolls with the first child label instead.
+    _GENERIC_LABEL_BLOCKLIST: frozenset[str] = frozenset(
+        {
+            "thing",
+            "things",
+            "aspect",
+            "aspects",
+            "factor",
+            "factors",
+            "element",
+            "elements",
+            "item",
+            "items",
+            "entity",
+            "entities",
+            "topic",
+            "topics",
+            "concept",
+            "concepts",
+            "category",
+            "categories",
+            "stuff",
+            "misc",
+            "other",
+            "general",
+            "various",
+        }
+    )
+
+    @staticmethod
+    def _clean_name(raw: str) -> str:
+        """Extract the first whitespace-separated token, lowercased,
+        stripped of surrounding punctuation. Returns '' on empty input
+        so callers can tell "no useful name" from "useful name".
+        """
+        stripped = (raw or "").strip()
+        if not stripped:
+            return ""
+        return stripped.split()[0].strip(".,!?:;\"'").lower()
+
+    def _is_blocked(self, name: str) -> bool:
+        """True if ``name`` is in the ADR-003 F3 generic-noun blocklist."""
+        return bool(name) and name in self._GENERIC_LABEL_BLOCKLIST
+
+    def _first_concept_fallback(self, concepts: list[str]) -> str:
+        """Fallback when the LLM returned something unusable (empty or
+        blocklisted). Pick the first non-empty concept's first word.
+        """
+        for concept in concepts:
+            if concept and concept.strip():
+                return self._clean_name(concept)
+        return "concept"
+
     def generate_category_name(self, concepts: list[str]) -> str:
         """Return a single one-word category name for a cluster of concepts.
 
-        Asks Gemini for exactly one word. Defensively takes only the
-        first whitespace-separated token and strips common punctuation
-        so the returned value satisfies the one-word contract even if
-        the model hedges with a "category: databases." style reply.
+        Asks Gemini for exactly one word, explicitly forbidding
+        generic "thing/aspect/element" hedges per ADR-003 F3.
+        Defensively post-processes via :meth:`_reject_or_clean` so a
+        blocklist hit falls back to a real child label instead of
+        returning a useless generic centroid name.
         """
         if not concepts:
             raise ValueError("concepts must be non-empty")
         prompt = (
             "Reply with EXACTLY ONE English noun (lowercase) that names "
-            "the category encompassing the following concepts. "
-            "No explanation, no punctuation, no markdown. One word only.\n\n"
+            "the category encompassing the following concepts.\n\n"
+            "## Rules\n"
+            "- ONE word only. No explanation, no punctuation, no markdown.\n"
+            "- Do NOT use generic placeholder nouns like 'thing', "
+            "'aspect', 'factor', 'element', 'item', 'entity', 'topic', "
+            "'concept', 'stuff', 'misc', 'other', 'various'. A useful "
+            "name describes what the concepts HAVE IN COMMON, not that "
+            "they are 'things'.\n"
+            "- Prefer the shared domain (e.g. 'finance' over 'aspect', "
+            "'shopping' over 'thing', 'education' over 'category').\n\n"
             f"Concepts: {', '.join(concepts)}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
-        raw = (resp.text or "").strip()
-        if not raw:
-            # Fall back to a deterministic synthesis so the dream cycle
-            # never crashes on an empty model response. Guard against
-            # the pathological case where ``concepts[0]`` is whitespace-
-            # only (unlikely in practice — the tag extractor filters
-            # empty strings — but ``"   ".split()`` is ``[]`` and would
-            # otherwise raise IndexError here).
-            tokens = concepts[0].split() if concepts[0] else []
-            return tokens[0] if tokens else "concept"
-        return raw.split()[0].strip(".,!?:;\"'").lower()
+        cleaned = self._clean_name(resp.text or "")
+        # Blocked term or empty response → fallback to first concept
+        # label. No retry — would risk infinite recursion if the model
+        # is deterministically returning "thing" for this input.
+        if not cleaned or self._is_blocked(cleaned):
+            return self._first_concept_fallback(concepts)
+        return cleaned
 
     def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
         """Name many independent clusters in one Gemini call (ADR-002).
@@ -649,14 +710,21 @@ class GeminiLLMProvider(LLMProvider):
 
         numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
         prompt = (
-            f"For each of the {len(pairs)} numbered pairs of concepts "
+            f"For each of the {len(pairs)} numbered groups of concepts "
             "below, reply with EXACTLY ONE English noun (lowercase) "
-            "that names the category encompassing both concepts. "
-            "Return ONLY a JSON array of exactly "
-            f"{len(pairs)} string elements, in order. No explanation, "
-            "no markdown fences, no punctuation inside the names — "
-            "just the JSON array.\n\n"
-            f"{numbered}"
+            "that names the category encompassing the concepts.\n\n"
+            "## Rules\n"
+            "- ONE word per group. No punctuation inside the names.\n"
+            "- Do NOT use generic placeholder nouns like 'thing', "
+            "'aspect', 'factor', 'element', 'item', 'entity', 'topic', "
+            "'concept', 'stuff', 'misc', 'other', 'various'. A useful "
+            "name describes what the concepts HAVE IN COMMON, not that "
+            "they are 'things'. Prefer the shared domain (e.g. "
+            "'finance', 'shopping', 'education').\n\n"
+            "## Output\n"
+            f"Return ONLY a JSON array of exactly {len(pairs)} string "
+            "elements, in order. No markdown fences, no explanation.\n\n"
+            f"## Groups\n{numbered}"
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
@@ -674,11 +742,14 @@ class GeminiLLMProvider(LLMProvider):
             if not isinstance(name, str):
                 result.append(self.generate_category_name(pairs[i]))
                 continue
-            cleaned = name.strip().split()
-            if not cleaned:
+            cleaned = self._clean_name(name)
+            if not cleaned or self._is_blocked(cleaned):
+                # Re-roll via the single-call path. The stronger prompt
+                # there MAY get a better response; if not, it still
+                # terminates (falls back to first concept).
                 result.append(self.generate_category_name(pairs[i]))
                 continue
-            result.append(cleaned[0].strip(".,!?:;\"'").lower())
+            result.append(cleaned)
         return result
 
     # ------------------------------------------------------------------
