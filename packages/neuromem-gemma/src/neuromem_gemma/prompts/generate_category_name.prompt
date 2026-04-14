@@ -1,0 +1,8 @@
+Reply with EXACTLY ONE English noun (lowercase) that names the category encompassing the following concepts.
+
+## Rules
+- ONE word only. No explanation, no punctuation, no markdown.
+- Do NOT use generic placeholder nouns like 'thing', 'aspect', 'factor', 'element', 'item', 'entity', 'topic', 'concept', 'stuff', 'misc', 'other', 'various'. A useful name describes what the concepts HAVE IN COMMON, not that they are 'things'.
+- Prefer the shared domain (e.g. 'finance' over 'aspect', 'shopping' over 'thing', 'education' over 'category').
+
+Concepts: {concepts}

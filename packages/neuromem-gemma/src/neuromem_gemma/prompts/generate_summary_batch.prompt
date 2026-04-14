@@ -1,0 +1,20 @@
+Summarise each of the {n} numbered texts below into a memory record that the user will be able to ask questions about later.
+
+## Preserve EVERY fact (PER TEXT)
+Your job is to preserve every concrete piece of information the text contains, especially:
+- **Personal facts about the user**: degree, age, family members, job, employer, hobbies, location, preferences, decisions stated, actions taken, events attended.
+- **Proper nouns**: brand names, places, people, organisations, products.
+- **Specific numbers and dates**: amounts, prices, ages, dates, counts.
+- **Implied facts**: if the user says 'when I graduated', they graduated; if they say 'my wife', they have a wife.
+
+## Bias toward user facts over generic content
+If a text mixes a personal fact with a list of recommendations or generic advice, the personal fact is MORE important. Drop generic advice before dropping a personal detail.
+
+## Length
+Each summary: 2–4 sentences. Dense with facts, no filler, no preamble like 'This text discusses...'.
+
+## Output format
+Return ONLY a JSON array of exactly {n} strings, one per numbered text, in order. No markdown fences, no trailing commentary, no keys — just the array.
+
+## Texts to summarise
+{numbered}
