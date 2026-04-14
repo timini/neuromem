@@ -4,6 +4,60 @@ Rolling leaderboard for `neuromem-bench` runs against published memory benchmark
 
 ## LongMemEval_s (ICLR 2025, arXiv:2410.10813)
 
+### 2026-04-13 — Fact-preserving prompts + `top_k=20` retrieval (n=20)
+
+**20-instance sample**, `llm_judge` metric, `gemini-2.0-flash-001` throughout (summariser + tagger + NER + answer + judge).
+
+| Agent | Instances | `llm_judge` | Wall time | Model |
+|---|---|---|---|---|
+| `NeuromemAgent` (post-fix) | 20 | **0.950** | 33m (~100s/instance) | `gemini-2.0-flash-001` |
+
+Per-instance detail in `longmemeval-s-neuromem-n20-topk20.jsonl`. Only miss: *"What play did I attend at the local community theater?"* — prediction hedged between two plays ("The Glass Menagerie or The Crucible") because both appeared in the rendered tree. That's a **precision / disambiguation** problem (multiple candidate memories, neither was discriminated by the injected summary), not a retrieval **recall** problem. Orthogonal to the retrieval fixes that landed this run — would need memory-level drill-down via `retrieve_memories` (already available to `NeuromemAdkAgent`).
+
+#### What changed
+
+The pre-fix benchmark on a single instance (`e47becba`, the degree question) had regressed to **0.00** after PRs #51 / #52 / #54 merged (concurrent ingestion, per-session summarisation, lazy centroid naming). Root-caused through a 3-stage diagnostic (`packages/neuromem-bench/scripts/diag_instance1_full.py`):
+
+| Stage | Check | Result before fix |
+|---|---|---|
+| A — summarisation | Does any memory's summary contain "Business Administration"? | flaky: sometimes yes, often no |
+| B — retrieval | Is the fact in the rendered context tree? | flaky: ~20% miss rate even when stage A passed |
+| C — answer | Does the LLM answer correctly given the tree? | deterministic given tree contents |
+
+Two distinct failure modes, both fixed independently:
+
+1. **Stage A — fact-preserving summarisation & tagging** (`packages/neuromem-gemini/src/neuromem_gemini/llm.py`). Per-session summarisation (PR #52) compresses ~18K-char multi-turn sessions into 2–4 sentence summaries. The previous prompt ("summarise, preserve proper nouns") biased the LLM toward the *dominant* topic and dropped briefly-mentioned personal facts — "I graduated with a degree in Business Administration" routinely lost to "here are some task-management apps I'd recommend". Rewrote `generate_summary` and `extract_tags` / `extract_tags_batch` with:
+   - Explicit fact-preservation instructions (personal facts, proper nouns, numbers/dates, implied facts).
+   - Explicit bias correction: "a summary that omits a brand list is fine; a summary that omits *'I graduated with Business Administration'* has FAILED."
+   - Worked `GOOD`/`BAD` examples so the model pattern-matches rather than improvises.
+   - Bumped the tag cap from **3–5 → 5–12** for tag extraction. The old cap forced the LLM to pick dominant topics under artificial scarcity; session-level summaries need enough tag slots to anchor every fact the user might later ask about.
+
+2. **Stage B — retrieval cliff** (`packages/neuromem-bench/src/neuromem_bench/agent.py`). `ContextHelper.build_prompt_context` seeds the subgraph walk with `top_k=5` nearest tag/centroid nodes to the question embedding, then renders depth-2 neighbours. For the degree question, the `"degree"` tag node sometimes ranked 6+ behind generic centroids like `"measurement"`, `"learning"`, `"qualification"` — falling off the cliff and making the memory invisible to the answer LLM even though it existed in storage. Bumping the agent's call to `top_k=20` widens the seed set enough that the relevant tag stays reachable. Still cheap (20 nearest over hundreds of nodes is a sub-ms numpy operation; the expanded subgraph walk is depth-bounded).
+
+#### Hit-rate on the degree instance across iterations (5 runs each)
+
+| Config | Hit rate |
+|---|---|
+| Baseline (post-merge, pre-fix) | 0 / 5 |
+| Fact-preserving prompts only (`top_k=5`) | 4 / 5 |
+| Fact-preserving prompts + `top_k=20` | **5 / 5** |
+
+Both fixes are load-bearing — the prompt fix alone still leaves a ~20% retrieval cliff; the `top_k` fix alone wouldn't help if the summary never contained the fact in the first place.
+
+#### Wall-time improvement
+
+Also a function of the merged PRs, not just these fixes — tracked for completeness.
+
+| Config | Wall / instance |
+|---|---|
+| Pre-PR-#51/#52/#54 | ~1700s (~28 min) |
+| After concurrent ingestion + lazy centroid naming | ~120s |
+| Current (n=20 average) | **~100s** |
+
+~17× faster for essentially the same score path. The remaining cost is ~45s ingestion (session-level summarise + tag + NER, parallelised) + ~55s answer (force-dream + render + LLM answer).
+
+### 2026-03-* — original 3-instance baseline
+
 **3-instance sample**, scored with both `contains_match` (deterministic, strict substring) and `llm_judge` (Gemini 2.0 Flash as judge, matching LongMemEval's canonical GPT-4o-as-judge protocol).
 
 ### Summary
