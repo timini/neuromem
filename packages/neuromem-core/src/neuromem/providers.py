@@ -196,17 +196,20 @@ class LLMProvider(ABC):
         Used by the lazy centroid naming flow (ADR-002): at render
         time, ``ContextHelper`` collects all centroids in the
         rendered subgraph that still have placeholder labels,
-        gathers each centroid's two children's labels into a pair,
-        and asks the provider to name them all in one round-trip.
+        gathers each centroid's children's labels into a list, and
+        asks the provider to name them all in one round-trip.
 
-        Each ``pair[i]`` is the labels of the two children that were
-        merged into cluster ``i``. The pairs are independent — each
-        name depends only on the two labels in its own slot, not on
-        cross-pair context.
+        Each ``pairs[i]`` is the labels of the children that were
+        merged into cluster ``i``. Historically (ADR-001 era) each
+        sub-list had exactly 2 entries — binary agglomerative.
+        Under ADR-003, clusters may have 2–20 children so
+        ``pairs[i]`` can be a variable-length list. The groups are
+        independent: each name depends only on its own slot, not on
+        cross-group context.
 
         **Contract**:
 
-        - Returns a list of one-word strings, one per input pair, in
+        - Returns a list of one-word strings, one per input group, in
           the same order. ``len(return_value) == len(pairs)`` is a
           hard invariant — the resolver uses ``zip(..., strict=True)``
           and will raise on length mismatch (which falls through to
@@ -214,11 +217,153 @@ class LLMProvider(ABC):
         - Empty input → empty output, no LLM call.
 
         **Default implementation**: loops over :meth:`generate_category_name`,
-        once per pair. Same correctness fallback pattern as
+        once per group. Same correctness fallback pattern as
         :meth:`extract_tags_batch`. Concrete providers SHOULD override
         with a single batched LLM call (one prompt asking for N
         one-word names) — the speedup matters for the dream-cycle
         render path where dozens of names may need resolving in one
         query.
         """
-        return [self.generate_category_name(pair) for pair in pairs]
+        return [self.generate_category_name(group) for group in pairs]
+
+    def generate_junction_summary(self, children_summaries: list[str]) -> str:
+        """Return a paragraph summary of a centroid's subtree (ADR-003).
+
+        Called by both the dream cycle's trunk-summarisation step and
+        ``NeuroMemory.resolve_junction_summaries`` at render time.
+        ``children_summaries`` is the list of child summaries that feed
+        into this junction — leaves' memory summaries, or other
+        junctions' paragraph summaries (floor-up recursion).
+
+        Expected output: 2-4 sentences that fairly represent the union
+        of the children. Proper nouns, numbers, and user-specific facts
+        are MORE important than abstractions — summaries feed retrieval.
+
+        **Default implementation**: concatenate the first ~400 chars of
+        the children, truncate. A correctness fallback so providers
+        without paragraph-summary support keep working; concrete
+        providers SHOULD override with a real LLM call.
+        """
+        if not children_summaries:
+            return ""
+        joined = " ".join(s.strip() for s in children_summaries if s)
+        return joined[:400] + "…" if len(joined) > 400 else joined
+
+    def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+        """Batch variant of :meth:`generate_junction_summary` (ADR-003).
+
+        Same shape as :meth:`generate_category_names_batch`: each
+        ``groups[i]`` is an independent set of child summaries to
+        roll up into one junction summary. Returns ``len(groups)``
+        strings in the same order.
+
+        **Default implementation**: loops, one call per group.
+        Concrete providers SHOULD override with a batched LLM call
+        — this is called once per dream cycle (for the trunk) and
+        once per deep-render (lazy), both performance-sensitive.
+
+        Empty input → empty output, no LLM call.
+        """
+        return [self.generate_junction_summary(g) for g in groups]
+
+
+# ---------------------------------------------------------------------------
+# ClusteringProvider — ADR-003 D1
+# ---------------------------------------------------------------------------
+
+
+class Cluster:
+    """One centroid produced by a ``ClusteringProvider``.
+
+    Pure data record: no behaviour. Not a dataclass to avoid adding a
+    stdlib-imports-per-module cost to downstream consumers who only
+    need the type. Equivalent to a ``(id, embedding, child_ids,
+    cohesion)`` tuple but named-access for readability.
+
+    **id**: a provider-minted unique string. The caller (NeuroMemory's
+    clustering step) treats these as opaque identifiers and will
+    rewrite them to real node UUIDs as it persists the centroids.
+    Other entries in the same ``cluster()`` return list MAY reference
+    this id in their ``child_ids`` — the caller uses the return-list
+    order to resolve forward references (children appear BEFORE
+    parents that reference them).
+
+    **embedding**: the centroid's embedding vector. Usually the
+    element-wise mean of the children's embeddings; different
+    providers may use alternatives (medoid, weighted mean).
+
+    **child_ids**: list of ids that are this centroid's direct
+    children. Each id is either (a) the original leaf id passed into
+    ``cluster()``, or (b) the ``id`` of an earlier entry in the same
+    returned list. Length typically 2–8 (ADR-003 F2 target), capped
+    at 20 by provider policy.
+
+    **cohesion**: the mean pairwise cosine among the children's
+    embeddings, in ``[0, 1]``. Used as the ``child_of`` edge weight
+    so the graph preserves the similarity semantics ADR-001
+    established. Providers that cannot compute this cheaply should
+    return ``1.0`` as a neutral placeholder.
+    """
+
+    __slots__ = ("id", "embedding", "child_ids", "cohesion")
+
+    def __init__(
+        self,
+        *,
+        id: str,  # noqa: A002 — name matches the concept; shadowing builtin is fine here
+        embedding: NDArray[np.floating],
+        child_ids: list[str],
+        cohesion: float,
+    ) -> None:
+        self.id = id
+        self.embedding = embedding
+        self.child_ids = child_ids
+        self.cohesion = cohesion
+
+
+class ClusteringProvider(ABC):
+    """Cluster a set of (id, embedding) pairs into a hierarchy (ADR-003).
+
+    The dream cycle calls this ABC once per cycle: input is all tag
+    nodes emitted by the current cycle's NER + tag extraction; output
+    is a flat list of ``Cluster`` records that the caller persists as
+    centroid nodes with ``child_of`` edges.
+
+    Providers do NOT touch storage. They are pure: given the same
+    input, the same implementation with the same configuration MUST
+    return a functionally equivalent result.
+
+    Two providers ship with neuromem-core:
+
+    - ``HDBSCANClusteringProvider`` (default, recommended) — density-
+      based clustering with natural noise-point handling. Recursive
+      in the sense that the returned list may include centroids-of-
+      centroids forming a multi-level hierarchy.
+    - ``StubClusteringProvider`` — test-only deterministic stub that
+      groups nodes in pairs. Used by unit tests so cluster-dependent
+      assertions don't depend on HDBSCAN's internal randomness.
+    """
+
+    @abstractmethod
+    def cluster(
+        self,
+        nodes: list[tuple[str, NDArray[np.floating]]],
+    ) -> list[Cluster]:
+        """Return the centroids that cluster ``nodes`` into a hierarchy.
+
+        ``nodes`` is a list of ``(node_id, embedding)`` pairs. Node
+        ids are opaque strings owned by the caller — the provider
+        references them in ``Cluster.child_ids`` but does not
+        interpret them.
+
+        **Output ordering**: the returned list is in dependency order.
+        If cluster ``c_5`` appears in ``c_9``'s ``child_ids``, then
+        ``c_5`` appears BEFORE ``c_9`` in the list. The caller
+        walks the list once and resolves forward references as it
+        creates nodes in storage.
+
+        **Empty output is valid**: if ``nodes`` has < 2 entries, or
+        the provider's algorithm decides everything is noise, return
+        an empty list. The caller leaves the leaves as-is and the
+        render renders them directly without any centroid above them.
+        """
