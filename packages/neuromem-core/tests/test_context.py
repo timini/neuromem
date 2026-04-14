@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from neuromem.context import ContextHelper, _render_ascii_tree
+from neuromem.context import ContextHelper, _enforce_node_cap, _render_ascii_tree
 from neuromem.providers import EmbeddingProvider
 from neuromem.storage.sqlite import SQLiteAdapter
 from neuromem.system import NeuroMemory
@@ -676,6 +676,138 @@ class TestBuildPromptContextLazyNaming:
         # LLM call.
         helper.build_prompt_context("alpha query", top_k=1, depth=2)
         assert llm.batch_call_count == 1
+
+
+class TestEnforceNodeCap:
+    """_enforce_node_cap caps the rendered subgraph at N nodes (ADR-003
+    F5/D3). Invariants:
+
+    - Subgraphs at or under the cap are untouched.
+    - Seed nodes are NEVER dropped, even when top_k > cap.
+    - Non-seeds are dropped farthest-from-seed-first (BFS distance over
+      child_of edges).
+    - Edges and memories referring to dropped nodes are pruned
+      consistently.
+    - Unreachable nodes (disconnected components) are dropped first
+      after seeds.
+    """
+
+    @staticmethod
+    def _build_chain(n_nodes: int) -> dict:
+        """A linear chain: s0 -child_of-> n1 -child_of-> n2 -> ...
+        Nodes are named ``n0..n{n-1}``; ``n0`` is the seed root."""
+        nodes = [
+            {
+                "id": f"n{i}",
+                "label": f"node{i}",
+                "is_centroid": True,
+                "embedding": [float(i), 0.0],
+                "paragraph_summary": None,
+            }
+            for i in range(n_nodes)
+        ]
+        edges = [
+            {
+                "source_id": f"n{i}",
+                "target_id": f"n{i + 1}",
+                "weight": 1.0,
+                "relationship": "child_of",
+            }
+            for i in range(n_nodes - 1)
+        ]
+        return {"nodes": nodes, "edges": edges, "memories": []}
+
+    def test_noop_when_under_cap(self) -> None:
+        sub = self._build_chain(5)
+        _enforce_node_cap(sub, seed_ids=["n0"], cap=10)
+        assert len(sub["nodes"]) == 5
+
+    def test_caps_at_limit(self) -> None:
+        sub = self._build_chain(100)
+        _enforce_node_cap(sub, seed_ids=["n0"], cap=20)
+        assert len(sub["nodes"]) == 20
+        kept_ids = {n["id"] for n in sub["nodes"]}
+        # Closest to the seed survive.
+        for i in range(20):
+            assert f"n{i}" in kept_ids
+        # Farthest get dropped.
+        assert "n99" not in kept_ids
+
+    def test_seeds_never_dropped_even_when_top_k_exceeds_cap(self) -> None:
+        """Seed nodes are guaranteed to survive. If the caller passes
+        more seeds than the cap, effective_cap is clamped to the seed
+        count so every seed is kept."""
+        sub = self._build_chain(100)
+        # Fabricate 40 seeds — all original top-k nodes must survive.
+        seed_ids = [f"n{i}" for i in range(40)]
+        _enforce_node_cap(sub, seed_ids=seed_ids, cap=20)
+        kept_ids = {n["id"] for n in sub["nodes"]}
+        for sid in seed_ids:
+            assert sid in kept_ids, (
+                f"seed {sid} was dropped despite the contract promising seed preservation"
+            )
+
+    def test_prunes_orphan_edges(self) -> None:
+        sub = self._build_chain(100)
+        _enforce_node_cap(sub, seed_ids=["n0"], cap=10)
+        kept_ids = {n["id"] for n in sub["nodes"]}
+        for edge in sub["edges"]:
+            assert edge["source_id"] in kept_ids
+            assert edge["target_id"] in kept_ids
+
+    def test_prunes_orphan_memories(self) -> None:
+        """Memory kept iff its has_tag edge points to a kept node."""
+        sub = self._build_chain(100)
+        # Add a memory attached via has_tag to a far node (n95) — should
+        # be pruned — and one attached to the seed (n0) — should stay.
+        sub["edges"].extend(
+            [
+                {
+                    "source_id": "mem_far",
+                    "target_id": "n95",
+                    "weight": 1.0,
+                    "relationship": "has_tag",
+                },
+                {
+                    "source_id": "mem_near",
+                    "target_id": "n0",
+                    "weight": 1.0,
+                    "relationship": "has_tag",
+                },
+            ]
+        )
+        sub["memories"] = [
+            {"id": "mem_far", "summary": "far"},
+            {"id": "mem_near", "summary": "near"},
+        ]
+        _enforce_node_cap(sub, seed_ids=["n0"], cap=10)
+        mem_ids = {m["id"] for m in sub["memories"]}
+        assert "mem_near" in mem_ids
+        assert "mem_far" not in mem_ids
+
+    def test_unreachable_nodes_drop_first(self) -> None:
+        """A node with no path to any seed has distance=10_000 and is
+        the first to be dropped when the cap tightens."""
+        chain = self._build_chain(20)
+        # Add 5 orphan nodes with no edges.
+        for i in range(5):
+            chain["nodes"].append(
+                {
+                    "id": f"orphan_{i}",
+                    "label": f"o{i}",
+                    "is_centroid": True,
+                    "embedding": [0.0, 0.0],
+                    "paragraph_summary": None,
+                }
+            )
+        _enforce_node_cap(chain, seed_ids=["n0"], cap=20)
+        kept_ids = {n["id"] for n in chain["nodes"]}
+        # All 20 chain nodes survive (they are the closest 20).
+        for i in range(20):
+            assert f"n{i}" in kept_ids
+        # All 5 orphans get dropped.
+        for i in range(5):
+            assert f"orphan_{i}" not in kept_ids
 
 
 # Silence unused-import: np and EmbeddingProvider are used in type

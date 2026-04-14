@@ -446,18 +446,92 @@ class NeuroMemory:
             )
 
     def _do_resolve_junction_summaries(self, nodes: list[dict]) -> None:
-        """Inner implementation. May raise — the public wrapper catches."""
+        """Inner implementation. May raise — the public wrapper catches.
+
+        Resolves summaries floor-up: the centroids closest to leaves
+        are summarised first, persisted, then their parents, and so
+        on up the hierarchy. This way a deeper centroid's children
+        already have paragraph_summary populated by the time the
+        parent's snippets are gathered, rather than falling through
+        to one-word labels (ADR-003 D2 intent).
+        """
         needs_summary = [
             n for n in nodes if n.get("is_centroid") and not n.get("paragraph_summary")
         ]
         if not needs_summary:
             return
 
+        levels = self._group_by_level(needs_summary, nodes)
+        for level_ids in levels:
+            self._resolve_level(level_ids, nodes)
+
+    def _group_by_level(
+        self,
+        needs_summary: list[dict],
+        all_nodes: list[dict],
+    ) -> list[list[str]]:
+        """Partition centroids by their depth in the subgraph.
+
+        Level 0 = centroids whose children are all leaves or
+        already-summarised centroids. Level N = centroids whose
+        children include at least one level-(N-1) centroid.
+
+        Centroids still needing summaries at each level are
+        processed together in one batched LLM call. The next level
+        then reads the persisted summaries from the level below.
+
+        Returns a list of lists of node ids, in dependency order
+        (level 0 first).
+        """
+        # Cheap topo-sort: for each dirty centroid, count how many
+        # of its dirty children are still upstream. Iteratively
+        # strip layers off the bottom.
+        dirty_ids = {n["id"] for n in needs_summary}
+        # Build a dirty-only subtree: for each dirty centroid, which
+        # of its children are also dirty?
+        dirty_children: dict[str, set[str]] = {nid: set() for nid in dirty_ids}
+        for cid in dirty_ids:
+            sub = self.storage.get_subgraph([cid], depth=1)
+            for edge in sub.get("edges", []):
+                if (
+                    edge.get("relationship") == "child_of"
+                    and edge.get("source_id") == cid
+                    and edge.get("target_id") in dirty_ids
+                ):
+                    dirty_children[cid].add(edge["target_id"])
+
+        levels: list[list[str]] = []
+        remaining = set(dirty_ids)
+        # Hard iteration cap equal to the dirty set size — even a
+        # degenerate chain can't produce more levels than nodes.
+        for _ in range(len(dirty_ids) + 1):
+            if not remaining:
+                break
+            # A centroid is ready this level iff none of its dirty
+            # children are still remaining.
+            ready = [cid for cid in remaining if not (dirty_children[cid] & remaining)]
+            if not ready:
+                # Cycle (shouldn't happen for a well-formed child_of
+                # DAG, but guard against it): flush remaining as one
+                # level so we don't loop forever.
+                levels.append(sorted(remaining))
+                remaining.clear()
+                break
+            levels.append(sorted(ready))
+            remaining.difference_update(ready)
+        # all_nodes is passed for potential future use but we don't
+        # need it today — the snippet gather hits storage directly.
+        _ = all_nodes
+        return levels
+
+    def _resolve_level(self, level_ids: list[str], nodes: list[dict]) -> None:
+        """Gather snippets, batch-summarise, persist, and mutate the
+        in-memory nodes list for one level of the floor-up walk."""
         groups_by_id: dict[str, list[str]] = {}
-        for centroid in needs_summary:
-            snippets = self._gather_child_snippets(centroid["id"])
+        for cid in level_ids:
+            snippets = self._gather_child_snippets(cid)
             if snippets:
-                groups_by_id[centroid["id"]] = snippets
+                groups_by_id[cid] = snippets
         if not groups_by_id:
             return
 
@@ -745,6 +819,16 @@ class NeuroMemory:
                         relationship="has_tag",
                     )
 
+            # 7b. Eager trunk-summary pass (ADR-003 D2). Pre-populates
+            # paragraph_summary for the level-0 centroids (direct-above-
+            # leaf) and level-1 centroids (their parents). This pays
+            # the LLM cost at ingestion time so first-render latency
+            # doesn't amortise it across user-visible requests. Deeper
+            # centroids stay NULL and are resolved lazily at render
+            # time per ADR-003 D2. NEVER raises — if the pass fails the
+            # cycle continues, and lazy resolve covers the gap.
+            self._run_junction_summarisation_trunk()
+
             # 8. Apply decay + archive.
             now = int(time.time())
             self.storage.apply_decay_and_archive(
@@ -899,6 +983,99 @@ class NeuroMemory:
                 )
 
             id_map[cluster.id] = centroid_id
+
+    # ------------------------------------------------------------------
+    # _run_junction_summarisation_trunk — ADR-003 D2 eager trunk pass
+    # ------------------------------------------------------------------
+
+    def _run_junction_summarisation_trunk(self) -> None:
+        """Eagerly populate paragraph_summary for the bottom two levels
+        of the concept hierarchy (ADR-003 D2 trunk policy).
+
+        Level 0 = centroids that have at least one memory attached via
+        has_tag to any of their descendant leaves (i.e. the centroids
+        that actually cover the ingested memories).
+        Level 1 = direct parents of level-0 centroids.
+
+        Higher levels stay NULL and get lazy-resolved at render time.
+
+        Deliberately broad try/except: a failed summarisation must not
+        crash the dream cycle (the whole cycle rolls memories back to
+        inbox). On failure the lazy render path fills the gaps.
+        """
+        try:
+            self._do_run_junction_trunk()
+        except Exception:
+            logger.exception(
+                "_run_junction_summarisation_trunk: eager pass failed; "
+                "lazy render-time resolution will cover the gap."
+            )
+
+    def _do_run_junction_trunk(self) -> None:
+        """Inner implementation. May raise — the public wrapper catches."""
+        all_nodes = self.storage.get_all_nodes()
+        centroids = [n for n in all_nodes if n.get("is_centroid")]
+        if not centroids:
+            return
+
+        level0 = self._find_level0_centroids(centroids)
+        if not level0:
+            return
+
+        level1 = self._find_level1_parents(level0, centroids)
+        nodes_by_id = {c["id"]: c for c in centroids}
+        staged = [nodes_by_id[cid] for cid in (*level0, *level1) if cid in nodes_by_id]
+
+        # Level 0 first, persist, then level 1 so parents see their
+        # just-written children.
+        self._resolve_level(level0, staged)
+        if level1:
+            self._resolve_level(level1, staged)
+
+    def _find_level0_centroids(self, centroids: list[dict]) -> list[str]:
+        """Return centroid ids whose subtree contains a has_tag-linked
+        memory and that don't yet have a paragraph_summary."""
+        level0: list[str] = []
+        for centroid in centroids:
+            if centroid.get("paragraph_summary"):
+                continue
+            sub = self.storage.get_subgraph([centroid["id"]], depth=1)
+            if any(e.get("relationship") == "has_tag" for e in sub.get("edges", [])):
+                level0.append(centroid["id"])
+        return level0
+
+    def _find_level1_parents(self, level0: list[str], centroids: list[dict]) -> list[str]:
+        """Return unique level-1 parent centroid ids (parents of any
+        level-0 centroid that aren't themselves level-0 and aren't yet
+        summarised). Preserves first-seen order."""
+        level0_set = set(level0)
+        centroid_by_id = {c["id"]: c for c in centroids}
+        seen: set[str] = set()
+        out: list[str] = []
+        for cid in level0:
+            sub = self.storage.get_subgraph([cid], depth=1)
+            for edge in sub.get("edges", []):
+                parent_id = self._extract_parent_id(edge, cid)
+                if not parent_id or parent_id in level0_set or parent_id in seen:
+                    continue
+                parent = centroid_by_id.get(parent_id)
+                if parent and not parent.get("paragraph_summary"):
+                    seen.add(parent_id)
+                    out.append(parent_id)
+        return out
+
+    @staticmethod
+    def _extract_parent_id(edge: dict, child_id: str) -> str | None:
+        """Return the parent id of ``child_id`` via this child_of edge,
+        or None if the edge doesn't describe that relationship."""
+        if edge.get("relationship") != "child_of":
+            return None
+        if edge.get("target_id") != child_id:
+            return None
+        parent_id = edge.get("source_id")
+        if not parent_id or parent_id == child_id:
+            return None
+        return str(parent_id)
 
 
 def _sanitise_category_name(raw: str) -> str:

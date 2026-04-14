@@ -1954,6 +1954,222 @@ class TestResolveCentroidNames:
         assert centroid["label"] in {"alpha", "beta"}
 
 
+class TestResolveJunctionSummaries:
+    """resolve_junction_summaries is the render-time paragraph-summary
+    hook from ADR-003 D2. Behaviour invariants mirror ADR-002's
+    resolve_centroid_names:
+
+    1. Empty "needs summary" set → no LLM call, no storage write.
+    2. Happy path: ONE batched LLM call per level (floor-up ordering)
+       names every NULL-summary centroid; storage
+       update_junction_summaries persists; input nodes list is
+       mutated in place.
+    3. LLM failure (exception or length mismatch): falls back to the
+       concat-truncate default (LLMProvider.generate_junction_summary).
+       NEVER raises out.
+    4. Cache hit: a second call on the same nodes is a no-op because
+       every centroid now has a populated paragraph_summary.
+    5. Floor-up: in a multi-level hierarchy, level-0 summaries are
+       written BEFORE level-1 is gathered, so level-1's snippets see
+       real child summaries instead of falling back to labels.
+    """
+
+    def test_no_dirty_centroids_is_noop(self) -> None:
+        class CountingSummaryLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_call_count = 0
+
+            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return ["x"] * len(groups)
+
+        llm = CountingSummaryLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ControlledEmbedder({"a": [1.0, 0.0]}),
+        )
+        # All centroids already have a summary → no-op.
+        system.resolve_junction_summaries(
+            [
+                {
+                    "id": "n1",
+                    "label": "retail",
+                    "is_centroid": True,
+                    "embedding": np.array([1.0]),
+                    "paragraph_summary": "pre-populated",
+                }
+            ]
+        )
+        assert llm.batch_call_count == 0
+
+    def test_happy_path_writes_summary_and_mutates_nodes(self) -> None:
+        class FixedSummaryLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_calls: list[list[list[str]]] = []
+
+            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+                self.batch_calls.append([list(g) for g in groups])
+                return [f"summary-of-{i}" for i in range(len(groups))]
+
+        from neuromem.clustering import StubClusteringProvider  # noqa: PLC0415
+
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.999, 0.01, 0.0, 0.0],
+            }
+        )
+        llm = FixedSummaryLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            clusterer=StubClusteringProvider(),
+        )
+        system.enqueue("alpha beta")
+        # Disable eager trunk by using a custom clusterer that
+        # produces deterministic output, but reset each centroid's
+        # summary to NULL before testing lazy resolution.
+        system.force_dream()
+        # Wipe any eager-set summaries so the lazy path is exercised.
+        nodes_before = system.storage.get_all_nodes()
+        centroid_ids = [n["id"] for n in nodes_before if n["is_centroid"]]
+        system.storage.update_junction_summaries({cid: "" for cid in centroid_ids})
+        # Force-NULL via direct UPDATE — empty string is still cached.
+        for cid in centroid_ids:
+            system.storage._conn.execute(  # type: ignore[attr-defined]
+                "UPDATE nodes SET paragraph_summary = NULL WHERE id = ?",
+                (cid,),
+            )
+        system.storage._conn.commit()  # type: ignore[attr-defined]
+        nodes = system.storage.get_all_nodes()
+
+        llm.batch_calls.clear()
+        system.resolve_junction_summaries(nodes)
+
+        # At least one batched call fired.
+        assert len(llm.batch_calls) >= 1
+        # Every centroid now has a summary in the in-memory list.
+        centroids = [n for n in nodes if n["is_centroid"]]
+        for c in centroids:
+            assert c["paragraph_summary"]
+        # Storage was persisted.
+        from_storage = [n for n in system.storage.get_all_nodes() if n["is_centroid"]]
+        for c in from_storage:
+            assert c["paragraph_summary"]
+
+    def test_falls_back_to_concat_on_llm_exception(self) -> None:
+        class FailingSummaryLLM(MockLLMProvider):
+            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+                raise RuntimeError("simulated outage")
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0, 0.0, 0.0], "beta": [0.999, 0.01, 0.0, 0.0]})
+        llm = FailingSummaryLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+        nodes = system.storage.get_all_nodes()
+        # Clear any eager summaries so the failure path is exercised.
+        centroid_ids = [n["id"] for n in nodes if n["is_centroid"]]
+        for cid in centroid_ids:
+            system.storage._conn.execute(  # type: ignore[attr-defined]
+                "UPDATE nodes SET paragraph_summary = NULL WHERE id = ?",
+                (cid,),
+            )
+        system.storage._conn.commit()  # type: ignore[attr-defined]
+        nodes = system.storage.get_all_nodes()
+
+        # NEVER raises; concat-truncate fallback populates summaries.
+        system.resolve_junction_summaries(nodes)
+        centroids = [n for n in nodes if n["is_centroid"]]
+        assert all(c["paragraph_summary"] for c in centroids)
+
+    def test_second_call_is_cache_hit(self) -> None:
+        class CountingSummaryLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_call_count = 0
+
+            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+                self.batch_call_count += 1
+                return [f"sum{i}" for i in range(len(groups))]
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
+        llm = CountingSummaryLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+        )
+        system.enqueue("alpha beta")
+        system.force_dream()
+
+        # One batched call (from the eager trunk OR from this lazy call).
+        system.resolve_junction_summaries(system.storage.get_all_nodes())
+        first_count = llm.batch_call_count
+        # Second call on already-summarised nodes: zero new calls.
+        system.resolve_junction_summaries(system.storage.get_all_nodes())
+        assert llm.batch_call_count == first_count
+
+
+class TestEagerTrunkSummarisation:
+    """The dream cycle's _run_junction_summarisation_trunk step
+    pre-populates paragraph_summary for level-0 centroids (those
+    whose subtree contains memories) and their immediate parents.
+    Higher levels stay NULL and are resolved lazily at render time.
+    """
+
+    def test_trunk_pass_populates_summaries_after_dream(self) -> None:
+        class FixedSummaryLLM(MockLLMProvider):
+            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+                return [f"eager-{i}" for i in range(len(groups))]
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01], "gamma": [0.0, 1.0]})
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=FixedSummaryLLM(),
+            embedder=ctrl,
+        )
+        system.enqueue("alpha beta gamma")
+        system.force_dream()
+
+        nodes = system.storage.get_all_nodes()
+        centroids = [n for n in nodes if n["is_centroid"]]
+        # At least one centroid should have been summarised by the
+        # eager trunk pass (the level-0 ones above the memory's tags).
+        assert any(c.get("paragraph_summary") for c in centroids), (
+            "expected at least one centroid to have a paragraph_summary "
+            "populated by the eager trunk pass"
+        )
+
+    def test_trunk_pass_failure_does_not_crash_dream(self) -> None:
+        class FailingSummaryLLM(MockLLMProvider):
+            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
+                raise RuntimeError("trunk boom")
+
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=FailingSummaryLLM(),
+            embedder=ctrl,
+        )
+        system.enqueue("alpha beta")
+        # Dream must NOT raise even though the trunk pass does.
+        system.force_dream()
+        # Memories got consolidated anyway.
+        inbox = system.storage.count_memories_by_status("inbox")
+        consolidated = system.storage.count_memories_by_status("consolidated")
+        assert inbox == 0
+        assert consolidated == 1
+
+
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
     """Referenced for type-checker compatibility."""
     # EmbeddingProvider is referenced by type annotations in test fixtures.
