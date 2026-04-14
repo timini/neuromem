@@ -1,0 +1,77 @@
+# Package manifest for neuromem-anthropic — Anthropic (Claude) LLM
+# provider for the neuromem cognitive memory library.
+#
+# LLM ONLY — Anthropic has no native embedding API. Pair with
+# OpenAIEmbeddingProvider (neuromem-openai) or VoyageEmbeddingProvider
+# (separate package) for the EmbeddingProvider half.
+#
+# Runtime deps:
+#   - neuromem-core: ABC (from workspace).
+#   - anthropic: official Anthropic Python SDK.
+
+[project]
+name = "neuromem-anthropic"
+version = "0.1.0"
+description = "Anthropic (Claude) LLM provider for the neuromem cognitive memory library."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Tim Richardson" },
+]
+keywords = [
+    "memory",
+    "agents",
+    "llm",
+    "anthropic",
+    "claude",
+    "neuromem",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neuromem-core",
+    "anthropic>=0.40",
+]
+
+[project.urls]
+Homepage = "https://github.com/timini/neuromem"
+Repository = "https://github.com/timini/neuromem"
+Issues = "https://github.com/timini/neuromem/issues"
+Documentation = "https://github.com/timini/neuromem/blob/main/packages/neuromem-anthropic/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv.sources]
+neuromem-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuromem_anthropic"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/neuromem_anthropic/prompts" = "neuromem_anthropic/prompts"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "README.md",
+    "pyproject.toml",
+]
