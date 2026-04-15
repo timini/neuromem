@@ -20,8 +20,24 @@ internal convenience, not a library primitive.
 
 from __future__ import annotations
 
+import time as _time
+
 from google import genai
 from google.genai import types as genai_types
+
+# Reuse the same retryable-exception set as the memory-layer provider
+# (neuromem_gemini.llm._RETRYABLE_EXCEPTIONS) so the answer/judge path
+# recovers from the same transient failures (5xx, httpx TimeoutException,
+# RemoteProtocolError, ConnectError). Prior to this the answer client
+# had no retries at all, and a single httpx.ReadTimeout killed an
+# overnight run at instance 17/200.
+from neuromem_gemini.llm import _RETRYABLE_EXCEPTIONS  # noqa: PLC2701
+
+# Exponential backoff schedule for retries: 2s, 4s, 8s, 16s, 32s (sum 62s).
+# Matches the memory-layer provider so ingestion + answer behave
+# consistently under API flakiness.
+_RETRY_MAX_ATTEMPTS = 5
+_RETRY_BASE_DELAY_S = 2.0
 
 
 class GeminiAnsweringClient:
@@ -80,10 +96,20 @@ class GeminiAnsweringClient:
             if system_instruction
             else None
         )
-        self._bucket.acquire()
-        resp = self._client.models.generate_content(
-            model=self._model,
-            contents=user_message,
-            config=config,
-        )
-        return (resp.text or "").strip()
+        last_exc: Exception | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            self._bucket.acquire()
+            try:
+                resp = self._client.models.generate_content(
+                    model=self._model,
+                    contents=user_message,
+                    config=config,
+                )
+                return (resp.text or "").strip()
+            except _RETRYABLE_EXCEPTIONS as exc:
+                last_exc = exc
+                if attempt == _RETRY_MAX_ATTEMPTS - 1:
+                    break
+                _time.sleep(_RETRY_BASE_DELAY_S * (2**attempt))
+        assert last_exc is not None
+        raise last_exc

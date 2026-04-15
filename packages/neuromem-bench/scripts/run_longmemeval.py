@@ -334,6 +334,32 @@ def main() -> None:
             "(e.g. Gemma for memory, Gemini for answering)."
         ),
     )
+    parser.add_argument(
+        "--trace",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Capture per-instance diagnostic trace into metadata.trace "
+            "on every JSONL row (rendered context tree + per-phase "
+            "timings for one-shot agents; tool-call transcript for ADK "
+            "agents). On by default so every bench run is "
+            "self-diagnosable; pass --no-trace to suppress."
+        ),
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Number of parallel worker threads (default: 1, serial). "
+            "Each worker owns its own agent instance. N=4 on a full "
+            "LongMemEval-s run takes ~1.5h vs ~6h serial. The API "
+            "rate-limit bucket is shared across workers so quota "
+            "stays honest. Preview-tier models may throttle hard; "
+            "retries (5x exp backoff) + instance-level error rows "
+            "keep the run alive through it."
+        ),
+    )
     args = parser.parse_args()
 
     # Default changed to neuromem-adk (ADR-003): the one-shot `neuromem`
@@ -367,16 +393,22 @@ def main() -> None:
 
     for agent_name in agents:
         dataset = LongMemEval(split=args.split)
-        agent = _build_agent(
-            agent_name,
-            api_key=api_key,
-            model=args.model,
-            llm_provider=args.llm_provider,
-            embedder_provider=args.embedder_provider,
-            llm_api_key=llm_api_key,
-            embedder_api_key=embedder_api_key,
-            memory_model=args.memory_model,
-        )
+
+        # Factory pattern: _build_agent is called fresh per worker
+        # thread when workers>1, or once (at the top of the serial
+        # loop) when workers==1. Either way the agent is fully
+        # constructed before the bench enters any hot path.
+        def _make_agent(_name: str = agent_name):
+            return _build_agent(
+                _name,
+                api_key=api_key,
+                model=args.model,
+                llm_provider=args.llm_provider,
+                embedder_provider=args.embedder_provider,
+                llm_api_key=llm_api_key,
+                embedder_api_key=embedder_api_key,
+                memory_model=args.memory_model,
+            )
 
         if args.output is not None:
             output_path = args.output
@@ -392,20 +424,33 @@ def main() -> None:
             f"\n{'=' * 72}\n"
             f"Running LongMemEval split={args.split} "
             f"agent={agent_name} metric={metric_name} "
-            f"limit={limit} model={args.model}\n"
+            f"limit={limit} model={args.model} workers={args.workers}\n"
             f"Output: {output_path}\n"
             f"{'=' * 72}",
             flush=True,
         )
 
+        # Pass agent_name explicitly so run_benchmark doesn't probe
+        # the factory to discover it. For NeuromemAdkAgent the probe
+        # would spin up an ADK Runner just to read type(agent).__name__.
+        agent_class_name = {
+            "null": "NullAgent",
+            "naive-rag": "NaiveRagAgent",
+            "neuromem": "NeuromemAgent",
+            "neuromem-adk": "NeuromemAdkAgent",
+        }.get(agent_name, agent_name)
+
         run_benchmark(
             dataset=dataset,
-            agent=agent,
+            agent_factory=_make_agent,
+            agent_name=agent_class_name,
             metric=metric_fn,
             metric_name=metric_name,
             limit=limit,
             output_jsonl=output_path,
             verbose=True,
+            trace=args.trace,
+            workers=args.workers,
         )
 
 
