@@ -67,6 +67,11 @@ _TRACE_CONTEXT_CHAR_CAP = 20_000
 # eyeball whether the tool returned anything coherent; full result
 # would dominate the file.
 _TRACE_TOOL_RESULT_CHAR_CAP = 400
+# Max number of ADK tool calls kept in the per-instance trace. Keeps
+# first and last halves of the calls if the limit is exceeded, so the
+# initial planning and final answer phase are both preserved. Stops a
+# runaway tool-heavy agent from blowing up the JSONL to multi-GB.
+_TRACE_TOOL_TRACE_MAX_ENTRIES = 50
 
 
 def _cap_text(text: str, limit: int) -> str:
@@ -85,6 +90,12 @@ def _walk_adk_tool_events(events: list[Any]) -> tuple[dict[str, int], list[dict[
     pair each response with the most recent open call of the same
     tool name. Response payloads for neuromem's tools are dicts with
     a ``result`` string, but we fall back to ``str(...)`` gracefully.
+
+    The returned tool_trace is capped at ``_TRACE_TOOL_TRACE_MAX_ENTRIES``
+    (keeping first + last halves, with a marker entry in between)
+    so a runaway tool-heavy agent can't blow up the JSONL.
+    ``tool_calls_tally`` remains the complete count — the cap only
+    affects the detailed per-call trace.
     """
     tool_calls: dict[str, int] = {}
     tool_trace: list[dict[str, Any]] = []
@@ -108,7 +119,25 @@ def _walk_adk_tool_events(events: list[Any]) -> tuple[dict[str, int], list[dict[
             fn_resp = getattr(part, "function_response", None)
             if fn_resp is not None and tool_trace:
                 _fill_tool_response(fn_resp, tool_trace)
-    return tool_calls, tool_trace
+    return tool_calls, _cap_tool_trace(tool_trace)
+
+
+def _cap_tool_trace(tool_trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cap a tool_trace list to ``_TRACE_TOOL_TRACE_MAX_ENTRIES`` by
+    keeping the first and last halves and inserting a marker entry.
+    Preserves evidence of initial planning + final answering phases,
+    which is what offline failure analysis needs."""
+    if len(tool_trace) <= _TRACE_TOOL_TRACE_MAX_ENTRIES:
+        return tool_trace
+    keep = _TRACE_TOOL_TRACE_MAX_ENTRIES // 2
+    dropped = len(tool_trace) - 2 * keep
+    marker = {
+        "tool": "__truncated__",
+        "args": {"dropped_entries": dropped},
+        "result_chars": 0,
+        "result_snippet": f"[truncated: {dropped} mid-run tool calls omitted]",
+    }
+    return tool_trace[:keep] + [marker] + tool_trace[-keep:]
 
 
 def _fill_tool_response(fn_resp: Any, tool_trace: list[dict[str, Any]]) -> None:

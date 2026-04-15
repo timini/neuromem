@@ -170,6 +170,34 @@ class TestTraceCapture:
             assert "trace" not in row["metadata"]
 
 
+class TestToolTraceCap:
+    def test_cap_keeps_head_and_tail_with_marker(self) -> None:
+        """Tool trace cap: over the limit, we keep first+last halves
+        and drop the middle behind a marker row."""
+        from neuromem_bench.agent import _cap_tool_trace  # noqa: PLC0415
+
+        entries = [
+            {"tool": f"t{i}", "args": {}, "result_chars": 0, "result_snippet": ""}
+            for i in range(120)
+        ]
+        capped = _cap_tool_trace(entries)
+        # 50 entries + 1 marker = 51 total.
+        assert len(capped) == 51
+        assert [e["tool"] for e in capped[:25]] == [f"t{i}" for i in range(25)]
+        assert capped[25]["tool"] == "__truncated__"
+        assert capped[25]["args"] == {"dropped_entries": 70}
+        assert [e["tool"] for e in capped[26:]] == [f"t{i}" for i in range(95, 120)]
+
+    def test_cap_is_noop_below_limit(self) -> None:
+        from neuromem_bench.agent import _cap_tool_trace  # noqa: PLC0415
+
+        entries = [
+            {"tool": f"t{i}", "args": {}, "result_chars": 0, "result_snippet": ""}
+            for i in range(10)
+        ]
+        assert _cap_tool_trace(entries) is entries
+
+
 class _FlakyAgent:
     """Agent that raises on every second answer() call. Exists to
     prove instance-level resilience: the runner must emit an error
@@ -227,7 +255,7 @@ class TestResilience:
     def test_flaky_agent_produces_error_rows(self, tmp_path: Path) -> None:
         """One bad instance must not kill the whole run."""
         out = tmp_path / "results.jsonl"
-        run_benchmark(
+        summary = run_benchmark(
             dataset=_CountingFactoryDataset(n=6),
             agent=_FlakyAgent(),
             metric=lambda p, g, q: 1.0 if p == "ok" else 0.0,  # noqa: ARG005
@@ -254,6 +282,12 @@ class TestResilience:
         for r in ok_rows:
             assert r["prediction"] == "ok"
             assert r["score"] == 1.0
+        # Summary excludes error rows from the mean (otherwise 3/6 =
+        # 0.5 would drag the signal) and surfaces error_count so the
+        # caller can see how much of the run actually scored.
+        assert summary.instance_count == 6
+        assert summary.error_count == 3
+        assert summary.mean_score == 1.0  # 3 ok rows, all score 1.0
 
 
 class _ParallelAgent:

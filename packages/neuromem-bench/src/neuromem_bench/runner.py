@@ -93,13 +93,22 @@ class InstanceResult:
 
 @dataclass
 class RunSummary:
-    """Aggregate statistics across a full run."""
+    """Aggregate statistics across a full run.
+
+    ``error_count`` is surfaced separately (and excluded from the
+    ``mean_score`` denominator) so a run with N transient-error rows
+    doesn't silently bias the quality signal downward. A caller
+    comparing two runs should check both fields — a 0.82 mean over
+    100 scored instances is very different from a 0.82 mean over
+    70 scored + 30 errored.
+    """
 
     dataset_name: str
     dataset_split: str
     agent_name: str
     metric_name: str
     instance_count: int
+    error_count: int
     mean_score: float
     wall_time_s: float
     per_question_type: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -111,6 +120,7 @@ def run_benchmark(
     dataset: Dataset,
     agent: BaseAgent | None = None,
     agent_factory: AgentFactory | None = None,
+    agent_name: str | None = None,
     metric: MetricFn = lambda p, g, q: contains_match(p, g),  # noqa: ARG005
     metric_name: str = "contains_match",
     limit: int | None = None,
@@ -164,7 +174,14 @@ def run_benchmark(
     _validate_run_config(agent=agent, agent_factory=agent_factory, workers=workers)
 
     results: list[InstanceResult] = []
-    agent_name = type(agent).__name__ if agent is not None else _factory_agent_name(agent_factory)
+    # Resolve agent_name in this order: explicit kwarg > agent-instance
+    # type name > factory probe (last resort; builds a throwaway agent,
+    # which for ADK is quite expensive).
+    if agent_name is None:
+        if agent is not None:
+            agent_name = type(agent).__name__
+        else:
+            agent_name = _factory_agent_name(agent_factory)  # type: ignore[arg-type]
 
     jsonl_handle = None
     if output_jsonl is not None:
@@ -556,15 +573,23 @@ def _summarise(
     metric_name: str,
     total_time: float,
 ) -> RunSummary:
-    """Build a :class:`RunSummary` from per-instance results."""
+    """Build a :class:`RunSummary` from per-instance results.
+
+    Error rows (where ``metadata["error"]`` is set — see
+    ``_safe_run_one_instance``) are excluded from the mean-score
+    denominator. The intent is to measure model quality on instances
+    that actually ran; transient infra flakiness shouldn't silently
+    drag the score down. The count of error rows is surfaced as
+    ``error_count`` so a caller can still see how much of the run
+    was affected.
+    """
     n = len(results)
-    if n == 0:
-        mean = 0.0
-    else:
-        mean = sum(r.score for r in results) / n
+    scored = [r for r in results if "error" not in (r.metadata or {})]
+    error_count = n - len(scored)
+    mean = (sum(r.score for r in scored) / len(scored)) if scored else 0.0
 
     per_type: dict[str, dict[str, float]] = {}
-    for r in results:
+    for r in scored:
         key = r.question_type or "unknown"
         bucket = per_type.setdefault(key, {"count": 0, "sum": 0.0})
         bucket["count"] += 1
@@ -581,6 +606,7 @@ def _summarise(
         agent_name=agent_name,
         metric_name=metric_name,
         instance_count=n,
+        error_count=error_count,
         mean_score=mean,
         wall_time_s=total_time,
         per_question_type=per_type_final,
@@ -589,13 +615,15 @@ def _summarise(
 
 def _write_summary_markdown(summary: RunSummary, path: Path) -> None:
     """Write a human-readable summary of a run as markdown."""
+    scored = summary.instance_count - summary.error_count
     lines = [
         f"# Benchmark run: {summary.dataset_name} / {summary.dataset_split}",
         "",
         f"- **Agent**: `{summary.agent_name}`",
         f"- **Metric**: `{summary.metric_name}`",
-        f"- **Instances**: {summary.instance_count}",
-        f"- **Mean score**: **{summary.mean_score:.3f}**",
+        f"- **Instances**: {summary.instance_count} "
+        f"({scored} scored, {summary.error_count} errored)",
+        f"- **Mean score**: **{summary.mean_score:.3f}** (over {scored} scored instances)",
         f"- **Wall-clock time**: {summary.wall_time_s:.1f}s",
         "",
     ]

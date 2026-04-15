@@ -430,9 +430,20 @@ def main() -> None:
             flush=True,
         )
 
+        # Pass agent_name explicitly so run_benchmark doesn't probe
+        # the factory to discover it. For NeuromemAdkAgent the probe
+        # would spin up an ADK Runner just to read type(agent).__name__.
+        agent_class_name = {
+            "null": "NullAgent",
+            "naive-rag": "NaiveRagAgent",
+            "neuromem": "NeuromemAgent",
+            "neuromem-adk": "NeuromemAdkAgent",
+        }.get(agent_name, agent_name)
+
         run_benchmark(
             dataset=dataset,
             agent_factory=_make_agent,
+            agent_name=agent_class_name,
             metric=metric_fn,
             metric_name=metric_name,
             limit=limit,
