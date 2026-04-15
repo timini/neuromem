@@ -46,7 +46,8 @@ under the hood. For unit-testable agents, use mock providers.
 from __future__ import annotations
 
 import logging
-from typing import Protocol
+import time
+from typing import Any, Protocol
 
 import numpy as np
 from neuromem import NeuroMemory, SQLiteAdapter
@@ -55,6 +56,99 @@ from neuromem_gemini import GeminiEmbeddingProvider
 from neuromem_bench._client import GeminiAnsweringClient
 
 logger = logging.getLogger("neuromem_bench.agent")
+
+# Cap the rendered context tree at 20 KB per instance when writing to
+# trace output. Deep graphs + top_k=20 can produce 50K+ char strings
+# that bloat the JSONL without adding diagnostic value — 20K keeps
+# enough structure to grep for gold-answer tokens during failure
+# analysis.
+_TRACE_CONTEXT_CHAR_CAP = 20_000
+# Snippet of each tool call's result kept in the ADK trace. Enough to
+# eyeball whether the tool returned anything coherent; full result
+# would dominate the file.
+_TRACE_TOOL_RESULT_CHAR_CAP = 400
+
+
+def _cap_text(text: str, limit: int) -> str:
+    """Truncate ``text`` to ``limit`` chars with a marker suffix."""
+    if text is None:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"...[truncated: {len(text) - limit} chars]"
+
+
+def _walk_adk_tool_events(events: list[Any]) -> tuple[dict[str, int], list[dict[str, Any]]]:
+    """Walk ADK events, returning (tool_calls_tally, tool_trace).
+
+    ADK emits call events and response events in strict order; we
+    pair each response with the most recent open call of the same
+    tool name. Response payloads for neuromem's tools are dicts with
+    a ``result`` string, but we fall back to ``str(...)`` gracefully.
+    """
+    tool_calls: dict[str, int] = {}
+    tool_trace: list[dict[str, Any]] = []
+    for event in events:
+        content = getattr(event, "content", None)
+        parts = getattr(content, "parts", None) or []
+        for part in parts:
+            fn_call = getattr(part, "function_call", None)
+            if fn_call is not None:
+                name = getattr(fn_call, "name", "") or "<unnamed>"
+                tool_calls[name] = tool_calls.get(name, 0) + 1
+                args = getattr(fn_call, "args", None) or {}
+                tool_trace.append(
+                    {
+                        "tool": name,
+                        "args": dict(args) if isinstance(args, dict) else str(args),
+                        "result_chars": 0,
+                        "result_snippet": "",
+                    }
+                )
+            fn_resp = getattr(part, "function_response", None)
+            if fn_resp is not None and tool_trace:
+                _fill_tool_response(fn_resp, tool_trace)
+    return tool_calls, tool_trace
+
+
+def _fill_tool_response(fn_resp: Any, tool_trace: list[dict[str, Any]]) -> None:
+    """Fill the most recent open trace entry matching fn_resp's name."""
+    resp_name = getattr(fn_resp, "name", "")
+    resp_payload = getattr(fn_resp, "response", None)
+    if isinstance(resp_payload, dict):
+        result_str = str(resp_payload.get("result", resp_payload))
+    else:
+        result_str = str(resp_payload or "")
+    for entry in reversed(tool_trace):
+        if entry["tool"] == resp_name and entry["result_chars"] == 0:
+            entry["result_chars"] = len(result_str)
+            entry["result_snippet"] = _cap_text(result_str, _TRACE_TOOL_RESULT_CHAR_CAP)
+            return
+
+
+def _extract_adk_final_text(events: list[Any], agent_name: str) -> tuple[str, int]:
+    """Return (last_text, count_of_text_events) authored by agent_name.
+
+    Only events authored by our agent carry the LLM's own text output;
+    tool-result events can also have text-bearing parts, which would
+    otherwise pollute the answer (e.g. a JSON blob from retrieve_memories
+    silently becoming the "answer").
+    """
+    final_text = ""
+    count = 0
+    for event in events:
+        if getattr(event, "author", None) != agent_name:
+            continue
+        content = getattr(event, "content", None)
+        if content is None:
+            continue
+        parts = getattr(content, "parts", None) or []
+        for part in parts:
+            text = getattr(part, "text", None)
+            if text:
+                final_text = text
+                count += 1
+    return final_text, count
 
 
 class BaseAgent(Protocol):
@@ -387,7 +481,9 @@ class NeuromemAgent(BaseAgent):
         # we query it. This is a single expensive call — roughly
         # proportional to the number of enqueued memories — that
         # compensates for us having never hit the dream_threshold.
+        t0 = time.perf_counter()
         self._memory.force_dream(block=True)
+        force_dream_wall_s = time.perf_counter() - t0
 
         # Build the ContextHelper tree for the question. This is
         # the same machinery enable_memory's before_model_callback
@@ -400,7 +496,10 @@ class NeuromemAgent(BaseAgent):
         # in cosine ranking, the relevant memory becomes invisible to
         # the answer LLM. Bumping to 20 widens the seed set so the
         # depth-2 subgraph walk reaches the right memory more reliably.
-        context_tree = helper.build_prompt_context(question, top_k=20)
+        top_k = 20
+        t1 = time.perf_counter()
+        context_tree = helper.build_prompt_context(question, top_k=top_k)
+        build_context_wall_s = time.perf_counter() - t1
 
         system_instruction = (
             "You are a helpful assistant. The following is a tree of "
@@ -410,10 +509,23 @@ class NeuromemAgent(BaseAgent):
             "Relevant memories:\n"
             f"{context_tree or '(no relevant memories found)'}"
         )
-        return self._client.generate(
+        t2 = time.perf_counter()
+        answer_text = self._client.generate(
             system_instruction=system_instruction,
             user_message=question,
         )
+        answer_wall_s = time.perf_counter() - t2
+
+        context_str = context_tree or ""
+        self.last_trace: dict[str, Any] = {
+            "context_tree": _cap_text(context_str, _TRACE_CONTEXT_CHAR_CAP),
+            "context_tree_chars": len(context_str),
+            "top_k": top_k,
+            "force_dream_wall_s": force_dream_wall_s,
+            "build_context_wall_s": build_context_wall_s,
+            "answer_wall_s": answer_wall_s,
+        }
+        return answer_text
 
     def reset(self) -> None:
         # Drop the old memory and build a fresh one. The GC
@@ -627,8 +739,11 @@ class NeuromemAdkAgent(BaseAgent):
         # before_model_callback fires. Without this, the context tree
         # injection has nothing to render (inbox memories aren't
         # searchable — only consolidated ones are).
+        t0 = time.perf_counter()
         self._memory.force_dream(block=True)
+        force_dream_wall_s = time.perf_counter() - t0
 
+        t1 = time.perf_counter()
         events = asyncio.run(
             self._runner.run_debug(
                 question,
@@ -637,23 +752,13 @@ class NeuromemAdkAgent(BaseAgent):
                 quiet=True,
             )
         )
+        run_wall_s = time.perf_counter() - t1
 
-        # Tally tool calls so we can see whether the ADK agent is
-        # actually exercising the ADR-003 ontology tools or just
-        # answering from the injected context tree. Persisted on
-        # ``self.last_tool_calls`` so the benchmark runner can pull
-        # them into the per-instance JSONL metadata, and also emitted
-        # at INFO on the ``neuromem_bench.agent`` logger for live
-        # observability during long runs.
-        tool_calls: dict[str, int] = {}
-        for event in events:
-            content = getattr(event, "content", None)
-            parts = getattr(content, "parts", None) or []
-            for part in parts:
-                fn_call = getattr(part, "function_call", None)
-                if fn_call is not None:
-                    name = getattr(fn_call, "name", "") or "<unnamed>"
-                    tool_calls[name] = tool_calls.get(name, 0) + 1
+        # Walk events once to collect BOTH the per-tool call tally
+        # (historic `last_tool_calls` shape, kept for backward compat)
+        # AND the per-call trace {tool, args, result_chars, snippet}
+        # for post-run failure analysis.
+        tool_calls, tool_trace = _walk_adk_tool_events(events)
         self.last_tool_calls: dict[str, int] = tool_calls
         if tool_calls:
             logger.info(
@@ -663,29 +768,15 @@ class NeuromemAdkAgent(BaseAgent):
         else:
             logger.info("adk tool calls: none")
 
-        # CRITICAL: filter by author. ADK emits events for tool calls
-        # AND tool RESULTS, both of which can have text-bearing
-        # ``content.parts``. If we naively grab the last text part
-        # across all events, a tool-result JSON blob (e.g. from
-        # ``retrieve_memories``) becomes the "answer" — wrong, and a
-        # silent failure that scores 0 on llm_judge.
-        #
-        # Only events authored by our agent represent the LLM's own
-        # text output. The agent's name is set in _build, mirroring
-        # the same author-filter pattern neuromem_adk's
-        # after_agent_turn_capturer uses.
-        final_text = ""
-        for event in events:
-            if getattr(event, "author", None) != self._agent_name:
-                continue
-            content = getattr(event, "content", None)
-            if content is None:
-                continue
-            parts = getattr(content, "parts", None) or []
-            for part in parts:
-                text = getattr(part, "text", None)
-                if text:
-                    final_text = text
+        final_text, final_answer_events = _extract_adk_final_text(events, self._agent_name)
+
+        self.last_trace: dict[str, Any] = {
+            "tool_calls": dict(tool_calls),
+            "tool_trace": tool_trace,
+            "final_answer_events": final_answer_events,
+            "force_dream_wall_s": force_dream_wall_s,
+            "run_wall_s": run_wall_s,
+        }
         return final_text.strip()
 
     def reset(self) -> None:
