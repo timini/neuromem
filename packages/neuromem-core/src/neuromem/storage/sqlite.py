@@ -82,11 +82,12 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
-    id            TEXT PRIMARY KEY,
-    label         TEXT NOT NULL,
-    embedding     BLOB NOT NULL,
-    embedding_dim INTEGER NOT NULL,
-    is_centroid   INTEGER NOT NULL DEFAULT 0
+    id                TEXT PRIMARY KEY,
+    label             TEXT NOT NULL,
+    embedding         BLOB NOT NULL,
+    embedding_dim     INTEGER NOT NULL,
+    is_centroid       INTEGER NOT NULL DEFAULT 0,
+    paragraph_summary TEXT
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -115,6 +116,11 @@ CREATE INDEX IF NOT EXISTS idx_edges_target    ON edges(target_id);
 _ADDITIVE_MIGRATIONS: list[tuple[str, str]] = [
     # (column, full ADD COLUMN statement)
     ("named_entities", "ALTER TABLE memories ADD COLUMN named_entities TEXT NOT NULL DEFAULT '[]'"),
+    # ADR-003: per-centroid paragraph summary (2-4 sentences, LLM-generated,
+    # cached). NULL means "not yet summarised" — resolve_junction_summaries
+    # populates lazily on first render, the dream cycle populates eagerly
+    # for the trunk (direct-above-leaf centroids + their parents).
+    ("paragraph_summary", "ALTER TABLE nodes ADD COLUMN paragraph_summary TEXT"),
 ]
 
 
@@ -379,7 +385,13 @@ class SQLiteAdapter(StorageAdapter):
                         label = excluded.label,
                         embedding = excluded.embedding,
                         embedding_dim = excluded.embedding_dim,
-                        is_centroid = excluded.is_centroid
+                        is_centroid = excluded.is_centroid,
+                        -- ADR-003 D2: a re-upsert signals the centroid's
+                        -- membership or embedding changed, so the cached
+                        -- paragraph_summary no longer reflects the subtree.
+                        -- Clear it so the next render (or dream-cycle
+                        -- trunk pass) regenerates a fresh summary.
+                        paragraph_summary = NULL
                     """,
                     (node_id, label, blob, int(arr.size), int(is_centroid)),
                 )
@@ -406,11 +418,33 @@ class SQLiteAdapter(StorageAdapter):
         except sqlite3.Error as exc:
             raise StorageError(f"update_node_labels failed: {exc}") from exc
 
+    def update_junction_summaries(self, updates: dict[str, str]) -> None:
+        """Batch-write per-centroid paragraph summaries (ADR-003).
+
+        Used both eagerly by the dream cycle's trunk-summarisation step
+        and lazily at render time by ``resolve_junction_summaries``.
+        Mirrors ``update_node_labels``: empty dict no-op, missing IDs
+        silently skipped, single transaction. Overwrites any prior
+        summary for the same node (regeneration case).
+        """
+        self._check_open()
+        if not updates:
+            return
+        try:
+            with self._conn:
+                for node_id, summary in updates.items():
+                    self._conn.execute(
+                        "UPDATE nodes SET paragraph_summary = ? WHERE id = ?",
+                        (summary, node_id),
+                    )
+        except sqlite3.Error as exc:
+            raise StorageError(f"update_junction_summaries failed: {exc}") from exc
+
     def get_all_nodes(self) -> list[dict[str, Any]]:
         self._check_open()
         try:
             rows = self._conn.execute(
-                "SELECT id, label, embedding, embedding_dim, is_centroid FROM nodes ORDER BY id ASC"
+                "SELECT id, label, embedding, embedding_dim, is_centroid, paragraph_summary FROM nodes ORDER BY id ASC"
             ).fetchall()
         except sqlite3.Error as exc:
             raise StorageError(f"get_all_nodes failed: {exc}") from exc
@@ -564,7 +598,7 @@ class SQLiteAdapter(StorageAdapter):
             placeholders = ",".join("?" * len(reached_node_ids))
             node_rows = self._conn.execute(
                 f"""
-                SELECT id, label, embedding, embedding_dim, is_centroid
+                SELECT id, label, embedding, embedding_dim, is_centroid, paragraph_summary
                 FROM nodes WHERE id IN ({placeholders})
                 """,
                 tuple(reached_node_ids),
@@ -845,11 +879,21 @@ def _row_to_node_dict(row: sqlite3.Row) -> dict[str, Any]:
             f"{expected_dim} × 4 = {expected_dim * 4} bytes"
         )
     embedding = np.frombuffer(blob, dtype=np.float32).copy()  # .copy() makes it writable
+    # paragraph_summary was added in ADR-003. sqlite3.Row.keys() includes
+    # it on fresh schemas; on pre-migration rows it may be absent. Treat
+    # missing-column as NULL (same pattern as named_entities).
+    summary: str | None
+    try:
+        raw = row["paragraph_summary"]
+    except (KeyError, IndexError):
+        raw = None
+    summary = str(raw) if raw is not None else None
     return {
         "id": row["id"],
         "label": row["label"],
         "embedding": embedding,
         "is_centroid": bool(row["is_centroid"]),
+        "paragraph_summary": summary,
     }
 
 

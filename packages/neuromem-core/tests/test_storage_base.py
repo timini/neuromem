@@ -1,7 +1,7 @@
 """Unit tests for neuromem.storage.base — ABC instantiation behaviour.
 
 Tests the StorageAdapter ABC's refusal to instantiate when abstract
-methods are missing. The 13 behavioural contract tests (insert round-
+methods are missing. The 14 behavioural contract tests (insert round-
 trip, decay+archive, etc.) live in test_storage_adapter_contract.py
 and are parameterised over concrete adapters.
 """
@@ -38,7 +38,7 @@ class TestStorageAdapterABC:
             Empty()  # type: ignore[abstract]
 
     def test_subclass_missing_one_method_cannot_instantiate(self) -> None:
-        """Implement 12 of 13 methods; instantiation still fails."""
+        """Implement 13 of 14 methods; instantiation still fails."""
 
         class Incomplete(StorageAdapter):
             def insert_memory(
@@ -79,6 +79,9 @@ class TestStorageAdapterABC:
                 return None
 
             def update_node_labels(self, updates: dict[str, str]) -> None:
+                return None
+
+            def update_junction_summaries(self, updates: dict[str, str]) -> None:
                 return None
 
             def get_all_nodes(self) -> list[dict[str, Any]]:
@@ -124,7 +127,7 @@ class TestStorageAdapterABC:
             Incomplete()  # type: ignore[abstract]
 
     def test_fully_stubbed_subclass_instantiates(self) -> None:
-        """Implement all 13 methods; instantiation succeeds."""
+        """Implement all 14 methods; instantiation succeeds."""
 
         class Full(StorageAdapter):
             def insert_memory(
@@ -165,6 +168,9 @@ class TestStorageAdapterABC:
                 return None
 
             def update_node_labels(self, updates: dict[str, str]) -> None:
+                return None
+
+            def update_junction_summaries(self, updates: dict[str, str]) -> None:
                 return None
 
             def get_all_nodes(self) -> list[dict[str, Any]]:

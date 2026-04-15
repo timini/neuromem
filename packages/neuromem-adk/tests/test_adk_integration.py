@@ -157,10 +157,11 @@ def test_end_to_end_3_turn_conversation_with_memory_recall(
         embedder=GeminiEmbeddingProvider(api_key=gemini_api_key),
     )
 
-    # Sanity: the agent is wired — both callback slots and both tools.
+    # Sanity: the agent is wired — both callback slots and three tools
+    # (search_memory, retrieve_memories, expand_node per ADR-003 F6).
     assert agent.before_model_callback is not None
     assert agent.after_agent_callback is not None
-    assert len(agent.tools) == 2
+    assert len(agent.tools) == 3
 
     # 3. Build an ADK Runner. InMemorySessionService is the simplest
     #    session backend — enough for a short integration test.

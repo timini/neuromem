@@ -184,6 +184,24 @@ class StorageAdapter(ABC):
         """
 
     @abstractmethod
+    def update_junction_summaries(self, updates: dict[str, str]) -> None:
+        """Atomically write a batch of per-centroid paragraph summaries.
+
+        Used by ADR-003 hybrid summary caching: the dream cycle's
+        trunk-summarisation step writes eagerly; ``resolve_junction_summaries``
+        writes lazily on first render of deeper centroids. Sibling to
+        ``update_node_labels``.
+
+        Contract:
+        - Empty ``updates`` → no-op.
+        - Missing node IDs are silently skipped.
+        - Implementation MUST be atomic per call.
+        - Overwrites any existing summary (regeneration is expected when
+          a subtree's membership changes across dream cycles).
+        - Existing ``label``, ``embedding``, ``is_centroid`` unchanged.
+        """
+
+    @abstractmethod
     def get_all_nodes(self) -> list[dict[str, Any]]:
         """Return every node in storage with deserialised embeddings.
 

@@ -35,9 +35,10 @@ import uuid
 
 import numpy as np
 
-from .providers import EmbeddingProvider, LLMProvider
+from .clustering import HDBSCANClusteringProvider
+from .providers import ClusteringProvider, EmbeddingProvider, LLMProvider
 from .storage.base import StorageAdapter
-from .vectors import compute_centroid
+from .vectors import compute_centroid  # noqa: F401 — retained for backwards-compatible imports
 
 logger = logging.getLogger("neuromem.system")
 
@@ -80,6 +81,7 @@ class NeuroMemory:
         decay_lambda: float = DEFAULT_DECAY_LAMBDA,
         archive_threshold: float = DEFAULT_ARCHIVE_THRESHOLD,
         cluster_threshold: float = DEFAULT_CLUSTER_THRESHOLD,
+        clusterer: ClusteringProvider | None = None,
     ) -> None:
         if not isinstance(storage, StorageAdapter):
             raise TypeError(f"storage must be a StorageAdapter, got {type(storage).__name__}")
@@ -87,6 +89,10 @@ class NeuroMemory:
             raise TypeError(f"llm must be an LLMProvider, got {type(llm).__name__}")
         if not isinstance(embedder, EmbeddingProvider):
             raise TypeError(f"embedder must be an EmbeddingProvider, got {type(embedder).__name__}")
+        if clusterer is not None and not isinstance(clusterer, ClusteringProvider):
+            raise TypeError(
+                f"clusterer must be a ClusteringProvider, got {type(clusterer).__name__}"
+            )
         if dream_threshold < 1:
             raise ValueError(f"dream_threshold must be >= 1, got {dream_threshold}")
         if decay_lambda <= 0:
@@ -102,7 +108,16 @@ class NeuroMemory:
         self.dream_threshold = dream_threshold
         self.decay_lambda = decay_lambda
         self.archive_threshold = archive_threshold
+        # `cluster_threshold` was the stop-condition for the ADR-001 era
+        # binary agglomerative loop. Under ADR-003, clustering is
+        # delegated to a ``ClusteringProvider`` whose own configuration
+        # (e.g. HDBSCAN's min_cluster_size) governs cluster formation.
+        # The threshold is still accepted for backwards-compatible
+        # constructor signatures but no longer consulted by the default
+        # HDBSCAN provider. Callers who really need threshold-based
+        # behaviour can inject a custom ``ClusteringProvider``.
         self.cluster_threshold = cluster_threshold
+        self.clusterer: ClusteringProvider = clusterer or HDBSCANClusteringProvider()
 
         # Single lock gating the dreaming cycle. _is_dreaming is the
         # authoritative "is a cycle in flight" flag; _dream_lock is
@@ -332,8 +347,15 @@ class NeuroMemory:
         failure — the caller falls back to numpy nearest-neighbour for
         every still-unnamed centroid.
         """
+        # Pass ALL child labels per centroid. The [:2] cap that used to
+        # live here was an ADR-001 binary-merge artifact and became
+        # wrong under ADR-003 where a centroid can have 2-20 children;
+        # naming a 15-child cluster from only the first 2 labels
+        # systematically produces poor labels at high fanout. Cap at 20
+        # to bound prompt size — clusters exceeding 20 are rare and the
+        # first 20 labels are still better input than just 2.
         pair_list: list[list[str]] = [
-            [c["label"] for c in children_by_centroid[cid][:2]] for cid in ordered_centroid_ids
+            [c["label"] for c in children_by_centroid[cid][:20]] for cid in ordered_centroid_ids
         ]
         try:
             names = self.llm.generate_category_names_batch(pair_list)
@@ -372,6 +394,257 @@ class NeuroMemory:
             if e.get("relationship") == "child_of" and e.get("source_id") == centroid_id
         ]
         return [nodes_by_id[cid] for cid in child_ids if cid in nodes_by_id]
+
+    # ------------------------------------------------------------------
+    # resolve_junction_summaries — ADR-003 D2 (lazy trunk-or-deep fill)
+    # ------------------------------------------------------------------
+
+    def resolve_junction_summaries(self, nodes: list[dict]) -> None:
+        """Lazily populate per-centroid paragraph summaries.
+
+        Mirror of :meth:`resolve_centroid_names` for the paragraph
+        summary field introduced in ADR-003 D2. Called from
+        ``ContextHelper.build_prompt_context`` (and, once wired, from
+        ``expand_node``) at render time: for every centroid in the
+        rendered subgraph whose ``paragraph_summary`` is still NULL,
+        build a list of child-summary snippets and send them to the
+        LLM in a single batched call; persist the generated summaries
+        so subsequent renders are a cache hit.
+
+        Child-snippet resolution for each centroid:
+          - Leaf child (is_centroid=False): the leaf is a tag node;
+            its "content" is the set of memory summaries linked via
+            has_tag. Collect up to a small N of those summaries.
+          - Centroid child: prefer its own ``paragraph_summary``; if
+            null (deeper level hasn't been resolved yet), fall back
+            to its label.
+
+        Algorithm (mirror of resolve_centroid_names):
+          1. Filter ``nodes`` to centroids with NULL paragraph_summary.
+          2. For each, gather its child snippets as described above.
+          3. Try ``llm.generate_junction_summaries_batch(groups)`` —
+             one round-trip.
+          4. On any failure (exception, length mismatch, empty result
+             for a slot), fall back to ``generate_junction_summary``'s
+             default for that slot (concatenate-truncate).
+          5. Persist via ``storage.update_junction_summaries`` — one
+             transaction.
+          6. Mutate the in-memory ``nodes`` dicts so the immediate
+             render sees the new summaries.
+
+        NEVER raises. Worst case: centroids keep NULL summaries and
+        the renderer renders only the label. Same contract as
+        resolve_centroid_names.
+        """
+        try:
+            self._do_resolve_junction_summaries(nodes)
+        except Exception:
+            logger.exception(
+                "resolve_junction_summaries: unexpected error, leaving "
+                "paragraph_summary fields as NULL. Render will still "
+                "succeed with label-only centroids."
+            )
+
+    def _do_resolve_junction_summaries(self, nodes: list[dict]) -> None:
+        """Inner implementation. May raise — the public wrapper catches.
+
+        Resolves summaries floor-up: the centroids closest to leaves
+        are summarised first, persisted, then their parents, and so
+        on up the hierarchy. This way a deeper centroid's children
+        already have paragraph_summary populated by the time the
+        parent's snippets are gathered, rather than falling through
+        to one-word labels (ADR-003 D2 intent).
+        """
+        needs_summary = [
+            n for n in nodes if n.get("is_centroid") and not n.get("paragraph_summary")
+        ]
+        if not needs_summary:
+            return
+
+        levels = self._group_by_level(needs_summary, nodes)
+        for level_ids in levels:
+            self._resolve_level(level_ids, nodes)
+
+    def _group_by_level(
+        self,
+        needs_summary: list[dict],
+        all_nodes: list[dict],
+    ) -> list[list[str]]:
+        """Partition centroids by their depth in the subgraph.
+
+        Level 0 = centroids whose children are all leaves or
+        already-summarised centroids. Level N = centroids whose
+        children include at least one level-(N-1) centroid.
+
+        Centroids still needing summaries at each level are
+        processed together in one batched LLM call. The next level
+        then reads the persisted summaries from the level below.
+
+        Returns a list of lists of node ids, in dependency order
+        (level 0 first).
+        """
+        # Cheap topo-sort: for each dirty centroid, count how many
+        # of its dirty children are still upstream. Iteratively
+        # strip layers off the bottom.
+        dirty_ids = {n["id"] for n in needs_summary}
+        # Build a dirty-only subtree: for each dirty centroid, which
+        # of its children are also dirty?
+        dirty_children: dict[str, set[str]] = {nid: set() for nid in dirty_ids}
+        for cid in dirty_ids:
+            sub = self.storage.get_subgraph([cid], depth=1)
+            for edge in sub.get("edges", []):
+                if (
+                    edge.get("relationship") == "child_of"
+                    and edge.get("source_id") == cid
+                    and edge.get("target_id") in dirty_ids
+                ):
+                    dirty_children[cid].add(edge["target_id"])
+
+        levels: list[list[str]] = []
+        remaining = set(dirty_ids)
+        # Hard iteration cap equal to the dirty set size — even a
+        # degenerate chain can't produce more levels than nodes.
+        for _ in range(len(dirty_ids) + 1):
+            if not remaining:
+                break
+            # A centroid is ready this level iff none of its dirty
+            # children are still remaining.
+            ready = [cid for cid in remaining if not (dirty_children[cid] & remaining)]
+            if not ready:
+                # Cycle (shouldn't happen for a well-formed child_of
+                # DAG, but guard against it): flush remaining as one
+                # level so we don't loop forever.
+                levels.append(sorted(remaining))
+                remaining.clear()
+                break
+            levels.append(sorted(ready))
+            remaining.difference_update(ready)
+        # all_nodes is passed for potential future use but we don't
+        # need it today — the snippet gather hits storage directly.
+        _ = all_nodes
+        return levels
+
+    def _resolve_level(self, level_ids: list[str], nodes: list[dict]) -> None:
+        """Gather snippets, batch-summarise, persist, and mutate the
+        in-memory nodes list for one level of the floor-up walk."""
+        groups_by_id: dict[str, list[str]] = {}
+        for cid in level_ids:
+            snippets = self._gather_child_snippets(cid)
+            if snippets:
+                groups_by_id[cid] = snippets
+        if not groups_by_id:
+            return
+
+        ordered_ids = list(groups_by_id.keys())
+        groups = [groups_by_id[cid] for cid in ordered_ids]
+        summaries = self._try_batched_junction_summaries(groups)
+        updates = self._build_junction_summary_updates(ordered_ids, groups, summaries)
+        if not updates:
+            return
+
+        self.storage.update_junction_summaries(updates)
+        for node in nodes:
+            new_summary = updates.get(node["id"])
+            if new_summary is not None:
+                node["paragraph_summary"] = new_summary
+
+    def _try_batched_junction_summaries(self, groups: list[list[str]]) -> list[str]:
+        """Try the batched LLM summariser; on any failure, fall back
+        per-group to the concat-truncate default. Always returns a
+        list of ``len(groups)`` summaries."""
+        try:
+            summaries = self.llm.generate_junction_summaries_batch(groups)
+            if len(summaries) != len(groups):
+                raise ValueError(
+                    f"generate_junction_summaries_batch returned "
+                    f"{len(summaries)} summaries for {len(groups)} groups"
+                )
+            return summaries
+        except Exception:
+            logger.warning(
+                "resolve_junction_summaries: batched LLM summarisation "
+                "failed; falling back to concat-truncate for %d group(s)",
+                len(groups),
+                exc_info=True,
+            )
+            return [self.llm.generate_junction_summary(g) for g in groups]
+
+    def _build_junction_summary_updates(
+        self,
+        ordered_ids: list[str],
+        groups: list[list[str]],
+        summaries: list[str],
+    ) -> dict[str, str]:
+        """Zip centroid ids with their generated summaries, substituting
+        the concat-truncate default for any empty response so the cache
+        is populated (no infinite retries on subsequent renders)."""
+        updates: dict[str, str] = {}
+        for cid, group, summary in zip(ordered_ids, groups, summaries, strict=True):
+            text = (summary or "").strip()
+            if not text:
+                text = self.llm.generate_junction_summary(group)
+            if text:
+                updates[cid] = text
+        return updates
+
+    def _gather_child_snippets(self, centroid_id: str) -> list[str]:
+        """Return a list of text snippets (one per child) describing
+        what sits under the given centroid. Used as input to the
+        junction-summary LLM call.
+
+        Leaf child → up to 3 memory summaries attached via has_tag.
+        Centroid child → its paragraph_summary or (fallback) its label.
+
+        Returns [] if the centroid has no children at all — in which
+        case the caller skips summary generation entirely.
+        """
+        # Walk one hop down from the centroid, pulling node + edge rows.
+        # A depth-1 subgraph gives us the centroid, its children (nodes
+        # via child_of), AND any has_tag-linked memories to the leaves
+        # at once.
+        sub = self.storage.get_subgraph([centroid_id], depth=1)
+        nodes_by_id = {n["id"]: n for n in sub.get("nodes", [])}
+        memories_by_id = {m["id"]: m for m in sub.get("memories", [])}
+        edges = sub.get("edges", [])
+
+        child_ids = [
+            e["target_id"]
+            for e in edges
+            if e.get("relationship") == "child_of" and e.get("source_id") == centroid_id
+        ]
+        # has_tag goes memory → node. For each leaf child, gather its
+        # memory summaries.
+        tag_to_memories: dict[str, list[str]] = {}
+        for edge in edges:
+            if edge.get("relationship") != "has_tag":
+                continue
+            mem = memories_by_id.get(edge.get("source_id", ""))
+            if mem is None:
+                continue
+            tag_id = edge.get("target_id", "")
+            tag_to_memories.setdefault(tag_id, []).append(mem.get("summary", "") or "")
+
+        snippets: list[str] = []
+        for cid in child_ids:
+            child = nodes_by_id.get(cid)
+            if child is None:
+                continue
+            if child.get("is_centroid"):
+                text = child.get("paragraph_summary") or child.get("label", "")
+                if text:
+                    snippets.append(str(text))
+            else:
+                # Leaf tag node. Use its memory summaries as the content
+                # since the label alone is just a one-word concept.
+                # Cap at 3 to keep the prompt bounded.
+                mem_summaries = [s for s in tag_to_memories.get(cid, []) if s][:3]
+                if mem_summaries:
+                    snippets.append(
+                        f"Memories tagged '{child.get('label', '')}': " + " | ".join(mem_summaries)
+                    )
+                elif child.get("label"):
+                    snippets.append(str(child["label"]))
+        return snippets
 
     @staticmethod
     def _nearest_child_label(centroid: dict, children: list[dict]) -> str:
@@ -546,6 +819,16 @@ class NeuroMemory:
                         relationship="has_tag",
                     )
 
+            # 7b. Eager trunk-summary pass (ADR-003 D2). Pre-populates
+            # paragraph_summary for the level-0 centroids (direct-above-
+            # leaf) and level-1 centroids (their parents). This pays
+            # the LLM cost at ingestion time so first-render latency
+            # doesn't amortise it across user-visible requests. Deeper
+            # centroids stay NULL and are resolved lazily at render
+            # time per ADR-003 D2. NEVER raises — if the pass fails the
+            # cycle continues, and lazy resolve covers the gap.
+            self._run_junction_summarisation_trunk()
+
             # 8. Apply decay + archive.
             now = int(time.time())
             self.storage.apply_decay_and_archive(
@@ -614,128 +897,185 @@ class NeuroMemory:
         return label_to_node
 
     def _run_clustering(self, label_to_node: dict[str, dict]) -> None:
-        """Greedy agglomerative clustering over all current nodes.
+        """Cluster leaf tag nodes into a hierarchy via ``self.clusterer``.
 
-        Builds a pairwise cosine-similarity matrix via numpy, finds
-        the highest-similarity pair, merges them into a centroid
-        node (``is_centroid=True``) with an LLM-generated one-word
-        label, writes ``child_of`` edges from the centroid to both
-        members, and repeats until no remaining pair exceeds
-        ``cluster_threshold``.
+        ADR-003 D1 replaced the hand-rolled binary agglomerative loop
+        (documented in ADR-001) with a pluggable ``ClusteringProvider``
+        — default ``HDBSCANClusteringProvider`` — that produces
+        natural-fanout multi-level centroids (2-8 children typically)
+        instead of forced pairwise merges.
 
-        The method MUTATES storage (upserts centroid nodes, inserts
-        child_of edges) but does NOT mutate ``label_to_node`` — leaf
-        tag nodes stay addressable so ``_run_dream_cycle`` can still
-        wire ``has_tag`` edges from memories to their direct tags
-        (not to their centroid ancestors).
+        This method does no clustering math itself: it collects the
+        current nodes, delegates to ``self.clusterer.cluster``, and
+        walks the returned dependency-ordered list of :class:`Cluster`
+        records, materialising each as a centroid node with
+        ``is_centroid=True``, a placeholder label (lazy naming per
+        ADR-002), and ``child_of`` edges to its children. Children's
+        temporary ids (``c_...`` from the provider) are rewritten to
+        the storage-side UUIDs as centroids are created.
 
-        Safety bound: the loop runs at most ``2 * len(candidates)``
-        iterations so a pathological similarity matrix cannot hang.
-
-        Design rationale — why hand-rolled numpy and not scipy /
-        sklearn / HDBSCAN: see ``docs/decisions/ADR-001-clustering-
-        library-choice.md``. TL;DR: numpy is already a mandatory
-        runtime dep (Principle II); the per-merge
-        ``llm.generate_category_name`` callback is the reason the
-        loop is custom (libraries expose dendrograms, not merge
-        hooks); and at k ≤ 5000 the dense pairwise matrix is
-        single-digit milliseconds — the libraries would add install
-        surface without changing the hot-path cost. Revisit when any
-        of (a) k > 5000 hits SC-003, (b) LongMemEval shows cluster-
-        quality regressions vs. a library baseline, or (c) a
-        downstream wrapper needs Ward linkage / soft clustering /
-        noise labels. See the ADR for the full trade-off analysis
-        and the amendment procedure required to swap.
+        Leaf tag nodes in ``label_to_node`` are not mutated — the
+        has-tag wiring in ``_run_dream_cycle`` still connects memories
+        to leaves directly, not to centroid ancestors.
         """
-        # Copy the starting nodes into a working list. Appending
-        # centroids to this list grows the pool — a centroid can
-        # itself merge with another node on a later iteration,
-        # producing a multi-level hierarchy.
-        candidates: list[dict] = [
-            {
-                "id": node["id"],
-                "label": node["label"],
-                "embedding": np.asarray(node["embedding"], dtype=np.float64),
-                "is_centroid": bool(node["is_centroid"]),
-            }
+        if not label_to_node:
+            return
+
+        # 1. Build the (id, embedding) input for the clusterer.
+        leaves = [
+            (node["id"], np.asarray(node["embedding"], dtype=np.float64))
             for node in label_to_node.values()
         ]
-        alive = [True] * len(candidates)
+        if len(leaves) < 2:
+            # Nothing to cluster — a single leaf stays as-is.
+            return
 
-        max_iterations = max(2, 2 * len(candidates))
-        for _iteration in range(max_iterations):
-            alive_indices = [i for i, a in enumerate(alive) if a]
-            if len(alive_indices) < 2:
-                break
+        clusters = self.clusterer.cluster(leaves)
+        if not clusters:
+            logger.debug(
+                "_run_clustering: clusterer produced 0 clusters over %d leaves "
+                "(noise-only configuration or degenerate input)",
+                len(leaves),
+            )
+            return
 
-            # Build a (k, D) matrix of only the alive embeddings.
-            alive_embs = np.stack([candidates[i]["embedding"] for i in alive_indices])
-
-            # Pairwise cosine similarity: normalise rows, then dot-product.
-            row_norms = np.linalg.norm(alive_embs, axis=1, keepdims=True)
-            safe_norms = np.where(row_norms > 0.0, row_norms, 1.0)
-            normed = alive_embs / safe_norms
-            sim = normed @ normed.T
-            np.fill_diagonal(sim, -np.inf)  # never merge with self
-
-            # Find the highest-similarity pair.
-            flat_idx = int(np.argmax(sim))
-            k = len(alive_indices)
-            i_rel, j_rel = divmod(flat_idx, k)
-            best_sim = float(sim[i_rel, j_rel])
-            if best_sim < self.cluster_threshold:
-                break
-
-            # Resolve back to indices in the full candidates list.
-            i = alive_indices[i_rel]
-            j = alive_indices[j_rel]
-            a = candidates[i]
-            b = candidates[j]
-
-            # Merge: compute centroid, write with placeholder label,
-            # persist. ADR-002 (lazy centroid naming) defers naming to
-            # render time — see ``ContextHelper.build_prompt_context``
-            # which calls ``NeuroMemory.resolve_centroid_names`` to
-            # rename placeholders to LLM-generated semantic ones, but
-            # only for centroids that actually appear in the rendered
-            # subgraph. The placeholder format is recognised by the
-            # resolver via the "cluster_" prefix.
-            centroid_emb = compute_centroid([a["embedding"], b["embedding"]])
+        # 2. Walk clusters in dependency order. The provider guarantees
+        # children appear before the parents that reference them, so a
+        # single forward pass suffices. Map each provider-minted id to
+        # the storage-side UUID we create for it.
+        id_map: dict[str, str] = {}
+        for cluster in clusters:
             centroid_id = f"node_{uuid.uuid4()}"
-            parent_label = _PLACEHOLDER_LABEL_PREFIX + centroid_id[5:17]
+            placeholder_label = _PLACEHOLDER_LABEL_PREFIX + centroid_id[5:17]
 
             self.storage.upsert_node(
                 node_id=centroid_id,
-                label=parent_label,
-                embedding=centroid_emb,
+                label=placeholder_label,
+                embedding=cluster.embedding,
                 is_centroid=True,
             )
-            self.storage.insert_edge(
-                source_id=centroid_id,
-                target_id=a["id"],
-                weight=best_sim,
-                relationship="child_of",
-            )
-            self.storage.insert_edge(
-                source_id=centroid_id,
-                target_id=b["id"],
-                weight=best_sim,
-                relationship="child_of",
+
+            # Rewrite any provider-minted child ids to their storage
+            # UUIDs. Children that are leaf ids (not in id_map) pass
+            # through unchanged.
+            #
+            # Contract guard: if a child id looks like a provider-minted
+            # cluster id ("c_"-prefixed) but isn't yet in id_map, the
+            # provider violated the dependency-ordering contract and we
+            # would otherwise write an edge to a non-existent node.
+            # Raise loudly so misbehaving providers are caught in tests
+            # instead of silently corrupting storage with dangling edges.
+            for child_id in cluster.child_ids:
+                resolved_child = id_map.get(child_id, child_id)
+                if child_id.startswith("c_") and child_id not in id_map:
+                    raise ValueError(
+                        f"ClusteringProvider contract violation: cluster "
+                        f"{cluster.id!r} references child {child_id!r} "
+                        f"before it was emitted. Providers MUST return "
+                        f"centroids in dependency order (children before "
+                        f"parents)."
+                    )
+                self.storage.insert_edge(
+                    source_id=centroid_id,
+                    target_id=resolved_child,
+                    weight=float(cluster.cohesion),
+                    relationship="child_of",
+                )
+
+            id_map[cluster.id] = centroid_id
+
+    # ------------------------------------------------------------------
+    # _run_junction_summarisation_trunk — ADR-003 D2 eager trunk pass
+    # ------------------------------------------------------------------
+
+    def _run_junction_summarisation_trunk(self) -> None:
+        """Eagerly populate paragraph_summary for the bottom two levels
+        of the concept hierarchy (ADR-003 D2 trunk policy).
+
+        Level 0 = centroids that have at least one memory attached via
+        has_tag to any of their descendant leaves (i.e. the centroids
+        that actually cover the ingested memories).
+        Level 1 = direct parents of level-0 centroids.
+
+        Higher levels stay NULL and get lazy-resolved at render time.
+
+        Deliberately broad try/except: a failed summarisation must not
+        crash the dream cycle (the whole cycle rolls memories back to
+        inbox). On failure the lazy render path fills the gaps.
+        """
+        try:
+            self._do_run_junction_trunk()
+        except Exception:
+            logger.exception(
+                "_run_junction_summarisation_trunk: eager pass failed; "
+                "lazy render-time resolution will cover the gap."
             )
 
-            # Retire the two members and add the centroid as a new
-            # live candidate so the next iteration can merge IT too.
-            alive[i] = False
-            alive[j] = False
-            candidates.append(
-                {
-                    "id": centroid_id,
-                    "label": parent_label,
-                    "embedding": centroid_emb,
-                    "is_centroid": True,
-                }
-            )
-            alive.append(True)
+    def _do_run_junction_trunk(self) -> None:
+        """Inner implementation. May raise — the public wrapper catches."""
+        all_nodes = self.storage.get_all_nodes()
+        centroids = [n for n in all_nodes if n.get("is_centroid")]
+        if not centroids:
+            return
+
+        level0 = self._find_level0_centroids(centroids)
+        if not level0:
+            return
+
+        level1 = self._find_level1_parents(level0, centroids)
+        nodes_by_id = {c["id"]: c for c in centroids}
+        staged = [nodes_by_id[cid] for cid in (*level0, *level1) if cid in nodes_by_id]
+
+        # Level 0 first, persist, then level 1 so parents see their
+        # just-written children.
+        self._resolve_level(level0, staged)
+        if level1:
+            self._resolve_level(level1, staged)
+
+    def _find_level0_centroids(self, centroids: list[dict]) -> list[str]:
+        """Return centroid ids whose subtree contains a has_tag-linked
+        memory and that don't yet have a paragraph_summary."""
+        level0: list[str] = []
+        for centroid in centroids:
+            if centroid.get("paragraph_summary"):
+                continue
+            sub = self.storage.get_subgraph([centroid["id"]], depth=1)
+            if any(e.get("relationship") == "has_tag" for e in sub.get("edges", [])):
+                level0.append(centroid["id"])
+        return level0
+
+    def _find_level1_parents(self, level0: list[str], centroids: list[dict]) -> list[str]:
+        """Return unique level-1 parent centroid ids (parents of any
+        level-0 centroid that aren't themselves level-0 and aren't yet
+        summarised). Preserves first-seen order."""
+        level0_set = set(level0)
+        centroid_by_id = {c["id"]: c for c in centroids}
+        seen: set[str] = set()
+        out: list[str] = []
+        for cid in level0:
+            sub = self.storage.get_subgraph([cid], depth=1)
+            for edge in sub.get("edges", []):
+                parent_id = self._extract_parent_id(edge, cid)
+                if not parent_id or parent_id in level0_set or parent_id in seen:
+                    continue
+                parent = centroid_by_id.get(parent_id)
+                if parent and not parent.get("paragraph_summary"):
+                    seen.add(parent_id)
+                    out.append(parent_id)
+        return out
+
+    @staticmethod
+    def _extract_parent_id(edge: dict, child_id: str) -> str | None:
+        """Return the parent id of ``child_id`` via this child_of edge,
+        or None if the edge doesn't describe that relationship."""
+        if edge.get("relationship") != "child_of":
+            return None
+        if edge.get("target_id") != child_id:
+            return None
+        parent_id = edge.get("source_id")
+        if not parent_id or parent_id == child_id:
+            return None
+        return str(parent_id)
 
 
 def _sanitise_category_name(raw: str) -> str:

@@ -1,0 +1,7 @@
+You are grading an answer. Given the question, the reference (correct) answer, and the submitted prediction, respond with exactly one word: 'correct' if the prediction is a correct answer to the question (even if phrased differently from the reference), or 'incorrect' otherwise.
+
+Question: {question}
+Reference answer: {gold}
+Submitted prediction: {prediction}
+
+Respond with exactly one word: correct or incorrect.

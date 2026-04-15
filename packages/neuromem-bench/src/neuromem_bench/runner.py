@@ -252,6 +252,15 @@ def _run_one_instance(
     )
     score = metric(prediction, instance.gold_answer, instance.question)
 
+    # ADR-003 observability: if the agent recorded a per-answer
+    # tool-call tally (NeuromemAdkAgent does; the one-shot agents
+    # don't), attach it to the result's metadata so the JSONL output
+    # preserves the ADK tool-use signal for post-run analysis.
+    metadata: dict[str, Any] = {}
+    tool_calls = getattr(agent, "last_tool_calls", None)
+    if isinstance(tool_calls, dict) and tool_calls:
+        metadata["tool_calls"] = dict(tool_calls)
+
     return InstanceResult(
         instance_id=instance.instance_id,
         question=instance.question,
@@ -264,6 +273,7 @@ def _run_one_instance(
         dataset_name=dataset_name,
         dataset_split=dataset_split,
         metric_name=metric_name,
+        metadata=metadata,
     )
 
 

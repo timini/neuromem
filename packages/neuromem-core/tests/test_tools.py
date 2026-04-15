@@ -15,7 +15,7 @@ import time
 import pytest
 from neuromem.storage.sqlite import SQLiteAdapter
 from neuromem.system import NeuroMemory
-from neuromem.tools import retrieve_memories, search_memory
+from neuromem.tools import expand_node, retrieve_memories, search_memory
 
 from tests.conftest import MockEmbeddingProvider, MockLLMProvider
 
@@ -360,3 +360,72 @@ class TestRetrieveMemoriesDoesNotLeakBetweenCalls:
         # Both calls spike to 1.0, so both see the spiked value.
         assert first[0]["access_weight"] == pytest.approx(1.0)
         assert second[0]["access_weight"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# expand_node — ADR-003 F6 agent "zoom in" tool
+# ---------------------------------------------------------------------------
+
+
+class TestExpandNode:
+    """expand_node renders a subtree rooted at a given node id,
+    resolving centroid names and paragraph summaries lazily. It
+    is NOT LTP-spiking — browsing the ontology is a different action
+    from recalling a specific memory.
+    """
+
+    def test_empty_node_id_raises(self, memory_system: NeuroMemory) -> None:
+        with pytest.raises(ValueError, match="node_id must be non-empty"):
+            expand_node("", memory_system)
+
+    def test_negative_depth_raises(self, memory_system: NeuroMemory) -> None:
+        with pytest.raises(ValueError, match="depth must be >= 0"):
+            expand_node("anything", memory_system, depth=-1)
+
+    def test_unknown_id_returns_empty_string(self, memory_system: NeuroMemory) -> None:
+        assert expand_node("node_does_not_exist", memory_system) == ""
+
+    def test_renders_subtree(self, memory_system: NeuroMemory) -> None:
+        """After some memories are ingested + consolidated, expand_node
+        on any existing tag or centroid returns a non-empty tree."""
+        memory_system.enqueue("alpha beta gamma")
+        memory_system.force_dream(block=True)
+
+        nodes = memory_system.storage.get_all_nodes()
+        # Pick any node that actually has descendants — a centroid
+        # preferred, else the first leaf.
+        centroids = [n for n in nodes if n["is_centroid"]]
+        target_id = centroids[0]["id"] if centroids else nodes[0]["id"]
+
+        tree = expand_node(target_id, memory_system, depth=2)
+        assert tree, "expand_node on an existing node should return non-empty tree"
+        assert "Relevant Memory Context" in tree
+
+    def test_does_not_spike_memory_access_weight(self, memory_system: NeuroMemory) -> None:
+        """LTP only fires on retrieve_memories, not on browsing the
+        ontology via expand_node."""
+        mem_id = memory_system.enqueue("alpha beta gamma")
+        memory_system.force_dream(block=True)
+        # Apply decay so access_weight drops below 1.0.
+        nodes = memory_system.storage.get_all_nodes()
+        target_id = next((n["id"] for n in nodes if n["is_centroid"]), nodes[0]["id"])
+        # Fast-forward time and decay so the memory's access_weight is
+        # measurably below 1.0. A week of decay at default lambda is
+        # enough to move the needle.
+        future = int(time.time()) + 7 * 24 * 3600
+        memory_system.storage.apply_decay_and_archive(
+            decay_lambda=memory_system.decay_lambda,
+            archive_threshold=0.0,  # never archive during this test
+            current_timestamp=future,
+        )
+        before = memory_system.storage.get_memory_by_id(mem_id)
+        assert before is not None
+        weight_before = float(before["access_weight"])
+        assert weight_before < 1.0
+
+        expand_node(target_id, memory_system, depth=2)
+        after = memory_system.storage.get_memory_by_id(mem_id)
+        assert after is not None
+        assert float(after["access_weight"]) == weight_before, (
+            "expand_node must NOT spike memory access_weight (ADR-003 F6)"
+        )

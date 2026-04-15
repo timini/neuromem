@@ -366,6 +366,14 @@ class DictStorageAdapter(StorageAdapter):
             if node_id in self._nodes:
                 self._nodes[node_id]["label"] = label
 
+    def update_junction_summaries(self, updates: dict[str, str]) -> None:
+        self._check_open()
+        if not updates:
+            return
+        for node_id, summary in updates.items():
+            if node_id in self._nodes:
+                self._nodes[node_id]["paragraph_summary"] = summary
+
     def get_all_nodes(self) -> list[dict[str, Any]]:
         self._check_open()
         return [self._copy_node(n) for n in sorted(self._nodes.values(), key=lambda n: n["id"])]
