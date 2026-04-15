@@ -1,0 +1,84 @@
+# Package manifest for neuromem-gemma — local Gemma (and other
+# open-weight) provider pair, served through Ollama's
+# OpenAI-compatible endpoint.
+#
+# Piggybacks on the OpenAI SDK: Ollama exposes /v1/chat/completions
+# and /v1/embeddings at http://localhost:11434/v1, which the openai
+# Python client drives fine. GemmaLLMProvider and GemmaEmbeddingProvider
+# are thin subclasses of the OpenAI provider pair with sensible Gemma-
+# specific defaults.
+#
+# Runtime deps:
+#   - neuromem-core: abstract base classes (from workspace).
+#   - neuromem-openai: the OpenAI SDK wrapper this package specialises.
+#   - numpy: for get_embeddings return shape.
+
+[project]
+name = "neuromem-gemma"
+version = "0.1.0"
+description = "Local Gemma provider pair (LLM + embedder) for neuromem, served via Ollama."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Tim Richardson" },
+]
+keywords = [
+    "memory",
+    "agents",
+    "llm",
+    "gemma",
+    "ollama",
+    "local",
+    "neuromem",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neuromem-core",
+    "neuromem-openai",
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/timini/neuromem"
+Repository = "https://github.com/timini/neuromem"
+Issues = "https://github.com/timini/neuromem/issues"
+Documentation = "https://github.com/timini/neuromem/blob/main/packages/neuromem-gemma/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv.sources]
+neuromem-core = { workspace = true }
+neuromem-openai = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuromem_gemma"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/neuromem_gemma/prompts" = "neuromem_gemma/prompts"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "README.md",
+    "pyproject.toml",
+]

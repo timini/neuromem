@@ -1,0 +1,5 @@
+List the proper-noun named entities mentioned in the following text. Include brand names, products, places, people, and organisations. EXCLUDE common nouns (e.g., 'coupon', 'creamer', 'user', 'email').
+If there are NO named entities, respond with the single token: NONE
+Otherwise respond with ONLY the entity names as a comma-separated list, in the order they appear. No numbering, no explanation, no bullet points, no markdown.
+
+Text: {summary}

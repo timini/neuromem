@@ -126,9 +126,24 @@ def _resolve_api_key() -> str:
     sys.exit(1)
 
 
-def _build_agent(name: str, api_key: str, model: str):
+def _build_agent(
+    name: str,
+    api_key: str,
+    model: str,
+    *,
+    llm_provider: str = "gemini",
+    embedder_provider: str | None = None,
+    llm_api_key: str | None = None,
+    embedder_api_key: str | None = None,
+    memory_model: str | None = None,
+):
     """Construct an agent by name. Imports lazily so baselines that
-    don't need the google-adk stack don't pay its import cost."""
+    don't need the google-adk stack don't pay its import cost.
+
+    Provider-aware agents (neuromem + neuromem-adk) accept kwargs
+    for the memory-layer LLM/embedder choice. Baselines (null,
+    naive-rag) stay Gemini-only for now.
+    """
     if name == "null":
         from neuromem_bench.agent import NullAgent  # noqa: PLC0415
 
@@ -140,18 +155,55 @@ def _build_agent(name: str, api_key: str, model: str):
     if name == "neuromem":
         from neuromem_bench.agent import NeuromemAgent  # noqa: PLC0415
 
-        return NeuromemAgent(api_key=api_key, model=model)
+        return NeuromemAgent(
+            api_key=api_key,
+            model=model,
+            llm_provider=llm_provider,
+            embedder_provider=embedder_provider,
+            llm_api_key=llm_api_key,
+            embedder_api_key=embedder_api_key,
+            memory_model=memory_model,
+        )
     if name == "neuromem-adk":
-        # The real ADK-backed variant — constructs a google.adk.agents.Agent
-        # with neuromem_adk.enable_memory, giving the answer LLM
-        # search_memory + retrieve_memories as function tools. Slower
-        # per answer than --agent neuromem but measures the full
-        # product rather than the handicapped one-shot path.
         from neuromem_bench.agent import NeuromemAdkAgent  # noqa: PLC0415
 
-        return NeuromemAdkAgent(api_key=api_key, model=model)
+        return NeuromemAdkAgent(
+            api_key=api_key,
+            model=model,
+            llm_provider=llm_provider,
+            embedder_provider=embedder_provider,
+            llm_api_key=llm_api_key,
+            embedder_api_key=embedder_api_key,
+            memory_model=memory_model,
+        )
     raise ValueError(
         f"unknown agent name: {name!r}. Valid: null / naive-rag / neuromem / neuromem-adk"
+    )
+
+
+def _resolve_provider_api_key(
+    provider: str,
+    default: str | None,
+) -> str:
+    """Look up the API key for a given provider from common env vars,
+    falling back to the default (usually GOOGLE_API_KEY)."""
+    env_names = {
+        "openai": ("OPENAI_API_KEY",),
+        "anthropic": ("ANTHROPIC_API_KEY",),
+        "gemini": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+        "gemma": (),  # Ollama — no key needed; empty string is fine.
+    }.get(provider.lower(), ())
+    for env in env_names:
+        v = os.environ.get(env, "").strip()
+        if v:
+            return v
+    if default:
+        return default
+    if provider.lower() == "gemma":
+        return ""
+    sys.exit(
+        f"ERROR: no API key for provider {provider!r}. "
+        f"Set {'/'.join(env_names)} or pass --{provider}-api-key."
     )
 
 
@@ -239,11 +291,47 @@ def main() -> None:
         "--model",
         default="gemini-flash-latest",
         help=(
-            "Gemini model name (default: gemini-flash-latest — rolling "
-            "alias for the current stable flash tier). Preview models "
-            "(e.g. gemini-3.1-flash-lite-preview) have aggressive "
-            "rate limits and are NOT recommended for long benchmark "
-            "runs — they can stall indefinitely under sustained load."
+            "Model name passed to the answer-LLM and to the memory "
+            "layer (default: gemini-flash-latest). For OpenAI/Anthropic "
+            "use the native model id (e.g. gpt-4.1-mini, "
+            "claude-sonnet-4-6); for Gemma via Ollama use e.g. gemma3."
+        ),
+    )
+    parser.add_argument(
+        "--llm-provider",
+        choices=("gemini", "openai", "anthropic", "gemma"),
+        default="gemini",
+        help=(
+            "Memory-layer LLM provider (default: gemini). Selects "
+            "which SDK drives generate_summary / extract_tags / "
+            "generate_category_names / generate_junction_summaries. "
+            "Does NOT change which model the ADK answer-LLM uses — "
+            "that's --model."
+        ),
+    )
+    parser.add_argument(
+        "--embedder-provider",
+        choices=("gemini", "openai", "gemma"),
+        default=None,
+        help=(
+            "Memory-layer embedder provider. Defaults to match "
+            "--llm-provider, except anthropic→openai (since Anthropic "
+            "has no native embedder)."
+        ),
+    )
+    parser.add_argument(
+        "--embedder-model",
+        default=None,
+        help="Override the embedder model (default: provider-specific).",
+    )
+    parser.add_argument(
+        "--memory-model",
+        default=None,
+        help=(
+            "Override the memory-layer LLM model independently of "
+            "--model. Defaults to --model if unset. Useful when the "
+            "answer LLM and memory LLM should be different providers "
+            "(e.g. Gemma for memory, Gemini for answering)."
         ),
     )
     args = parser.parse_args()
@@ -259,6 +347,15 @@ def main() -> None:
 
     api_key = _resolve_api_key()
 
+    # Resolve provider API keys per provider. LLM provider determines
+    # llm_api_key; embedder provider determines embedder_api_key. Both
+    # fall back to api_key (Google's) if a specific env var isn't set.
+    llm_api_key = _resolve_provider_api_key(args.llm_provider, default=api_key)
+    effective_embedder_provider = args.embedder_provider or (
+        "openai" if args.llm_provider == "anthropic" else args.llm_provider
+    )
+    embedder_api_key = _resolve_provider_api_key(effective_embedder_provider, default=api_key)
+
     # Imports deferred until after API-key check so a missing key
     # doesn't load google-adk for nothing.
     from neuromem_bench import run_benchmark  # noqa: PLC0415
@@ -270,7 +367,16 @@ def main() -> None:
 
     for agent_name in agents:
         dataset = LongMemEval(split=args.split)
-        agent = _build_agent(agent_name, api_key=api_key, model=args.model)
+        agent = _build_agent(
+            agent_name,
+            api_key=api_key,
+            model=args.model,
+            llm_provider=args.llm_provider,
+            embedder_provider=args.embedder_provider,
+            llm_api_key=llm_api_key,
+            embedder_api_key=embedder_api_key,
+            memory_model=args.memory_model,
+        )
 
         if args.output is not None:
             output_path = args.output

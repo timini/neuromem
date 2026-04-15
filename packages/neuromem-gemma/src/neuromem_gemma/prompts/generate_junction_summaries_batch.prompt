@@ -1,0 +1,12 @@
+Summarise each of the {n} numbered groups of memory snippets below. Each group represents one branch of a memory hierarchy; the summary you produce will be attached to that branch so the answering LLM can skim the tree and decide whether to drill deeper.
+
+## Rules for each summary
+- 2-4 sentences. Dense with facts, no filler.
+- Preserve personal facts (degree, age, family, job, decisions, places, dates) and proper nouns (brands, people, products). A summary that omits these has FAILED.
+- No preamble; don't repeat the group number; don't quote back the snippets.
+
+## Output format
+Return ONLY a JSON array of exactly {n} strings, in the same order as the numbered groups. No markdown fences, no trailing commentary, no keys — just the array.
+
+## Groups
+{numbered}

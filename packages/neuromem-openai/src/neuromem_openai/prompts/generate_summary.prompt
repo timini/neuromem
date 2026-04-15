@@ -1,0 +1,24 @@
+You are summarising a piece of text into a memory record that the user will be able to ask questions about later.
+
+## Preserve EVERY fact
+Your job is to preserve every concrete piece of information the text contains, especially:
+- **Personal facts about the user**: degree, age, family members, job, employer, hobbies, location, preferences, decisions stated, actions taken, events attended.
+- **Proper nouns**: brand names, places, people, organisations, products.
+- **Specific numbers and dates**: amounts, prices, ages, dates, counts.
+- **Implied facts**: if the user says 'when I graduated', they graduated; if they say 'my wife', they have a wife.
+
+## Bias toward user facts over generic content
+If the text mixes a personal fact with a list of recommendations or generic advice, the personal fact is MORE important. Drop generic advice before dropping a personal detail. A summary that omits a brand list is fine; a summary that omits 'I graduated with Business Administration' has FAILED.
+
+## Length
+2–4 sentences. Use as much length as needed to fit every fact. Do NOT pad with generic content. Do NOT add a preamble like 'This text discusses...'.
+
+## Worked example
+Source: 'I graduated with a degree in Business Administration last year and started at Acme Corp as a junior analyst. I'm looking for advice on how to organise my workspace — should I get a standing desk? My friend Sarah recommends Todoist for task management, and I also like Trello and Asana.'
+GOOD summary: 'The user graduated with a Business Administration degree last year and now works at Acme Corp as a junior analyst. They are organising their workspace and considering a standing desk. Sarah recommends Todoist; the user also likes Trello and Asana.'
+BAD summary (drops the personal facts): 'Recommended task management apps include Todoist, Trello, and Asana. Standing desks help with workspace organisation.'
+
+Respond with ONLY the summary — no preamble, no markdown, no quotation marks.
+
+Text:
+{raw_text}

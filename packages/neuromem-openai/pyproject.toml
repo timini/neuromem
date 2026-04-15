@@ -1,0 +1,82 @@
+# Package manifest for neuromem-openai — the OpenAI provider pair
+# (LLM + embedder) for the neuromem cognitive memory library.
+#
+# Mirrors the neuromem-gemini layout set down by the first sibling
+# package per Constitution v2.0.0 §Additional Constraints — Repository
+# Structure.
+#
+# Runtime deps:
+#   - neuromem-core: the abstract base classes this package implements
+#     (resolved from the workspace).
+#   - openai: the official OpenAI Python SDK (chat completions +
+#     embeddings).
+#   - numpy:  for the (N, D) float32 array shape returned by
+#             OpenAIEmbeddingProvider.get_embeddings.
+
+[project]
+name = "neuromem-openai"
+version = "0.1.0"
+description = "OpenAI provider pair (LLM + embedder) for the neuromem cognitive memory library."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Tim Richardson" },
+]
+keywords = [
+    "memory",
+    "agents",
+    "llm",
+    "openai",
+    "gpt",
+    "neuromem",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "neuromem-core",
+    "openai>=1.50",
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/timini/neuromem"
+Repository = "https://github.com/timini/neuromem"
+Issues = "https://github.com/timini/neuromem/issues"
+Documentation = "https://github.com/timini/neuromem/blob/main/packages/neuromem-openai/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv.sources]
+neuromem-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuromem_openai"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/neuromem_openai/prompts" = "neuromem_openai/prompts"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "README.md",
+    "pyproject.toml",
+]
