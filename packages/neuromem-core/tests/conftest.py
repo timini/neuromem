@@ -69,7 +69,9 @@ class MockLLMProvider(LLMProvider):
     def extract_tags(self, summary: str) -> list[str]:
         return [w for w in summary.split() if w.isalpha()][:3]
 
-    def generate_category_name(self, concepts: list[str]) -> str:
+    def generate_category_name(
+        self, concepts: list[str], *, avoid_names: set[str] | None = None
+    ) -> str:
         return "Cat" + "".join(c[:1].upper() for c in concepts)
 
 

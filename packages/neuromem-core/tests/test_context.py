@@ -370,7 +370,9 @@ class TestContextHelperEndToEnd:
             def extract_tags(self, summary: str) -> list[str]:
                 raise AssertionError("extract_tags must not be called")
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 raise AssertionError("generate_category_name must not be called")
 
         # Inject directly — we're testing that the helper doesn't
@@ -594,7 +596,9 @@ class TestBuildPromptContextLazyNaming:
                 super().__init__()
                 self.batch_call_count = 0
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_call_count += 1
                 return [f"named_{i}" for i in range(len(pairs))]
 
@@ -644,7 +648,9 @@ class TestBuildPromptContextLazyNaming:
                 super().__init__()
                 self.batch_call_count = 0
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_call_count += 1
                 return [f"first_run_{i}" for i in range(len(pairs))]
 

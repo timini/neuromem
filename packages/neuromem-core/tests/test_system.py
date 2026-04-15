@@ -265,7 +265,9 @@ class TestEnqueueSync:
             def extract_tags(self, summary: str) -> list[str]:
                 return []
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 return "Misc"
 
         system = NeuroMemory(
@@ -445,7 +447,9 @@ class BlockingLLM(LLMProvider):
             raise RuntimeError("BlockingLLM timeout — test forgot to set proceed_event")
         return [w for w in summary.split() if w.isalpha()][:3]
 
-    def generate_category_name(self, concepts: list[str]) -> str:
+    def generate_category_name(
+        self, concepts: list[str], *, avoid_names: set[str] | None = None
+    ) -> str:
         return "Cat"
 
 
@@ -781,7 +785,9 @@ class TestRunDreamCycleRollback:
             def extract_tags(self, summary: str) -> list[str]:
                 raise RuntimeError("provider boom")
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 return "Misc"
 
         system = NeuroMemory(
@@ -1044,11 +1050,15 @@ class TestAgglomerativeClustering:
                 self.single_name_call_count = 0
                 self.batch_name_call_count = 0
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 self.single_name_call_count += 1
                 return "single-fallback"
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_name_call_count += 1
                 return [f"group-{i}" for i in range(len(pairs))]
 
@@ -1669,7 +1679,9 @@ class TestDreamCycleUsesExtractTagsBatch:
             self.batch_sizes.append(len(summaries))
             return [[w for w in s.split() if w.isalpha()][:3] for s in summaries]
 
-        def generate_category_name(self, concepts: list[str]) -> str:
+        def generate_category_name(
+            self, concepts: list[str], *, avoid_names: set[str] | None = None
+        ) -> str:
             return "Cat"
 
     def test_dream_cycle_calls_batch_exactly_once_per_cycle(
@@ -1854,7 +1866,9 @@ class TestResolveCentroidNames:
                 super().__init__()
                 self.batch_call_count = 0
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_call_count += 1
                 return ["x"] * len(pairs)
 
@@ -1883,7 +1897,9 @@ class TestResolveCentroidNames:
                 super().__init__()
                 self.batch_calls: list[list[list[str]]] = []
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_calls.append([list(p) for p in pairs])
                 return ["+".join(label[:1] for label in pair) for pair in pairs]
 
@@ -1913,7 +1929,9 @@ class TestResolveCentroidNames:
                 super().__init__()
                 self.batch_call_count = 0
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_call_count += 1
                 return [f"named{i}" for i in range(len(pairs))]
 
@@ -1940,7 +1958,9 @@ class TestResolveCentroidNames:
                 super().__init__()
                 self.attempts = 0
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.attempts += 1
                 raise RuntimeError("simulated LLM outage")
 
@@ -1968,7 +1988,9 @@ class TestResolveCentroidNames:
 
     def test_falls_back_on_length_mismatch(self) -> None:
         class WrongLengthLLM(MockLLMProvider):
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 return []  # always wrong length
 
         ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
@@ -1985,6 +2007,58 @@ class TestResolveCentroidNames:
         system.resolve_centroid_names(nodes)
         centroid = next(n for n in nodes if n["is_centroid"])
         assert centroid["label"] in {"alpha", "beta"}
+
+    def test_avoid_names_threaded_to_provider(self) -> None:
+        """Issue #42 part 1: when naming placeholder centroids, the
+        labels of centroids already in the graph (non-placeholder)
+        are passed as ``avoid_names`` so the LLM has a chance to pick
+        something distinct across dream cycles."""
+
+        class SpyLLM(MockLLMProvider):
+            def __init__(self) -> None:
+                super().__init__()
+                self.last_avoid_names: set[str] | None = None
+
+            def generate_category_names_batch(
+                self,
+                pairs: list[list[str]],
+                *,
+                avoid_names: set[str] | None = None,
+            ) -> list[str]:
+                self.last_avoid_names = avoid_names
+                # Return the first concept as a placeholder-busting label.
+                return [(p[0] if p else "x") for p in pairs]
+
+        ctrl = ControlledEmbedder(
+            {
+                "alpha": [1.0, 0.0, 0.0, 0.0],
+                "beta": [0.999, 0.01, 0.0, 0.0],
+                "gamma": [0.0, 1.0, 0.0, 0.0],
+                "delta": [0.01, 0.999, 0.0, 0.0],
+            }
+        )
+        llm = SpyLLM()
+        system = NeuroMemory(
+            storage=SQLiteAdapter(":memory:"),
+            llm=llm,
+            embedder=ctrl,
+            cluster_threshold=0.9,
+        )
+        # First cycle: 2 tags cluster, get named (no prior centroids).
+        system.enqueue("alpha beta")
+        system.force_dream()
+        system.resolve_centroid_names(system.storage.get_all_nodes())
+        first_avoid = llm.last_avoid_names
+        assert first_avoid == set() or first_avoid is None or first_avoid == set()
+
+        # Second cycle: 2 more tags cluster. The FIRST cycle's centroid
+        # is now in the graph and must appear in avoid_names.
+        system.enqueue("gamma delta")
+        system.force_dream()
+        system.resolve_centroid_names(system.storage.get_all_nodes())
+        second_avoid = llm.last_avoid_names or set()
+        # First cycle named a centroid; its label is in second_avoid.
+        assert "alpha" in second_avoid or "beta" in second_avoid
 
 
 class TestResolveJunctionSummaries:
@@ -2161,7 +2235,9 @@ class TestEagerFullSweepInDream:
 
     def test_naming_failure_does_not_crash_dream(self) -> None:
         class FailingNamingLLM(MockLLMProvider):
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 raise RuntimeError("naming boom")
 
         ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})

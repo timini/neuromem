@@ -69,11 +69,15 @@ class _LLMCallCounter(MockLLMProvider):
         self.ner_batch_calls += 1
         return [[] for _ in summaries]
 
-    def generate_category_name(self, concepts: list[str]) -> str:
+    def generate_category_name(
+        self, concepts: list[str], *, avoid_names: set[str] | None = None
+    ) -> str:
         self.name_calls += 1
         return "category"
 
-    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+    def generate_category_names_batch(
+        self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+    ) -> list[str]:
         self.name_batch_calls += 1
         return [f"c{i}" for i in range(len(pairs))]
 

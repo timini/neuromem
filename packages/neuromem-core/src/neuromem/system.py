@@ -48,7 +48,17 @@ logger = logging.getLogger("neuromem.system")
 DEFAULT_DREAM_THRESHOLD = 10
 DEFAULT_DECAY_LAMBDA = 3e-7  # per second → ~30-day half-life
 DEFAULT_ARCHIVE_THRESHOLD = 0.1
-DEFAULT_CLUSTER_THRESHOLD = 0.82
+# Lowered from 0.82 to 0.65 per issue #42 part 3. The original 0.82
+# was a safe cosine-similarity default for large corpora, but on the
+# small corpora users hit first (demo scripts, unit tests, early
+# prototyping) it was too strict to trigger any merges — producing a
+# flat tag set with no hierarchy. Empirically 0.55 produces a clean
+# multi-level hierarchy on a 16-memory corpus and the bench agents
+# already override to 0.55 for the same reason. 0.65 is the
+# compromise: loose enough to form hierarchy on small corpora,
+# tight enough that accidental merges between unrelated concepts
+# stay rare. Override via the NeuroMemory constructor for tuning.
+DEFAULT_CLUSTER_THRESHOLD = 0.65
 
 # Centroids written during ``_run_clustering`` get a placeholder label
 # of the form ``cluster_<12-hex-chars>``. The lazy naming flow
@@ -406,8 +416,23 @@ class NeuroMemory:
         pair_list: list[list[str]] = [
             [c["label"] for c in children_by_centroid[cid][:20]] for cid in ordered_centroid_ids
         ]
+        # Issue #42 part 1: gather labels of centroids already in the
+        # graph that AREN'T one of the currently-being-named placeholder
+        # ones. The LLM gets this as an "avoid these" hint so sibling
+        # clusters across different dream cycles don't end up with the
+        # same name. Skipping placeholder-labelled nodes avoids telling
+        # the LLM to avoid ``cluster_<hex>`` strings, which it would
+        # never pick anyway.
+        placeholder_ids = set(ordered_centroid_ids)
+        avoid_names = {
+            n.get("label", "")
+            for n in self.storage.get_all_nodes()
+            if n.get("is_centroid")
+            and n.get("id") not in placeholder_ids
+            and not n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
+        }
         try:
-            names = self.llm.generate_category_names_batch(pair_list)
+            names = self.llm.generate_category_names_batch(pair_list, avoid_names=avoid_names)
             if len(names) != len(pair_list):
                 raise ValueError(
                     f"generate_category_names_batch returned {len(names)} "
