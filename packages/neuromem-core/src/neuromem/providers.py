@@ -28,6 +28,36 @@ from numpy.typing import NDArray
 # tools that introspect the ABC signatures.
 
 
+# Cap on how many existing-centroid labels to list in the naming
+# prompts' "avoid these" section. More than ~30 and the prompt starts
+# to dilute the instruction; the most recently added centroids are the
+# most likely clash candidates anyway.
+_AVOID_NAMES_MAX = 30
+
+
+def render_avoid_section(avoid_names: set[str] | None) -> str:
+    """Build the optional "don't reuse these labels" snippet for the
+    category-naming prompts (issue #42 part 1).
+
+    Returns an empty string when ``avoid_names`` is falsy so the
+    prompt templates still format cleanly — they reserve an
+    ``{avoid_section}`` placeholder at the natural spot and the empty
+    default produces a prompt identical to the pre-#42 behaviour.
+
+    Caps the label list at ``_AVOID_NAMES_MAX`` to keep prompt size
+    bounded. Labels are sorted for determinism, so the same avoid set
+    always produces the same prompt (helps test fixtures and caches).
+    """
+    if not avoid_names:
+        return ""
+    labels = sorted(n for n in avoid_names if n)
+    if not labels:
+        return ""
+    if len(labels) > _AVOID_NAMES_MAX:
+        labels = labels[:_AVOID_NAMES_MAX]
+    return "Avoid reusing these already-taken labels: " + ", ".join(labels) + "."
+
+
 class EmbeddingProvider(ABC):
     """Convert batches of strings into dense float vectors.
 
@@ -201,16 +231,35 @@ class LLMProvider(ABC):
         return [self.extract_named_entities(s) for s in summaries]
 
     @abstractmethod
-    def generate_category_name(self, concepts: list[str]) -> str:
+    def generate_category_name(
+        self,
+        concepts: list[str],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> str:
         """Name the category that encompasses a cluster of concepts.
 
         MUST return a single one-word string (no spaces). If the LLM
         returns a multi-word phrase, ``NeuroMemory`` will take the
         first word and log a warning — but implementations SHOULD
         honour the contract on their own.
+
+        ``avoid_names`` (issue #42): optional set of labels the caller
+        wants to stay away from — typically the labels of centroids
+        already present in the graph, so the LLM doesn't pick the
+        same word for a second independent cluster. Implementations
+        SHOULD pass this hint into their prompt but MAY ignore it
+        (it's a soft preference, not a hard constraint). The caller
+        does NOT re-roll if the returned name is in ``avoid_names``;
+        the parameter is purely advisory.
         """
 
-    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+    def generate_category_names_batch(
+        self,
+        pairs: list[list[str]],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> list[str]:
         """Name many independent clusters in one operation.
 
         Used by the lazy centroid naming flow (ADR-002): at render
@@ -236,15 +285,22 @@ class LLMProvider(ABC):
           numpy nearest-neighbour, by design).
         - Empty input → empty output, no LLM call.
 
+        ``avoid_names`` (issue #42): same semantics as on
+        :meth:`generate_category_name` — an advisory set of labels
+        the caller would prefer the LLM stay away from. Threaded into
+        the batched prompt so the LLM sees the existing graph's
+        centroid labels and doesn't duplicate them within the batch
+        OR vs the existing graph.
+
         **Default implementation**: loops over :meth:`generate_category_name`,
-        once per group. Same correctness fallback pattern as
-        :meth:`extract_tags_batch`. Concrete providers SHOULD override
-        with a single batched LLM call (one prompt asking for N
-        one-word names) — the speedup matters for the dream-cycle
-        render path where dozens of names may need resolving in one
-        query.
+        once per group, forwarding ``avoid_names``. Same correctness
+        fallback pattern as :meth:`extract_tags_batch`. Concrete
+        providers SHOULD override with a single batched LLM call
+        (one prompt asking for N one-word names) — the speedup
+        matters for the dream-cycle render path where dozens of
+        names may need resolving in one query.
         """
-        return [self.generate_category_name(group) for group in pairs]
+        return [self.generate_category_name(group, avoid_names=avoid_names) for group in pairs]
 
     def generate_junction_summary(self, children_summaries: list[str]) -> str:
         """Return a paragraph summary of a centroid's subtree (ADR-003).

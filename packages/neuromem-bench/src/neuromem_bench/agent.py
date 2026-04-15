@@ -421,9 +421,9 @@ class NeuromemAgent(BaseAgent):
         of each instance's ingestion. This batches all the tag
         extraction + clustering into one pass, which is faster
         and produces a cleaner graph than per-turn dreams.
-      - ``cluster_threshold=0.55`` (lower than the 0.82 default)
-        to encourage meaningful hierarchy formation. See issue #42
-        for why the default is too strict for small corpora.
+      - ``cluster_threshold=0.55`` (slightly looser than the 0.65
+        default post-#42) to encourage aggressive hierarchy formation
+        on the bench's typical ~500-turn single-instance corpora.
     """
 
     def __init__(

@@ -48,7 +48,17 @@ logger = logging.getLogger("neuromem.system")
 DEFAULT_DREAM_THRESHOLD = 10
 DEFAULT_DECAY_LAMBDA = 3e-7  # per second → ~30-day half-life
 DEFAULT_ARCHIVE_THRESHOLD = 0.1
-DEFAULT_CLUSTER_THRESHOLD = 0.82
+# Lowered from 0.82 to 0.65 per issue #42 part 3. The original 0.82
+# was a safe cosine-similarity default for large corpora, but on the
+# small corpora users hit first (demo scripts, unit tests, early
+# prototyping) it was too strict to trigger any merges — producing a
+# flat tag set with no hierarchy. Empirically 0.55 produces a clean
+# multi-level hierarchy on a 16-memory corpus and the bench agents
+# already override to 0.55 for the same reason. 0.65 is the
+# compromise: loose enough to form hierarchy on small corpora,
+# tight enough that accidental merges between unrelated concepts
+# stay rare. Override via the NeuroMemory constructor for tuning.
+DEFAULT_CLUSTER_THRESHOLD = 0.65
 
 # Centroids written during ``_run_clustering`` get a placeholder label
 # of the form ``cluster_<12-hex-chars>``. The lazy naming flow
@@ -266,6 +276,7 @@ class NeuroMemory:
         nodes: list[dict],
         *,
         expected_placeholders: bool = False,
+        all_nodes: list[dict] | None = None,
     ) -> None:
         """Lazily name centroids that still have placeholder labels.
 
@@ -300,7 +311,9 @@ class NeuroMemory:
         returns a tree.
         """
         try:
-            self._do_resolve_centroid_names(nodes, expected_placeholders=expected_placeholders)
+            self._do_resolve_centroid_names(
+                nodes, expected_placeholders=expected_placeholders, all_nodes=all_nodes
+            )
         except Exception:
             logger.exception(
                 "resolve_centroid_names: unexpected error, leaving centroid "
@@ -313,6 +326,7 @@ class NeuroMemory:
         nodes: list[dict],
         *,
         expected_placeholders: bool = False,
+        all_nodes: list[dict] | None = None,
     ) -> None:
         """Inner implementation of resolve_centroid_names. May raise;
         the public wrapper catches and logs.
@@ -354,7 +368,9 @@ class NeuroMemory:
         # Try batched LLM naming, then numpy fallback for anything left
         # unnamed. Each helper returns a {centroid_id: new_label} dict.
         ordered_centroid_ids = list(children_by_centroid.keys())
-        updates = self._try_batched_naming(ordered_centroid_ids, children_by_centroid)
+        updates = self._try_batched_naming(
+            ordered_centroid_ids, children_by_centroid, all_nodes=all_nodes
+        )
         for centroid in placeholders:
             cid = centroid["id"]
             if cid in updates or cid not in children_by_centroid:
@@ -389,12 +405,20 @@ class NeuroMemory:
         self,
         ordered_centroid_ids: list[str],
         children_by_centroid: dict[str, list[dict]],
+        *,
+        all_nodes: list[dict] | None = None,
     ) -> dict[str, str]:
         """Try the batched LLM naming. Return a partial
         ``{centroid_id: name}`` dict on success (skipping centroids
         whose returned name was empty). Return an empty dict on any
         failure — the caller falls back to numpy nearest-neighbour for
         every still-unnamed centroid.
+
+        ``all_nodes`` (issue #42): if the caller has already fetched
+        the full node list, pass it here to avoid a second
+        ``storage.get_all_nodes()`` scan during avoid-name computation.
+        Used by the dream-cycle eager-naming path. ``None`` (the
+        default) means fetch fresh — matches the lazy render path.
         """
         # Pass ALL child labels per centroid. The [:2] cap that used to
         # live here was an ADR-001 binary-merge artifact and became
@@ -406,8 +430,30 @@ class NeuroMemory:
         pair_list: list[list[str]] = [
             [c["label"] for c in children_by_centroid[cid][:20]] for cid in ordered_centroid_ids
         ]
+        # Issue #42 part 1: gather labels of centroids already in the
+        # graph that AREN'T one of the currently-being-named placeholder
+        # ones. The LLM gets this as an "avoid these" hint so sibling
+        # clusters across different dream cycles don't end up with the
+        # same name. Skipping placeholder-labelled nodes avoids telling
+        # the LLM to avoid ``cluster_<hex>`` strings, which it would
+        # never pick anyway. Empty labels (rare, but possible in a
+        # malformed row) are also skipped so no "" reaches the provider.
+        placeholder_ids = set(ordered_centroid_ids)
+        # Reuse ``all_nodes`` if the caller already fetched it (dream
+        # cycle hot path — the _run_all_centroid_naming step passes it
+        # through to avoid a double get_all_nodes() scan on every
+        # cycle). Fall back to a fresh fetch for the lazy render path
+        # where no node list is in scope.
+        nodes_for_avoid = all_nodes if all_nodes is not None else self.storage.get_all_nodes()
+        avoid_names = {
+            label
+            for n in nodes_for_avoid
+            if n.get("is_centroid") and n.get("id") not in placeholder_ids
+            for label in [n.get("label", "")]
+            if label and not label.startswith(_PLACEHOLDER_LABEL_PREFIX)
+        }
         try:
-            names = self.llm.generate_category_names_batch(pair_list)
+            names = self.llm.generate_category_names_batch(pair_list, avoid_names=avoid_names)
             if len(names) != len(pair_list):
                 raise ValueError(
                     f"generate_category_names_batch returned {len(names)} "
@@ -1136,7 +1182,12 @@ class NeuroMemory:
             # invariant-broken WARNING, which is the dream-cycle's
             # normal behaviour (a non-empty placeholder set is the
             # whole point of this step).
-            self.resolve_centroid_names(placeholders, expected_placeholders=True)
+            # all_nodes=all_nodes reuses the node list we just fetched
+            # so _try_batched_naming doesn't do a second get_all_nodes()
+            # scan just to compute avoid_names (issue #42 wiring).
+            self.resolve_centroid_names(
+                placeholders, expected_placeholders=True, all_nodes=all_nodes
+            )
         except Exception:
             logger.exception(
                 "_run_all_centroid_naming: eager full-sweep failed; "

@@ -243,7 +243,9 @@ class TestJunctionSummaryDefaults:
             def extract_tags(self, summary: str) -> list[str]:
                 return []
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 return "tag"
 
         return _Minimal()

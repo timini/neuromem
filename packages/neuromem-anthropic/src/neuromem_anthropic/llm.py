@@ -21,7 +21,7 @@ import re
 from typing import Any
 
 from anthropic import Anthropic
-from neuromem.providers import LLMProvider
+from neuromem.providers import LLMProvider, render_avoid_section
 
 from neuromem_anthropic.prompts import render_prompt
 
@@ -286,22 +286,36 @@ class AnthropicLLMProvider(LLMProvider):
     # Category naming (ADR-002 + ADR-003 F3)
     # ------------------------------------------------------------------
 
-    def generate_category_name(self, concepts: list[str]) -> str:
+    def generate_category_name(
+        self,
+        concepts: list[str],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> str:
         if not concepts:
             raise ValueError("concepts must be non-empty")
-        prompt = render_prompt("generate_category_name", concepts=", ".join(concepts))
+        prompt = render_prompt(
+            "generate_category_name",
+            concepts=", ".join(concepts),
+            avoid_section=render_avoid_section(avoid_names),
+        )
         cleaned = self._clean_name(self._chat(prompt, max_tokens=_MAX_TOKENS_CATEGORY_NAME))
         if not cleaned or self._is_blocked(cleaned):
             return self._first_concept_fallback(concepts)
         return cleaned
 
-    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+    def generate_category_names_batch(
+        self,
+        pairs: list[list[str]],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> list[str]:
         if not pairs:
             return []
         if len(pairs) == 1:
-            return [self.generate_category_name(pairs[0])]
+            return [self.generate_category_name(pairs[0], avoid_names=avoid_names)]
         if len(pairs) <= self._BATCH_CHUNK_SIZE:
-            return self._generate_category_names_one_chunk(pairs)
+            return self._generate_category_names_one_chunk(pairs, avoid_names=avoid_names)
 
         import concurrent.futures  # noqa: PLC0415
 
@@ -311,34 +325,51 @@ class AnthropicLLMProvider(LLMProvider):
         ]
         workers = min(self._BATCH_WORKERS, len(chunks))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            chunk_results = list(pool.map(self._generate_category_names_one_chunk, chunks))
+            chunk_results = list(
+                pool.map(
+                    lambda chunk: self._generate_category_names_one_chunk(
+                        chunk, avoid_names=avoid_names
+                    ),
+                    chunks,
+                )
+            )
         out: list[str] = []
         for r in chunk_results:
             out.extend(r)
         return out
 
-    def _generate_category_names_one_chunk(self, pairs: list[list[str]]) -> list[str]:
+    def _generate_category_names_one_chunk(
+        self,
+        pairs: list[list[str]],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> list[str]:
         if not pairs:
             return []
         if len(pairs) == 1:
-            return [self.generate_category_name(pairs[0])]
+            return [self.generate_category_name(pairs[0], avoid_names=avoid_names)]
         numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
-        prompt = render_prompt("generate_category_names_batch", n=len(pairs), numbered=numbered)
+        prompt = render_prompt(
+            "generate_category_names_batch",
+            n=len(pairs),
+            numbered=numbered,
+            avoid_section=render_avoid_section(avoid_names),
+        )
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_BATCH_CATEGORY_NAMES)
         try:
             parsed = json.loads(_strip_markdown_fence(raw))
         except json.JSONDecodeError:
-            return [self.generate_category_name(p) for p in pairs]
+            return [self.generate_category_name(p, avoid_names=avoid_names) for p in pairs]
         if not isinstance(parsed, list) or len(parsed) != len(pairs):
-            return [self.generate_category_name(p) for p in pairs]
+            return [self.generate_category_name(p, avoid_names=avoid_names) for p in pairs]
         out: list[str] = []
         for i, name in enumerate(parsed):
             if not isinstance(name, str):
-                out.append(self.generate_category_name(pairs[i]))
+                out.append(self.generate_category_name(pairs[i], avoid_names=avoid_names))
                 continue
             cleaned = self._clean_name(name)
             if not cleaned or self._is_blocked(cleaned):
-                out.append(self.generate_category_name(pairs[i]))
+                out.append(self.generate_category_name(pairs[i], avoid_names=avoid_names))
                 continue
             out.append(cleaned)
         return out

@@ -240,7 +240,9 @@ class _LLMCallCounter(MockLLMProvider):
         self.junction_single_calls += 1
         return "single-summary"
 
-    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+    def generate_category_names_batch(
+        self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+    ) -> list[str]:
         self.name_batch_calls += 1
         return [f"name{i}" for i in range(len(pairs))]
 

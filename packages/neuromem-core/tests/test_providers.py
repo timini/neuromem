@@ -76,7 +76,9 @@ class TestLLMProvider:
 
             # extract_tags missing
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 return "X"
 
         with pytest.raises(TypeError, match="abstract"):
@@ -90,7 +92,9 @@ class TestLLMProvider:
             def extract_tags(self, summary: str) -> list[str]:
                 return summary.split()[:3]
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 return "Category"
 
         instance = Stub()
@@ -126,7 +130,9 @@ class TestExtractTagsBatchDefault:
             self.calls.append(summary)
             return summary.split()[:2]
 
-        def generate_category_name(self, concepts: list[str]) -> str:
+        def generate_category_name(
+            self, concepts: list[str], *, avoid_names: set[str] | None = None
+        ) -> str:
             return "x"
 
     def test_empty_batch_returns_empty_list(self) -> None:
@@ -181,7 +187,9 @@ class TestExtractTagsBatchDefault:
                 self.batch_call_count += 1
                 return [["batched", f"tag{i}"] for i in range(len(summaries))]
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 return "x"
 
         stub = BatchedStub()
@@ -230,7 +238,9 @@ class TestExtractNamedEntitiesDefaults:
         def extract_tags(self, summary: str) -> list[str]:
             return ["tag"]
 
-        def generate_category_name(self, concepts: list[str]) -> str:
+        def generate_category_name(
+            self, concepts: list[str], *, avoid_names: set[str] | None = None
+        ) -> str:
             return "cat"
 
     def test_minimal_provider_instantiates_without_implementing_ner(self) -> None:
@@ -328,7 +338,9 @@ class TestGenerateCategoryNamesBatchDefault:
         def extract_tags(self, summary: str) -> list[str]:
             return summary.split()[:2]
 
-        def generate_category_name(self, concepts: list[str]) -> str:
+        def generate_category_name(
+            self, concepts: list[str], *, avoid_names: set[str] | None = None
+        ) -> str:
             self.calls.append(list(concepts))
             # Return the first concept's first letter as a deterministic
             # one-word "name" — enough to assert ordering is preserved.
@@ -379,11 +391,15 @@ class TestGenerateCategoryNamesBatchDefault:
             def extract_tags(self, summary: str) -> list[str]:
                 return ["x"]
 
-            def generate_category_name(self, concepts: list[str]) -> str:
+            def generate_category_name(
+                self, concepts: list[str], *, avoid_names: set[str] | None = None
+            ) -> str:
                 self.per_call_count += 1
                 return "from-per-call"
 
-            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+            def generate_category_names_batch(
+                self, pairs: list[list[str]], *, avoid_names: set[str] | None = None
+            ) -> list[str]:
                 self.batch_call_count += 1
                 return [f"batched{i}" for i in range(len(pairs))]
 

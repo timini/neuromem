@@ -25,7 +25,7 @@ import time as _time
 
 from google import genai
 from google.genai.errors import ServerError
-from neuromem.providers import LLMProvider
+from neuromem.providers import LLMProvider, render_avoid_section
 
 from neuromem_gemini.prompts import render_prompt
 
@@ -560,7 +560,12 @@ class GeminiLLMProvider(LLMProvider):
                 return self._clean_name(concept)
         return "concept"
 
-    def generate_category_name(self, concepts: list[str]) -> str:
+    def generate_category_name(
+        self,
+        concepts: list[str],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> str:
         """Return a single one-word category name for a cluster of concepts.
 
         Asks Gemini for exactly one word, explicitly forbidding
@@ -568,10 +573,20 @@ class GeminiLLMProvider(LLMProvider):
         Defensively post-processes via :meth:`_reject_or_clean` so a
         blocklist hit falls back to a real child label instead of
         returning a useless generic centroid name.
+
+        ``avoid_names`` (issue #42): soft preference — labels of
+        centroids already in the graph. The prompt includes a "don't
+        reuse these" line so the LLM picks a distinct word. The
+        result is NOT re-rolled if it lands in the avoid set; the
+        hint is advisory only.
         """
         if not concepts:
             raise ValueError("concepts must be non-empty")
-        prompt = render_prompt("generate_category_name", concepts=", ".join(concepts))
+        prompt = render_prompt(
+            "generate_category_name",
+            concepts=", ".join(concepts),
+            avoid_section=render_avoid_section(avoid_names),
+        )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         cleaned = self._clean_name(resp.text or "")
         # Blocked term or empty response → fallback to first concept
@@ -581,7 +596,12 @@ class GeminiLLMProvider(LLMProvider):
             return self._first_concept_fallback(concepts)
         return cleaned
 
-    def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+    def generate_category_names_batch(
+        self,
+        pairs: list[list[str]],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> list[str]:
         """Name many independent clusters in one Gemini call (ADR-002).
 
         Override of the ABC's per-pair loop. Sends one prompt
@@ -603,10 +623,10 @@ class GeminiLLMProvider(LLMProvider):
         if not pairs:
             return []
         if len(pairs) == 1:
-            return [self.generate_category_name(pairs[0])]
+            return [self.generate_category_name(pairs[0], avoid_names=avoid_names)]
 
         if len(pairs) <= self._BATCH_CHUNK_SIZE:
-            return self._generate_category_names_one_chunk(pairs)
+            return self._generate_category_names_one_chunk(pairs, avoid_names=avoid_names)
 
         import concurrent.futures  # noqa: PLC0415
 
@@ -616,13 +636,25 @@ class GeminiLLMProvider(LLMProvider):
         ]
         workers = min(self._BATCH_WORKERS, len(chunks))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            chunk_results = list(pool.map(self._generate_category_names_one_chunk, chunks))
+            chunk_results = list(
+                pool.map(
+                    lambda chunk: self._generate_category_names_one_chunk(
+                        chunk, avoid_names=avoid_names
+                    ),
+                    chunks,
+                )
+            )
         result: list[str] = []
         for chunk_result in chunk_results:
             result.extend(chunk_result)
         return result
 
-    def _generate_category_names_one_chunk(self, pairs: list[list[str]]) -> list[str]:
+    def _generate_category_names_one_chunk(
+        self,
+        pairs: list[list[str]],
+        *,
+        avoid_names: set[str] | None = None,
+    ) -> list[str]:
         """Internal: one ≤``_BATCH_CHUNK_SIZE`` slice of pairs.
 
         Per-pair fallback on parse failure or length mismatch, same
@@ -632,32 +664,37 @@ class GeminiLLMProvider(LLMProvider):
         if not pairs:
             return []
         if len(pairs) == 1:
-            return [self.generate_category_name(pairs[0])]
+            return [self.generate_category_name(pairs[0], avoid_names=avoid_names)]
 
         numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
-        prompt = render_prompt("generate_category_names_batch", n=len(pairs), numbered=numbered)
+        prompt = render_prompt(
+            "generate_category_names_batch",
+            n=len(pairs),
+            numbered=numbered,
+            avoid_section=render_avoid_section(avoid_names),
+        )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
 
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            return [self.generate_category_name(p) for p in pairs]
+            return [self.generate_category_name(p, avoid_names=avoid_names) for p in pairs]
 
         if not isinstance(parsed, list) or len(parsed) != len(pairs):
-            return [self.generate_category_name(p) for p in pairs]
+            return [self.generate_category_name(p, avoid_names=avoid_names) for p in pairs]
 
         result: list[str] = []
         for i, name in enumerate(parsed):
             if not isinstance(name, str):
-                result.append(self.generate_category_name(pairs[i]))
+                result.append(self.generate_category_name(pairs[i], avoid_names=avoid_names))
                 continue
             cleaned = self._clean_name(name)
             if not cleaned or self._is_blocked(cleaned):
                 # Re-roll via the single-call path. The stronger prompt
                 # there MAY get a better response; if not, it still
                 # terminates (falls back to first concept).
-                result.append(self.generate_category_name(pairs[i]))
+                result.append(self.generate_category_name(pairs[i], avoid_names=avoid_names))
                 continue
             result.append(cleaned)
         return result

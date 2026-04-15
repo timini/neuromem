@@ -3,6 +3,8 @@ For each of the {n} numbered groups of concepts below, reply with EXACTLY ONE En
 ## Rules
 - ONE word per group. No punctuation inside the names.
 - Do NOT use generic placeholder nouns like 'thing', 'aspect', 'factor', 'element', 'item', 'entity', 'topic', 'concept', 'stuff', 'misc', 'other', 'various'. A useful name describes what the concepts HAVE IN COMMON, not that they are 'things'. Prefer the shared domain (e.g. 'finance', 'shopping', 'education').
+- Each name should be DIFFERENT from every other name in the batch — two groups that are really about the same topic still need distinct labels (e.g. 'cooking' and 'baking', not 'cooking' twice).
+- {avoid_section}
 
 ## Output
 Return ONLY a JSON array of exactly {n} string elements, in order. No markdown fences, no explanation.

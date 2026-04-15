@@ -88,7 +88,9 @@ def _build_fixture_mock() -> tuple:
         def extract_tags(self, summary: str) -> list[str]:
             return summary.split()[:3]
 
-        def generate_category_name(self, concepts: list[str]) -> str:
+        def generate_category_name(
+            self, concepts: list[str], *, avoid_names: set[str] | None = None
+        ) -> str:
             return concepts[0] if concepts else "concept"
 
     # dream_threshold=9999 prevents the auto-dream background thread

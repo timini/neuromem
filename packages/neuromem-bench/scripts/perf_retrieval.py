@@ -116,7 +116,9 @@ def _build_fixture_mock():  # type: ignore[no-untyped-def]
         def extract_tags(self, summary: str) -> list[str]:
             return summary.split()[:3]
 
-        def generate_category_name(self, concepts: list[str]) -> str:
+        def generate_category_name(
+            self, concepts: list[str], *, avoid_names: set[str] | None = None
+        ) -> str:
             return concepts[0] if concepts else "concept"
 
     inner_llm = _MockLLM()
