@@ -261,7 +261,12 @@ class NeuroMemory:
         thread.start()
         return thread
 
-    def resolve_centroid_names(self, nodes: list[dict]) -> None:
+    def resolve_centroid_names(
+        self,
+        nodes: list[dict],
+        *,
+        expected_placeholders: bool = False,
+    ) -> None:
         """Lazily name centroids that still have placeholder labels.
 
         Per ADR-002 (lazy centroid naming): the dream-cycle clustering
@@ -295,7 +300,7 @@ class NeuroMemory:
         returns a tree.
         """
         try:
-            self._do_resolve_centroid_names(nodes)
+            self._do_resolve_centroid_names(nodes, expected_placeholders=expected_placeholders)
         except Exception:
             logger.exception(
                 "resolve_centroid_names: unexpected error, leaving centroid "
@@ -303,17 +308,27 @@ class NeuroMemory:
                 "ugly labels."
             )
 
-    def _do_resolve_centroid_names(self, nodes: list[dict]) -> None:
+    def _do_resolve_centroid_names(
+        self,
+        nodes: list[dict],
+        *,
+        expected_placeholders: bool = False,
+    ) -> None:
         """Inner implementation of resolve_centroid_names. May raise;
         the public wrapper catches and logs.
 
         ADR-004 fast-path: step 8 of the dream cycle names every
         centroid eagerly, so under normal operation every node passed
         here already has a non-placeholder label and this method has
-        nothing to do. If placeholders ARE found we log a WARNING —
-        it means the background worker didn't finish before this
-        hot-path read (invariant broken), and we proceed with the
-        lazy path as a safety net.
+        nothing to do. If placeholders ARE found AND ``expected_placeholders``
+        is False we log a WARNING — it means the background worker
+        didn't finish before this hot-path read (invariant broken),
+        and we proceed with the lazy path as a safety net.
+
+        ``expected_placeholders`` is set to True by the dream-cycle
+        eager-naming caller, because in that path a non-empty
+        placeholder set is the whole point — there's no invariant
+        violation to warn about.
         """
         placeholders = [
             n for n in nodes if n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
@@ -321,24 +336,18 @@ class NeuroMemory:
         if not placeholders:
             # Common case post-ADR-004: full-baked storage. Nothing to do.
             return
-        # ADR-004 invariant broken: step 8 of the dream cycle should have
-        # named every placeholder eagerly. Log and fall through to the
-        # lazy resolve path as a safety net.
-        logger.warning(
-            "resolve_centroid_names: %d placeholder centroid(s) on hot path "
-            "— ADR-004 eager naming didn't run. Falling through to lazy "
-            "resolve as safety net.",
-            len(placeholders),
-        )
+        if not expected_placeholders:
+            # ADR-004 invariant broken: step 8 of the dream cycle should have
+            # named every placeholder eagerly. Log and fall through to the
+            # lazy resolve path as a safety net.
+            logger.warning(
+                "resolve_centroid_names: %d placeholder centroid(s) on hot path "
+                "— ADR-004 eager naming didn't run. Falling through to lazy "
+                "resolve as safety net.",
+                len(placeholders),
+            )
 
-        # Gather each placeholder centroid's children once. Store the
-        # full child node records (id, label, embedding) so the numpy
-        # fallback path can use embeddings without a second fetch.
-        children_by_centroid: dict[str, list[dict]] = {}
-        for centroid in placeholders:
-            child_records = self._fetch_child_records(centroid["id"])
-            if child_records:
-                children_by_centroid[centroid["id"]] = child_records
+        children_by_centroid = self._gather_children_for_naming(placeholders)
         if not children_by_centroid:
             return
 
@@ -361,6 +370,20 @@ class NeuroMemory:
             new_label = updates.get(node["id"])
             if new_label is not None:
                 node["label"] = new_label
+
+    def _gather_children_for_naming(
+        self,
+        placeholders: list[dict],
+    ) -> dict[str, list[dict]]:
+        """Fetch the full child-node records for every placeholder
+        centroid. Extracted from _do_resolve_centroid_names to keep
+        that method under cyclomatic complexity limits."""
+        children_by_centroid: dict[str, list[dict]] = {}
+        for centroid in placeholders:
+            child_records = self._fetch_child_records(centroid["id"])
+            if child_records:
+                children_by_centroid[centroid["id"]] = child_records
+        return children_by_centroid
 
     def _try_batched_naming(
         self,
@@ -425,7 +448,12 @@ class NeuroMemory:
     # resolve_junction_summaries — ADR-003 D2 (lazy trunk-or-deep fill)
     # ------------------------------------------------------------------
 
-    def resolve_junction_summaries(self, nodes: list[dict]) -> None:
+    def resolve_junction_summaries(
+        self,
+        nodes: list[dict],
+        *,
+        expected_unsummarised: bool = False,
+    ) -> None:
         """Lazily populate per-centroid paragraph summaries.
 
         Mirror of :meth:`resolve_centroid_names` for the paragraph
@@ -463,7 +491,7 @@ class NeuroMemory:
         resolve_centroid_names.
         """
         try:
-            self._do_resolve_junction_summaries(nodes)
+            self._do_resolve_junction_summaries(nodes, expected_unsummarised=expected_unsummarised)
         except Exception:
             logger.exception(
                 "resolve_junction_summaries: unexpected error, leaving "
@@ -471,7 +499,12 @@ class NeuroMemory:
                 "succeed with label-only centroids."
             )
 
-    def _do_resolve_junction_summaries(self, nodes: list[dict]) -> None:
+    def _do_resolve_junction_summaries(
+        self,
+        nodes: list[dict],
+        *,
+        expected_unsummarised: bool = False,
+    ) -> None:
         """Inner implementation. May raise — the public wrapper catches.
 
         Resolves summaries floor-up: the centroids closest to leaves
@@ -483,9 +516,12 @@ class NeuroMemory:
 
         ADR-004 fast-path: dream-cycle step 9 summarises every
         centroid eagerly, so post-cycle there are no dirty nodes
-        here. If there ARE we log a WARNING — the hot-path invariant
-        is broken — and fall through to the lazy resolve as a safety
-        net.
+        here. If there ARE and ``expected_unsummarised`` is False we
+        log a WARNING — the hot-path invariant is broken — and fall
+        through to the lazy resolve as a safety net.
+
+        ``expected_unsummarised`` is True when called from the eager
+        dream-cycle sweep (where a non-empty set is the whole point).
         """
         needs_summary = [
             n for n in nodes if n.get("is_centroid") and not n.get("paragraph_summary")
@@ -493,12 +529,13 @@ class NeuroMemory:
         if not needs_summary:
             # Common case post-ADR-004: full-baked storage.
             return
-        logger.warning(
-            "resolve_junction_summaries: %d unsummarised centroid(s) on hot "
-            "path — ADR-004 eager summarisation didn't run. Falling through "
-            "to lazy resolve as safety net.",
-            len(needs_summary),
-        )
+        if not expected_unsummarised:
+            logger.warning(
+                "resolve_junction_summaries: %d unsummarised centroid(s) on hot "
+                "path — ADR-004 eager summarisation didn't run. Falling through "
+                "to lazy resolve as safety net.",
+                len(needs_summary),
+            )
 
         levels = self._group_by_level(needs_summary, nodes)
         for level_ids in levels:
@@ -918,17 +955,25 @@ class NeuroMemory:
         """
         if not inbox_memories:
             return
-        raw_contents = [m["raw_content"] for m in inbox_memories]
+        # Skip memories that already have a summary. Defends against
+        # the migration case where a DB was written by pre-ADR-004 code
+        # (which summarised synchronously on enqueue) and then read by
+        # ADR-004 code: those rows would otherwise be re-summarised
+        # here unnecessarily, wasting LLM calls + clobbering good
+        # summaries. Also protects against any future path that calls
+        # _backfill_summaries more than once on the same input.
+        pending = [m for m in inbox_memories if not (m.get("summary") or "").strip()]
+        if not pending:
+            return
+        raw_contents = [m["raw_content"] for m in pending]
         fresh = self.llm.generate_summary_batch(raw_contents)
-        if len(fresh) != len(inbox_memories):
+        if len(fresh) != len(pending):
             raise ValueError(
                 f"generate_summary_batch returned {len(fresh)} "
-                f"summaries for {len(inbox_memories)} memories"
+                f"summaries for {len(pending)} memories"
             )
-        self.storage.set_summaries(
-            {mem["id"]: s for mem, s in zip(inbox_memories, fresh, strict=True)}
-        )
-        for mem, s in zip(inbox_memories, fresh, strict=True):
+        self.storage.set_summaries({mem["id"]: s for mem, s in zip(pending, fresh, strict=True)})
+        for mem, s in zip(pending, fresh, strict=True):
             mem["summary"] = s
 
     def _ensure_tag_nodes(
@@ -1087,7 +1132,11 @@ class NeuroMemory:
             ]
             if not placeholders:
                 return
-            self.resolve_centroid_names(placeholders)
+            # expected_placeholders=True suppresses the hot-path
+            # invariant-broken WARNING, which is the dream-cycle's
+            # normal behaviour (a non-empty placeholder set is the
+            # whole point of this step).
+            self.resolve_centroid_names(placeholders, expected_placeholders=True)
         except Exception:
             logger.exception(
                 "_run_all_centroid_naming: eager full-sweep failed; "
@@ -1113,7 +1162,10 @@ class NeuroMemory:
             ]
             if not dirty:
                 return
-            self.resolve_junction_summaries(dirty)
+            # expected_unsummarised=True suppresses the hot-path
+            # invariant-broken WARNING — by design, the dream cycle
+            # passes every unsummarised centroid here.
+            self.resolve_junction_summaries(dirty, expected_unsummarised=True)
         except Exception:
             logger.exception(
                 "_run_all_junction_summarisation: eager full-sweep failed; "
