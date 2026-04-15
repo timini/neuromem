@@ -118,6 +118,7 @@ class StorageAdapter(ABC):
         rely on silent skip.
         """
 
+    @abstractmethod
     def set_summaries(self, updates: dict[str, str]) -> None:
         """Batch-write summary text onto existing memory rows (ADR-004).
 
@@ -134,12 +135,15 @@ class StorageAdapter(ABC):
           the authoritative summariser; previous values were either
           empty placeholders or stale from a rolled-back cycle).
 
-        NON-abstract with a no-op default so test stubs that don't
-        care about summary persistence aren't forced to implement it.
-        Persistent adapters (SQLite) MUST override.
+        ABSTRACT because ADR-004's non-blocking enqueue path writes
+        memories with empty summaries that MUST be backfilled in the
+        dream cycle. An adapter that silently dropped summary writes
+        here would leave every post-ADR-004 memory with an empty
+        ``summary`` column, which downstream tag extraction + NER
+        operate on — a silent data-loss failure mode the reviewer
+        caught on PR #59. Making this abstract forces every adapter
+        (test stubs included) to acknowledge the contract.
         """
-        _ = updates
-        return
 
     def set_named_entities(self, updates: dict[str, list[str]]) -> None:
         """Batch-write named-entity lists onto existing memory rows.

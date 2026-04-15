@@ -79,7 +79,14 @@ _MAX_TOKENS_JUNCTION_SUMMARY = 600
 _MAX_TOKENS_BATCH_SUMMARY = 4096
 _MAX_TOKENS_BATCH_TAGS = 2048
 _MAX_TOKENS_BATCH_NER = 2048
-_MAX_TOKENS_BATCH_CATEGORY_NAMES = 600
+# Sized for _BATCH_CHUNK_SIZE=30. At ~20 tokens per returned one-word
+# name plus JSON-array scaffolding (brackets, quotes, commas), the
+# minimum output is ~150 tokens; Claude occasionally adds leading
+# whitespace or commentary before the JSON, so 1500 gives solid
+# headroom. The original 600 had almost none — a single truncation
+# collapsed to 30 serial single-item fallback calls, eating the
+# batch win entirely (PR #60 review).
+_MAX_TOKENS_BATCH_CATEGORY_NAMES = 1500
 _MAX_TOKENS_BATCH_JUNCTION = 6144
 
 

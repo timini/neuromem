@@ -33,6 +33,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("neuromem.tools")
 
+# Upper bound on expand_node depth. 5 hops is deep enough for the
+# deepest ontology trees we observe (typical centroid depths are 2-3),
+# but shallow enough that a mis-passed ``depth=50`` can't trigger an
+# O(n^depth) subgraph scan in the storage adapter. Clamping rather
+# than raising so an agent calling the tool with a larger value still
+# gets a useful response rather than a hard error.
+_EXPAND_NODE_MAX_DEPTH = 5
+
 
 def search_memory(
     query: str,
@@ -113,7 +121,13 @@ def expand_node(
     Arguments:
         node_id: The centroid (or leaf) node id to root the subtree on.
         system: The ``NeuroMemory`` instance to query.
-        depth: BFS depth from ``node_id``. Defaults to 2.
+        depth: BFS depth from ``node_id``. Defaults to 2. Clamped to
+            ``[0, _EXPAND_NODE_MAX_DEPTH]`` so an adversarial (or just
+            confused) agent can't pass ``depth=50`` and trigger an
+            O(n^depth) subgraph traversal. The 80-node cap still
+            bounds the rendered output, but the storage-query cost
+            is proportional to the traversal depth before the cap
+            trims, so the depth cap protects the hot path.
 
     Returns:
         An ASCII tree string, or ``""`` if the node doesn't exist or
@@ -127,7 +141,8 @@ def expand_node(
     if depth < 0:
         raise ValueError(f"depth must be >= 0, got {depth}")
 
-    subgraph = system.storage.get_subgraph([node_id], depth=depth)
+    effective_depth = min(depth, _EXPAND_NODE_MAX_DEPTH)
+    subgraph = system.storage.get_subgraph([node_id], depth=effective_depth)
     if not subgraph.get("nodes"):
         return ""
 

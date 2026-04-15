@@ -119,7 +119,14 @@ def _resolve_api_key() -> str:
             os.environ.setdefault("GEMINI_API_KEY", value)
             return value
     print(
-        "ERROR: no GOOGLE_API_KEY / GEMINI_API_KEY in env or repo-root .env",
+        "ERROR: no GOOGLE_API_KEY / GEMINI_API_KEY in env or repo-root .env.\n"
+        "\n"
+        "The benchmark's answer LLM and llm-judge metric currently use Gemini "
+        "(via GeminiAnsweringClient), so a Google key is required even when "
+        "--llm-provider / --embedder-provider point at OpenAI, Anthropic, or "
+        "a local Gemma model (those flags only swap the memory-layer LLM/\n"
+        "embedder). Set GOOGLE_API_KEY=... (or GEMINI_API_KEY=...) in your\n"
+        "environment or in a repo-root .env file and rerun.",
         file=sys.stderr,
         flush=True,
     )
