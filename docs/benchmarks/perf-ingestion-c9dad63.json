@@ -1,0 +1,30 @@
+{
+  "git_sha": "c9dad63",
+  "mock_embedder": true,
+  "n_memories": 100,
+  "n_runs": 2,
+  "walls_s": [
+    1.3815411660179961,
+    0.004041166015667841
+  ],
+  "mean_s": 0.692791166016832,
+  "stdev_s": 0.9740395910861156,
+  "per_run_method_breakdown_s": [
+    {
+      "generate_summary_batch": 6.082991603761911e-06,
+      "extract_tags_batch": 4.8375019105151296e-05,
+      "extract_named_entities_batch": 3.583991201594472e-06,
+      "generate_category_names_batch": 1.207983586937189e-06,
+      "generate_junction_summaries_batch": 2.541026333346963e-06
+    },
+    {
+      "generate_summary_batch": 7.541995728388429e-06,
+      "extract_tags_batch": 4.641700070351362e-05,
+      "extract_named_entities_batch": 4.3330073822289705e-06,
+      "generate_category_names_batch": 7.079797796905041e-07,
+      "generate_junction_summaries_batch": 2.375018084421754e-06
+    }
+  ],
+  "verdict": "MEASURED",
+  "fail_on_regression": false
+}

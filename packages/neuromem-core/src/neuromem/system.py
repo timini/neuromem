@@ -142,32 +142,39 @@ class NeuroMemory:
     def enqueue(self, raw_text: str, metadata: dict | None = None) -> str:
         """Insert ``raw_text`` into the inbox and return its memory id.
 
-        Calls ``llm.generate_summary`` synchronously on the caller's
-        thread (per Resolved Design Decision #3 — KISS), inserts the
-        memory with ``status='inbox'`` via the storage adapter, and
-        then — if the post-insert inbox count meets ``dream_threshold``
-        AND no dream cycle is currently in flight — spawns a daemon
-        background thread to run ``_run_dream_cycle``.
+        **ADR-004: non-blocking.** This call does not invoke the LLM.
+        The memory row is inserted with ``raw_content`` set and
+        ``summary = NULL``; the dream-cycle worker fills the
+        ``summary`` column in a batched call once the inbox crosses
+        ``dream_threshold``. On the caller thread this is one SQL
+        insert + a cheap inbox-count check.
+
+        If the post-insert inbox count meets ``dream_threshold`` AND
+        no dream cycle is currently in flight, a daemon background
+        thread is spawned to run ``_run_dream_cycle``. That thread's
+        first step is ``generate_summary_batch`` over every inbox
+        memory, so the NULL ``summary`` column is backfilled before
+        any other consolidation step runs.
 
         The ``and not self._is_dreaming`` guard is a cheap optimisation
-        to avoid creating a thread that will immediately no-op. It is
-        a soft check (there's a small race between the test and the
-        spawn), but the authoritative serialisation is
-        ``_run_dream_cycle``'s own non-blocking lock acquire — a second
-        thread sees the lock held and returns immediately. Correctness
-        comes from the lock, not from this check.
+        to avoid creating a thread that will immediately no-op. The
+        authoritative serialisation is ``_run_dream_cycle``'s own
+        non-blocking lock acquire.
 
         Raises ``ValueError`` on empty ``raw_text`` or non-JSON-
-        serialisable metadata. Propagates any provider or storage
-        exceptions.
+        serialisable metadata. Propagates any storage exceptions.
         """
         if not raw_text:
             raise ValueError("raw_text must be non-empty")
 
-        summary = self.llm.generate_summary(raw_text)
         memory_id = self.storage.insert_memory(
             raw_content=raw_text,
-            summary=summary,
+            # ADR-004: summary is NULL at insert time; the dream cycle's
+            # step 2 (generate_summary_batch) populates it. The storage
+            # contract for insert_memory accepts empty string as "no
+            # summary yet" — rows get a real summary before leaving
+            # status='inbox'.
+            summary="",
             metadata=metadata,
         )
 
@@ -254,7 +261,12 @@ class NeuroMemory:
         thread.start()
         return thread
 
-    def resolve_centroid_names(self, nodes: list[dict]) -> None:
+    def resolve_centroid_names(
+        self,
+        nodes: list[dict],
+        *,
+        expected_placeholders: bool = False,
+    ) -> None:
         """Lazily name centroids that still have placeholder labels.
 
         Per ADR-002 (lazy centroid naming): the dream-cycle clustering
@@ -288,7 +300,7 @@ class NeuroMemory:
         returns a tree.
         """
         try:
-            self._do_resolve_centroid_names(nodes)
+            self._do_resolve_centroid_names(nodes, expected_placeholders=expected_placeholders)
         except Exception:
             logger.exception(
                 "resolve_centroid_names: unexpected error, leaving centroid "
@@ -296,23 +308,46 @@ class NeuroMemory:
                 "ugly labels."
             )
 
-    def _do_resolve_centroid_names(self, nodes: list[dict]) -> None:
+    def _do_resolve_centroid_names(
+        self,
+        nodes: list[dict],
+        *,
+        expected_placeholders: bool = False,
+    ) -> None:
         """Inner implementation of resolve_centroid_names. May raise;
-        the public wrapper catches and logs."""
+        the public wrapper catches and logs.
+
+        ADR-004 fast-path: step 8 of the dream cycle names every
+        centroid eagerly, so under normal operation every node passed
+        here already has a non-placeholder label and this method has
+        nothing to do. If placeholders ARE found AND ``expected_placeholders``
+        is False we log a WARNING — it means the background worker
+        didn't finish before this hot-path read (invariant broken),
+        and we proceed with the lazy path as a safety net.
+
+        ``expected_placeholders`` is set to True by the dream-cycle
+        eager-naming caller, because in that path a non-empty
+        placeholder set is the whole point — there's no invariant
+        violation to warn about.
+        """
         placeholders = [
             n for n in nodes if n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
         ]
         if not placeholders:
+            # Common case post-ADR-004: full-baked storage. Nothing to do.
             return
+        if not expected_placeholders:
+            # ADR-004 invariant broken: step 8 of the dream cycle should have
+            # named every placeholder eagerly. Log and fall through to the
+            # lazy resolve path as a safety net.
+            logger.warning(
+                "resolve_centroid_names: %d placeholder centroid(s) on hot path "
+                "— ADR-004 eager naming didn't run. Falling through to lazy "
+                "resolve as safety net.",
+                len(placeholders),
+            )
 
-        # Gather each placeholder centroid's children once. Store the
-        # full child node records (id, label, embedding) so the numpy
-        # fallback path can use embeddings without a second fetch.
-        children_by_centroid: dict[str, list[dict]] = {}
-        for centroid in placeholders:
-            child_records = self._fetch_child_records(centroid["id"])
-            if child_records:
-                children_by_centroid[centroid["id"]] = child_records
+        children_by_centroid = self._gather_children_for_naming(placeholders)
         if not children_by_centroid:
             return
 
@@ -335,6 +370,20 @@ class NeuroMemory:
             new_label = updates.get(node["id"])
             if new_label is not None:
                 node["label"] = new_label
+
+    def _gather_children_for_naming(
+        self,
+        placeholders: list[dict],
+    ) -> dict[str, list[dict]]:
+        """Fetch the full child-node records for every placeholder
+        centroid. Extracted from _do_resolve_centroid_names to keep
+        that method under cyclomatic complexity limits."""
+        children_by_centroid: dict[str, list[dict]] = {}
+        for centroid in placeholders:
+            child_records = self._fetch_child_records(centroid["id"])
+            if child_records:
+                children_by_centroid[centroid["id"]] = child_records
+        return children_by_centroid
 
     def _try_batched_naming(
         self,
@@ -399,7 +448,12 @@ class NeuroMemory:
     # resolve_junction_summaries — ADR-003 D2 (lazy trunk-or-deep fill)
     # ------------------------------------------------------------------
 
-    def resolve_junction_summaries(self, nodes: list[dict]) -> None:
+    def resolve_junction_summaries(
+        self,
+        nodes: list[dict],
+        *,
+        expected_unsummarised: bool = False,
+    ) -> None:
         """Lazily populate per-centroid paragraph summaries.
 
         Mirror of :meth:`resolve_centroid_names` for the paragraph
@@ -437,7 +491,7 @@ class NeuroMemory:
         resolve_centroid_names.
         """
         try:
-            self._do_resolve_junction_summaries(nodes)
+            self._do_resolve_junction_summaries(nodes, expected_unsummarised=expected_unsummarised)
         except Exception:
             logger.exception(
                 "resolve_junction_summaries: unexpected error, leaving "
@@ -445,7 +499,12 @@ class NeuroMemory:
                 "succeed with label-only centroids."
             )
 
-    def _do_resolve_junction_summaries(self, nodes: list[dict]) -> None:
+    def _do_resolve_junction_summaries(
+        self,
+        nodes: list[dict],
+        *,
+        expected_unsummarised: bool = False,
+    ) -> None:
         """Inner implementation. May raise — the public wrapper catches.
 
         Resolves summaries floor-up: the centroids closest to leaves
@@ -454,12 +513,29 @@ class NeuroMemory:
         already have paragraph_summary populated by the time the
         parent's snippets are gathered, rather than falling through
         to one-word labels (ADR-003 D2 intent).
+
+        ADR-004 fast-path: dream-cycle step 9 summarises every
+        centroid eagerly, so post-cycle there are no dirty nodes
+        here. If there ARE and ``expected_unsummarised`` is False we
+        log a WARNING — the hot-path invariant is broken — and fall
+        through to the lazy resolve as a safety net.
+
+        ``expected_unsummarised`` is True when called from the eager
+        dream-cycle sweep (where a non-empty set is the whole point).
         """
         needs_summary = [
             n for n in nodes if n.get("is_centroid") and not n.get("paragraph_summary")
         ]
         if not needs_summary:
+            # Common case post-ADR-004: full-baked storage.
             return
+        if not expected_unsummarised:
+            logger.warning(
+                "resolve_junction_summaries: %d unsummarised centroid(s) on hot "
+                "path — ADR-004 eager summarisation didn't run. Falling through "
+                "to lazy resolve as safety net.",
+                len(needs_summary),
+            )
 
         levels = self._group_by_level(needs_summary, nodes)
         for level_ids in levels:
@@ -763,13 +839,13 @@ class NeuroMemory:
             dreaming_ids = [m["id"] for m in inbox_memories]
             self.storage.update_memory_status(dreaming_ids, "dreaming")
 
-            # 2a. Extract tag labels per memory in one batched call.
+            # 2. Backfill summaries via batched provider call (ADR-004).
+            self._backfill_summaries(inbox_memories)
+
+            # 3. Extract tag labels per memory in one batched call.
             # Providers that override LLMProvider.extract_tags_batch
             # with a real batched LLM call (GeminiLLMProvider, etc.)
-            # turn this from N serial requests into O(1). Providers
-            # that don't override get a default implementation that
-            # loops over extract_tags — correctness-identical to
-            # the pre-#44 behaviour, just slower. See issue #44.
+            # turn this from N serial requests into O(1).
             summaries = [m["summary"] for m in inbox_memories]
             tag_lists = self.llm.extract_tags_batch(summaries)
             memories_with_tags = list(zip(inbox_memories, tag_lists, strict=True))
@@ -819,17 +895,25 @@ class NeuroMemory:
                         relationship="has_tag",
                     )
 
-            # 7b. Eager trunk-summary pass (ADR-003 D2). Pre-populates
-            # paragraph_summary for the level-0 centroids (direct-above-
-            # leaf) and level-1 centroids (their parents). This pays
-            # the LLM cost at ingestion time so first-render latency
-            # doesn't amortise it across user-visible requests. Deeper
-            # centroids stay NULL and are resolved lazily at render
-            # time per ADR-003 D2. NEVER raises — if the pass fails the
-            # cycle continues, and lazy resolve covers the gap.
-            self._run_junction_summarisation_trunk()
+            # 8. Name every unnamed centroid (ADR-004 full-sweep).
+            # ADR-003 introduced lazy per-query naming; ADR-004 makes
+            # naming eager so the hot path never pays an LLM call for
+            # a centroid label. Full sweep: finds every node whose
+            # label still starts with "cluster_" (the placeholder
+            # prefix from _run_clustering) and runs the batched
+            # naming path over all of them.
+            self._run_all_centroid_naming()
 
-            # 8. Apply decay + archive.
+            # 9. Summarise every unsummarised centroid (ADR-004
+            # full-sweep). Replaces the ADR-003 trunk-only pass.
+            # Floor-up: leaf-adjacent centroids summarised first,
+            # then their parents read the just-written summaries.
+            # After this, every centroid has a non-NULL
+            # paragraph_summary and the hot-path resolve_*
+            # methods become no-ops.
+            self._run_all_junction_summarisation()
+
+            # 10. Apply decay + archive.
             now = int(time.time())
             self.storage.apply_decay_and_archive(
                 decay_lambda=self.decay_lambda,
@@ -837,7 +921,7 @@ class NeuroMemory:
                 current_timestamp=now,
             )
 
-            # 9. Flip dreaming → consolidated.
+            # 11. Flip dreaming → consolidated.
             self.storage.update_memory_status(dreaming_ids, "consolidated")
 
         except Exception:
@@ -854,6 +938,43 @@ class NeuroMemory:
         finally:
             self._is_dreaming = False
             self._dream_lock.release()
+
+    def _backfill_summaries(self, inbox_memories: list[dict]) -> None:
+        """Dream-cycle step 2 (ADR-004): batched summary generation.
+
+        Reads ``raw_content`` off every inbox memory, calls the
+        provider's batched summariser, persists via
+        ``storage.set_summaries``, and mutates the in-memory memory
+        dicts in place so downstream dream-cycle steps (tag
+        extraction, NER, clustering) read the fresh summaries.
+
+        Providers that override ``generate_summary_batch``
+        (GeminiLLMProvider) get chunked parallel calls; the ABC
+        default loops serially. Either way, the ``summary`` column
+        is populated before any downstream step reads it.
+        """
+        if not inbox_memories:
+            return
+        # Skip memories that already have a summary. Defends against
+        # the migration case where a DB was written by pre-ADR-004 code
+        # (which summarised synchronously on enqueue) and then read by
+        # ADR-004 code: those rows would otherwise be re-summarised
+        # here unnecessarily, wasting LLM calls + clobbering good
+        # summaries. Also protects against any future path that calls
+        # _backfill_summaries more than once on the same input.
+        pending = [m for m in inbox_memories if not (m.get("summary") or "").strip()]
+        if not pending:
+            return
+        raw_contents = [m["raw_content"] for m in pending]
+        fresh = self.llm.generate_summary_batch(raw_contents)
+        if len(fresh) != len(pending):
+            raise ValueError(
+                f"generate_summary_batch returned {len(fresh)} "
+                f"summaries for {len(pending)} memories"
+            )
+        self.storage.set_summaries({mem["id"]: s for mem, s in zip(pending, fresh, strict=True)})
+        for mem, s in zip(pending, fresh, strict=True):
+            mem["summary"] = s
 
     def _ensure_tag_nodes(
         self,
@@ -985,97 +1106,71 @@ class NeuroMemory:
             id_map[cluster.id] = centroid_id
 
     # ------------------------------------------------------------------
-    # _run_junction_summarisation_trunk — ADR-003 D2 eager trunk pass
+    # ADR-004 D2 — full-sweep eager consolidation passes
     # ------------------------------------------------------------------
 
-    def _run_junction_summarisation_trunk(self) -> None:
-        """Eagerly populate paragraph_summary for the bottom two levels
-        of the concept hierarchy (ADR-003 D2 trunk policy).
+    def _run_all_centroid_naming(self) -> None:
+        """Dream-cycle step 8 (ADR-004): name every placeholder centroid.
 
-        Level 0 = centroids that have at least one memory attached via
-        has_tag to any of their descendant leaves (i.e. the centroids
-        that actually cover the ingested memories).
-        Level 1 = direct parents of level-0 centroids.
+        Full-sweep variant of the ADR-002 lazy ``resolve_centroid_names``
+        resolver. Pulls every node from storage, filters to those whose
+        label still carries the ``cluster_*`` placeholder prefix, and
+        runs the batched LLM-naming path over the entire set. After
+        this step runs, no centroid retains a placeholder — so the
+        hot-path render-time resolver never has work to do.
 
-        Higher levels stay NULL and get lazy-resolved at render time.
-
-        Deliberately broad try/except: a failed summarisation must not
-        crash the dream cycle (the whole cycle rolls memories back to
-        inbox). On failure the lazy render path fills the gaps.
+        Deliberately broad try/except: a failed naming pass must not
+        crash the dream cycle. On failure the lazy render path fills
+        the gap (degraded-but-functional behaviour).
         """
         try:
-            self._do_run_junction_trunk()
+            all_nodes = self.storage.get_all_nodes()
+            placeholders = [
+                n
+                for n in all_nodes
+                if n.get("is_centroid") and n.get("label", "").startswith(_PLACEHOLDER_LABEL_PREFIX)
+            ]
+            if not placeholders:
+                return
+            # expected_placeholders=True suppresses the hot-path
+            # invariant-broken WARNING, which is the dream-cycle's
+            # normal behaviour (a non-empty placeholder set is the
+            # whole point of this step).
+            self.resolve_centroid_names(placeholders, expected_placeholders=True)
         except Exception:
             logger.exception(
-                "_run_junction_summarisation_trunk: eager pass failed; "
+                "_run_all_centroid_naming: eager full-sweep failed; "
                 "lazy render-time resolution will cover the gap."
             )
 
-    def _do_run_junction_trunk(self) -> None:
-        """Inner implementation. May raise — the public wrapper catches."""
-        all_nodes = self.storage.get_all_nodes()
-        centroids = [n for n in all_nodes if n.get("is_centroid")]
-        if not centroids:
-            return
+    def _run_all_junction_summarisation(self) -> None:
+        """Dream-cycle step 9 (ADR-004): summarise every centroid.
 
-        level0 = self._find_level0_centroids(centroids)
-        if not level0:
-            return
+        Full-sweep variant of the ADR-003 lazy
+        ``resolve_junction_summaries``. Passes every centroid with
+        NULL ``paragraph_summary`` to the floor-up batched summariser.
+        After this step, no centroid has a NULL summary and the
+        hot-path resolver is a no-op.
 
-        level1 = self._find_level1_parents(level0, centroids)
-        nodes_by_id = {c["id"]: c for c in centroids}
-        staged = [nodes_by_id[cid] for cid in (*level0, *level1) if cid in nodes_by_id]
-
-        # Level 0 first, persist, then level 1 so parents see their
-        # just-written children.
-        self._resolve_level(level0, staged)
-        if level1:
-            self._resolve_level(level1, staged)
-
-    def _find_level0_centroids(self, centroids: list[dict]) -> list[str]:
-        """Return centroid ids whose subtree contains a has_tag-linked
-        memory and that don't yet have a paragraph_summary."""
-        level0: list[str] = []
-        for centroid in centroids:
-            if centroid.get("paragraph_summary"):
-                continue
-            sub = self.storage.get_subgraph([centroid["id"]], depth=1)
-            if any(e.get("relationship") == "has_tag" for e in sub.get("edges", [])):
-                level0.append(centroid["id"])
-        return level0
-
-    def _find_level1_parents(self, level0: list[str], centroids: list[dict]) -> list[str]:
-        """Return unique level-1 parent centroid ids (parents of any
-        level-0 centroid that aren't themselves level-0 and aren't yet
-        summarised). Preserves first-seen order."""
-        level0_set = set(level0)
-        centroid_by_id = {c["id"]: c for c in centroids}
-        seen: set[str] = set()
-        out: list[str] = []
-        for cid in level0:
-            sub = self.storage.get_subgraph([cid], depth=1)
-            for edge in sub.get("edges", []):
-                parent_id = self._extract_parent_id(edge, cid)
-                if not parent_id or parent_id in level0_set or parent_id in seen:
-                    continue
-                parent = centroid_by_id.get(parent_id)
-                if parent and not parent.get("paragraph_summary"):
-                    seen.add(parent_id)
-                    out.append(parent_id)
-        return out
-
-    @staticmethod
-    def _extract_parent_id(edge: dict, child_id: str) -> str | None:
-        """Return the parent id of ``child_id`` via this child_of edge,
-        or None if the edge doesn't describe that relationship."""
-        if edge.get("relationship") != "child_of":
-            return None
-        if edge.get("target_id") != child_id:
-            return None
-        parent_id = edge.get("source_id")
-        if not parent_id or parent_id == child_id:
-            return None
-        return str(parent_id)
+        Supersedes ``_run_junction_summarisation_trunk`` (which covered
+        only levels 0 and 1). Same NEVER-RAISES contract.
+        """
+        try:
+            all_nodes = self.storage.get_all_nodes()
+            dirty = [
+                n for n in all_nodes if n.get("is_centroid") and not n.get("paragraph_summary")
+            ]
+            if not dirty:
+                return
+            # expected_unsummarised=True suppresses the hot-path
+            # invariant-broken WARNING — by design, the dream cycle
+            # passes every unsummarised centroid here.
+            self.resolve_junction_summaries(dirty, expected_unsummarised=True)
+        except Exception:
+            logger.exception(
+                "_run_all_junction_summarisation: eager full-sweep failed; "
+                "lazy render-time resolution will cover the gap."
+            )
 
 
 def _sanitise_category_name(raw: str) -> str:

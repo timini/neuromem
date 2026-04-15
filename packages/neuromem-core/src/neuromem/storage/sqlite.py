@@ -307,6 +307,27 @@ class SQLiteAdapter(StorageAdapter):
             return None
         return _row_to_memory_dict(row)
 
+    def set_summaries(self, updates: dict[str, str]) -> None:
+        """Batch-write summary text onto existing memory rows (ADR-004).
+
+        Used by the dream cycle's step 2: enqueue now stores each
+        memory with an empty ``summary`` column and the worker
+        backfills via one batched call per cycle. Same transactional
+        / silent-skip semantics as ``set_named_entities``.
+        """
+        self._check_open()
+        if not updates:
+            return
+        try:
+            with self._conn:
+                for mem_id, summary in updates.items():
+                    self._conn.execute(
+                        "UPDATE memories SET summary = ? WHERE id = ?",
+                        (summary, mem_id),
+                    )
+        except sqlite3.Error as exc:
+            raise StorageError(f"set_summaries failed: {exc}") from exc
+
     def set_named_entities(self, updates: dict[str, list[str]]) -> None:
         """Batch-write named-entity lists onto existing memory rows.
 

@@ -183,14 +183,29 @@ class TestEnqueueSync:
         assert row["access_weight"] == pytest.approx(1.0)
         assert row["raw_content"] == "raw content"
 
-    def test_summary_populated_from_llm(
+    def test_summary_empty_at_enqueue_time(
         self,
         memory_system: NeuroMemory,
     ) -> None:
-        # MockLLMProvider returns raw_text[:80] as the summary.
+        """ADR-004: enqueue does NOT call generate_summary. The summary
+        column starts empty and gets backfilled by the dream cycle."""
         long_text = "a" * 200
         mem_id = memory_system.enqueue(long_text)
         row = memory_system.storage.get_memory_by_id(mem_id)
+        assert row["summary"] == ""
+
+    def test_summary_backfilled_after_dream(
+        self,
+        memory_system: NeuroMemory,
+    ) -> None:
+        """ADR-004: after force_dream the worker's batched
+        generate_summary_batch backfills every inbox memory."""
+        long_text = "a" * 200
+        mem_id = memory_system.enqueue(long_text)
+        memory_system.force_dream(block=True)
+        row = memory_system.storage.get_memory_by_id(mem_id)
+        # MockLLMProvider.generate_summary returns raw_text[:80]; the
+        # default generate_summary_batch loops over it.
         assert row["summary"] == "a" * 80
 
     def test_metadata_round_trip(self, memory_system: NeuroMemory) -> None:
@@ -240,7 +255,8 @@ class TestEnqueueSync:
         self,
         mock_embedder: MockEmbeddingProvider,
     ) -> None:
-        """Custom subclasses of the ABCs must work."""
+        """Custom subclasses of the ABCs must work. ADR-004: summary
+        lands via the background dream cycle, not at enqueue time."""
 
         class TerseLLM(LLMProvider):
             def generate_summary(self, raw_text: str) -> str:
@@ -258,11 +274,10 @@ class TestEnqueueSync:
             embedder=mock_embedder,
         )
         mem_id = system.enqueue("hello world this is a long sentence")
+        system.force_dream(block=True)
         row = system.storage.get_memory_by_id(mem_id)
-        # TerseLLM returns raw_text[:20]. Index 20 of the input is the
-        # space character AFTER "is", so the slice is 20 chars with a
-        # trailing space — exactly what Python produces. No off-by-one
-        # adjustment in the assertion.
+        # TerseLLM returns raw_text[:20]; the default
+        # generate_summary_batch loops over it.
         assert row["summary"] == "hello world this is "
 
 
@@ -316,7 +331,11 @@ class TestEnqueueSession:
         mock_embedder: MockEmbeddingProvider,
     ) -> None:
         """The whole point of this method: a 10-turn session should
-        produce exactly ONE generate_summary call, not 10."""
+        produce exactly ONE generate_summary call, not 10.
+
+        ADR-004: the call now happens in the background dream cycle,
+        not on the caller thread. Same total count — just deferred.
+        """
 
         class CountingLLM(MockLLMProvider):
             def __init__(self) -> None:
@@ -337,6 +356,11 @@ class TestEnqueueSession:
             {"role": "user" if i % 2 == 0 else "assistant", "text": f"turn {i}"} for i in range(10)
         ]
         system.enqueue_session(turns)
+        # Enqueue is non-blocking (ADR-004): zero summary calls so far.
+        assert llm.summary_call_count == 0
+        # Dream cycle runs one batched summary call (default loops over
+        # generate_summary for each inbox memory — just one here).
+        system.force_dream(block=True)
         assert llm.summary_call_count == 1
 
     def test_metadata_attached_to_session_memory(
@@ -910,13 +934,14 @@ class TestAgglomerativeClustering:
         assert leaf_labels >= {"alpha", "beta", "gamma"}
         assert len(centroids) >= 1
 
-        # ADR-002 (lazy centroid naming): _run_clustering writes
-        # centroids with placeholder labels. Naming happens lazily at
-        # render time via ContextHelper. So at this point — directly
-        # after force_dream, no render — the centroids should have
-        # placeholder labels of the form "cluster_<12-hex-chars>".
+        # ADR-004: the dream cycle now names every centroid eagerly
+        # (step 8 _run_all_centroid_naming). Post-force_dream, no
+        # centroid retains the "cluster_" placeholder.
         for centroid in centroids:
-            assert centroid["label"].startswith("cluster_")
+            assert not centroid["label"].startswith("cluster_"), (
+                f"centroid {centroid['id']} still carries placeholder "
+                f"label {centroid['label']!r} — ADR-004 step 8 didn't run"
+            )
 
     def test_clustering_delegated_to_injected_provider(
         self,
@@ -999,23 +1024,33 @@ class TestAgglomerativeClustering:
             e["source_id"] == mem_id and e["target_id"] == alpha_leaf["id"] for e in has_tag_edges
         )
 
-    def test_clustering_does_not_call_generate_category_name(
+    def test_clustering_itself_does_not_call_generate_category_name(
         self,
     ) -> None:
-        """ADR-002: the dream-cycle clustering loop MUST NOT call
-        generate_category_name. Centroids are written with placeholder
-        labels and named lazily at render time. Verified via a
-        counting LLMProvider stub — count must be exactly zero
-        across an entire force_dream that produces multiple centroids."""
+        """ADR-002/003: the _run_clustering loop itself MUST NOT call
+        generate_category_name — centroids are written with placeholder
+        labels from the clustering step. Under ADR-004, step 8 of the
+        dream cycle then runs the batched naming pass, but that's
+        generate_category_names_batch, not the per-pair single call.
+
+        So generate_category_name's call count across a full dream
+        cycle should be at most the fallback count from
+        _try_batched_naming (zero when the batched call succeeds).
+        """
 
         class CountingNamerLLM(MockLLMProvider):
             def __init__(self) -> None:
                 super().__init__()
-                self.name_call_count = 0
+                self.single_name_call_count = 0
+                self.batch_name_call_count = 0
 
             def generate_category_name(self, concepts: list[str]) -> str:
-                self.name_call_count += 1
-                return "Should-Not-Be-Called"
+                self.single_name_call_count += 1
+                return "single-fallback"
+
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                self.batch_name_call_count += 1
+                return [f"group-{i}" for i in range(len(pairs))]
 
         ctrl = ControlledEmbedder(
             {
@@ -1034,19 +1069,17 @@ class TestAgglomerativeClustering:
         system.enqueue("alpha beta gamma")
         system.force_dream()
 
-        # Multiple centroids should have been produced (alpha+beta first,
-        # then that centroid+gamma) but ZERO LLM naming calls happened.
         nodes = system.storage.get_all_nodes()
         centroids = [n for n in nodes if n["is_centroid"]]
         assert len(centroids) >= 1
-        assert llm.name_call_count == 0
-        # Every centroid carries the placeholder format.
+        # Per-pair single-call should be zero: the clustering step
+        # writes placeholders, and step 8 uses the batched variant.
+        assert llm.single_name_call_count == 0
+        # The batched variant IS called at least once (step 8).
+        assert llm.batch_name_call_count >= 1
+        # Post-ADR-004 every centroid has a real non-placeholder label.
         for centroid in centroids:
-            label = centroid["label"]
-            assert label.startswith("cluster_")
-            # 12-hex suffix from the centroid UUID.
-            suffix = label[len("cluster_") :]
-            assert len(suffix) == 12
+            assert not centroid["label"].startswith("cluster_")
 
     def test_child_of_edges_wired_centroid_to_members(
         self,
@@ -2119,40 +2152,34 @@ class TestResolveJunctionSummaries:
         assert llm.batch_call_count == first_count
 
 
-class TestEagerTrunkSummarisation:
-    """The dream cycle's _run_junction_summarisation_trunk step
-    pre-populates paragraph_summary for level-0 centroids (those
-    whose subtree contains memories) and their immediate parents.
-    Higher levels stay NULL and are resolved lazily at render time.
+class TestEagerFullSweepInDream:
+    """ADR-004: the dream cycle's step 8 (full-sweep naming) and step
+    9 (full-sweep summarisation) populate every centroid eagerly.
+    Positive assertions live in test_hot_path_invariant.py; this
+    class locks in the "failure doesn't crash the cycle" contract.
     """
 
-    def test_trunk_pass_populates_summaries_after_dream(self) -> None:
-        class FixedSummaryLLM(MockLLMProvider):
-            def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
-                return [f"eager-{i}" for i in range(len(groups))]
+    def test_naming_failure_does_not_crash_dream(self) -> None:
+        class FailingNamingLLM(MockLLMProvider):
+            def generate_category_names_batch(self, pairs: list[list[str]]) -> list[str]:
+                raise RuntimeError("naming boom")
 
-        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01], "gamma": [0.0, 1.0]})
+        ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
         system = NeuroMemory(
             storage=SQLiteAdapter(":memory:"),
-            llm=FixedSummaryLLM(),
+            llm=FailingNamingLLM(),
             embedder=ctrl,
         )
-        system.enqueue("alpha beta gamma")
+        system.enqueue("alpha beta")
+        # Dream must NOT raise even though step 8 does.
         system.force_dream()
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 1
 
-        nodes = system.storage.get_all_nodes()
-        centroids = [n for n in nodes if n["is_centroid"]]
-        # At least one centroid should have been summarised by the
-        # eager trunk pass (the level-0 ones above the memory's tags).
-        assert any(c.get("paragraph_summary") for c in centroids), (
-            "expected at least one centroid to have a paragraph_summary "
-            "populated by the eager trunk pass"
-        )
-
-    def test_trunk_pass_failure_does_not_crash_dream(self) -> None:
+    def test_summary_failure_does_not_crash_dream(self) -> None:
         class FailingSummaryLLM(MockLLMProvider):
             def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
-                raise RuntimeError("trunk boom")
+                raise RuntimeError("summary boom")
 
         ctrl = ControlledEmbedder({"alpha": [1.0, 0.0], "beta": [0.999, 0.01]})
         system = NeuroMemory(
@@ -2161,13 +2188,10 @@ class TestEagerTrunkSummarisation:
             embedder=ctrl,
         )
         system.enqueue("alpha beta")
-        # Dream must NOT raise even though the trunk pass does.
+        # Dream must NOT raise even though step 9 does.
         system.force_dream()
-        # Memories got consolidated anyway.
-        inbox = system.storage.count_memories_by_status("inbox")
-        consolidated = system.storage.count_memories_by_status("consolidated")
-        assert inbox == 0
-        assert consolidated == 1
+        assert system.storage.count_memories_by_status("inbox") == 0
+        assert system.storage.count_memories_by_status("consolidated") == 1
 
 
 def test_explicit_ignore_unused_embedding_provider_import() -> None:
