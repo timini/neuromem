@@ -30,7 +30,7 @@ from typing import Any
 from neuromem.providers import LLMProvider
 from openai import OpenAI
 
-from neuromem_openai.prompts import load_prompt
+from neuromem_openai.prompts import render_prompt
 
 # Generic single-word nouns that centroid-naming must reject (ADR-003
 # F3). Mirrors the list in GeminiLLMProvider exactly — a generic noun
@@ -167,7 +167,7 @@ class OpenAILLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def generate_summary(self, raw_text: str) -> str:
-        prompt = load_prompt("generate_summary").format(raw_text=raw_text)
+        prompt = render_prompt("generate_summary", raw_text=raw_text)
         return self._chat(prompt)
 
     def generate_summary_batch(self, raw_texts: list[str]) -> list[str]:
@@ -208,8 +208,10 @@ class OpenAILLMProvider(LLMProvider):
             "Return a JSON object with a single key 'summaries' whose "
             "value is an array of exactly "
             f"{len(raw_texts)} strings, in order.\n\n"
-            + load_prompt("generate_summary_batch").format(
-                n=len(raw_texts), numbered="\n\n".join(numbered_blocks)
+            + render_prompt(
+                "generate_summary_batch",
+                n=len(raw_texts),
+                numbered="\n\n".join(numbered_blocks),
             )
         )
         raw = self._chat(prompt, json_mode=True)
@@ -220,7 +222,7 @@ class OpenAILLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def extract_tags(self, summary: str) -> list[str]:
-        prompt = load_prompt("extract_tags").format(summary=summary)
+        prompt = render_prompt("extract_tags", summary=summary)
         raw = self._chat(prompt)
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
         return [t for t in tags if t][:12]
@@ -236,7 +238,7 @@ class OpenAILLMProvider(LLMProvider):
             "Return a JSON object with a single key 'tags' whose value "
             "is an array of arrays of strings (one inner array per "
             f"numbered text, {len(summaries)} in total).\n\n"
-            + load_prompt("extract_tags_batch").format(n=len(summaries), numbered=numbered)
+            + render_prompt("extract_tags_batch", n=len(summaries), numbered=numbered)
         )
         raw = self._chat(prompt, json_mode=True)
         try:
@@ -259,7 +261,7 @@ class OpenAILLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def extract_named_entities(self, summary: str) -> list[str]:
-        prompt = load_prompt("extract_named_entities").format(summary=summary)
+        prompt = render_prompt("extract_named_entities", summary=summary)
         raw = self._chat(prompt).strip()
         if not raw or raw.upper().strip(".,!?\"'") == "NONE":
             return []
@@ -278,9 +280,7 @@ class OpenAILLMProvider(LLMProvider):
             "value is an array of arrays of strings (one inner array "
             f"per numbered text, {len(summaries)} in total). Use an "
             "empty array for texts with no named entities.\n\n"
-            + load_prompt("extract_named_entities_batch").format(
-                n=len(summaries), numbered=numbered
-            )
+            + render_prompt("extract_named_entities_batch", n=len(summaries), numbered=numbered)
         )
         raw = self._chat(prompt, json_mode=True)
         try:
@@ -305,7 +305,7 @@ class OpenAILLMProvider(LLMProvider):
     def generate_category_name(self, concepts: list[str]) -> str:
         if not concepts:
             raise ValueError("concepts must be non-empty")
-        prompt = load_prompt("generate_category_name").format(concepts=", ".join(concepts))
+        prompt = render_prompt("generate_category_name", concepts=", ".join(concepts))
         cleaned = self._clean_name(self._chat(prompt))
         if not cleaned or self._is_blocked(cleaned):
             return self._first_concept_fallback(concepts)
@@ -343,7 +343,7 @@ class OpenAILLMProvider(LLMProvider):
         prompt = (
             "Return a JSON object with a single key 'names' whose value "
             f"is an array of exactly {len(pairs)} strings.\n\n"
-            + load_prompt("generate_category_names_batch").format(n=len(pairs), numbered=numbered)
+            + render_prompt("generate_category_names_batch", n=len(pairs), numbered=numbered)
         )
         raw = self._chat(prompt, json_mode=True)
         try:
@@ -373,7 +373,7 @@ class OpenAILLMProvider(LLMProvider):
         if not children_summaries:
             return ""
         joined = "\n- ".join(_sanitise_snippet(s.strip()) for s in children_summaries if s)
-        prompt = load_prompt("generate_junction_summary").format(joined=joined)
+        prompt = render_prompt("generate_junction_summary", joined=joined)
         return self._chat(prompt)
 
     def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
@@ -413,9 +413,7 @@ class OpenAILLMProvider(LLMProvider):
         prompt = (
             "Return a JSON object with a single key 'summaries' whose "
             f"value is an array of exactly {len(groups)} strings.\n\n"
-            + load_prompt("generate_junction_summaries_batch").format(
-                n=len(groups), numbered=numbered
-            )
+            + render_prompt("generate_junction_summaries_batch", n=len(groups), numbered=numbered)
         )
         raw = self._chat(prompt, json_mode=True)
         return self._parse_json_array(

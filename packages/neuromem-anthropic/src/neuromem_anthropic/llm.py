@@ -23,7 +23,7 @@ from typing import Any
 from anthropic import Anthropic
 from neuromem.providers import LLMProvider
 
-from neuromem_anthropic.prompts import load_prompt
+from neuromem_anthropic.prompts import render_prompt
 
 # Generic single-word nouns rejected by centroid naming (ADR-003 F3).
 _GENERIC_LABEL_BLOCKLIST: frozenset[str] = frozenset(
@@ -177,7 +177,7 @@ class AnthropicLLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def generate_summary(self, raw_text: str) -> str:
-        prompt = load_prompt("generate_summary").format(raw_text=raw_text)
+        prompt = render_prompt("generate_summary", raw_text=raw_text)
         return self._chat(prompt, max_tokens=_MAX_TOKENS_SUMMARY)
 
     def generate_summary_batch(self, raw_texts: list[str]) -> list[str]:
@@ -208,8 +208,10 @@ class AnthropicLLMProvider(LLMProvider):
         if len(raw_texts) == 1:
             return [self.generate_summary(raw_texts[0])]
         numbered_blocks = [f"[{i + 1}]\n{_sanitise_snippet(t)}" for i, t in enumerate(raw_texts)]
-        prompt = load_prompt("generate_summary_batch").format(
-            n=len(raw_texts), numbered="\n\n".join(numbered_blocks)
+        prompt = render_prompt(
+            "generate_summary_batch",
+            n=len(raw_texts),
+            numbered="\n\n".join(numbered_blocks),
         )
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_BATCH_SUMMARY)
         return self._parse_json_array(raw, raw_texts, self.generate_summary)
@@ -219,7 +221,7 @@ class AnthropicLLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def extract_tags(self, summary: str) -> list[str]:
-        prompt = load_prompt("extract_tags").format(summary=summary)
+        prompt = render_prompt("extract_tags", summary=summary)
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_TAGS)
         tags = [t.strip().strip("\"'").strip() for t in raw.split(",")]
         return [t for t in tags if t][:12]
@@ -230,7 +232,7 @@ class AnthropicLLMProvider(LLMProvider):
         if len(summaries) == 1:
             return [self.extract_tags(summaries[0])]
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
-        prompt = load_prompt("extract_tags_batch").format(n=len(summaries), numbered=numbered)
+        prompt = render_prompt("extract_tags_batch", n=len(summaries), numbered=numbered)
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_BATCH_TAGS)
         try:
             parsed = json.loads(_strip_markdown_fence(raw))
@@ -251,7 +253,7 @@ class AnthropicLLMProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def extract_named_entities(self, summary: str) -> list[str]:
-        prompt = load_prompt("extract_named_entities").format(summary=summary)
+        prompt = render_prompt("extract_named_entities", summary=summary)
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_NER)
         if not raw or raw.upper().strip(".,!?\"'") == "NONE":
             return []
@@ -264,9 +266,7 @@ class AnthropicLLMProvider(LLMProvider):
         if len(summaries) == 1:
             return [self.extract_named_entities(summaries[0])]
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
-        prompt = load_prompt("extract_named_entities_batch").format(
-            n=len(summaries), numbered=numbered
-        )
+        prompt = render_prompt("extract_named_entities_batch", n=len(summaries), numbered=numbered)
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_BATCH_NER)
         try:
             parsed = json.loads(_strip_markdown_fence(raw))
@@ -289,7 +289,7 @@ class AnthropicLLMProvider(LLMProvider):
     def generate_category_name(self, concepts: list[str]) -> str:
         if not concepts:
             raise ValueError("concepts must be non-empty")
-        prompt = load_prompt("generate_category_name").format(concepts=", ".join(concepts))
+        prompt = render_prompt("generate_category_name", concepts=", ".join(concepts))
         cleaned = self._clean_name(self._chat(prompt, max_tokens=_MAX_TOKENS_CATEGORY_NAME))
         if not cleaned or self._is_blocked(cleaned):
             return self._first_concept_fallback(concepts)
@@ -323,9 +323,7 @@ class AnthropicLLMProvider(LLMProvider):
         if len(pairs) == 1:
             return [self.generate_category_name(pairs[0])]
         numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
-        prompt = load_prompt("generate_category_names_batch").format(
-            n=len(pairs), numbered=numbered
-        )
+        prompt = render_prompt("generate_category_names_batch", n=len(pairs), numbered=numbered)
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_BATCH_CATEGORY_NAMES)
         try:
             parsed = json.loads(_strip_markdown_fence(raw))
@@ -353,7 +351,7 @@ class AnthropicLLMProvider(LLMProvider):
         if not children_summaries:
             return ""
         joined = "\n- ".join(_sanitise_snippet(s.strip()) for s in children_summaries if s)
-        prompt = load_prompt("generate_junction_summary").format(joined=joined)
+        prompt = render_prompt("generate_junction_summary", joined=joined)
         return self._chat(prompt, max_tokens=_MAX_TOKENS_JUNCTION_SUMMARY)
 
     def generate_junction_summaries_batch(self, groups: list[list[str]]) -> list[str]:
@@ -388,8 +386,8 @@ class AnthropicLLMProvider(LLMProvider):
             bullets = "\n  - ".join(_sanitise_snippet(s.strip()) for s in group if s)
             numbered_blocks.append(f"[{i + 1}]\n  - {bullets}")
         numbered = "\n\n".join(numbered_blocks)
-        prompt = load_prompt("generate_junction_summaries_batch").format(
-            n=len(groups), numbered=numbered
+        prompt = render_prompt(
+            "generate_junction_summaries_batch", n=len(groups), numbered=numbered
         )
         raw = self._chat(prompt, max_tokens=_MAX_TOKENS_BATCH_JUNCTION)
         return self._parse_json_array(raw, groups, self.generate_junction_summary)

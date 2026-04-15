@@ -27,7 +27,7 @@ from google import genai
 from google.genai.errors import ServerError
 from neuromem.providers import LLMProvider
 
-from neuromem_gemini.prompts import load_prompt
+from neuromem_gemini.prompts import render_prompt
 
 # Transient errors we retry on. ServerError covers 5xx from the Gemini API.
 # The remaining entries cover transport-level connection issues (server
@@ -235,7 +235,7 @@ class GeminiLLMProvider(LLMProvider):
         The prompt also gives a worked example so the model can pattern-
         match against the desired shape rather than improvise.
         """
-        prompt = load_prompt("generate_summary").format(raw_text=raw_text)
+        prompt = render_prompt("generate_summary", raw_text=raw_text)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
 
@@ -295,7 +295,7 @@ class GeminiLLMProvider(LLMProvider):
             numbered_blocks.append(f"[{i + 1}]\n{safe}")
         numbered = "\n\n".join(numbered_blocks)
 
-        prompt = load_prompt("generate_summary_batch").format(n=len(raw_texts), numbered=numbered)
+        prompt = render_prompt("generate_summary_batch", n=len(raw_texts), numbered=numbered)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
 
@@ -343,7 +343,7 @@ class GeminiLLMProvider(LLMProvider):
           generic content ("Todoist", "Trello", "task management").
           Allowing 5-12 tags removes the artificial scarcity.
         """
-        prompt = load_prompt("extract_tags").format(summary=summary)
+        prompt = render_prompt("extract_tags", summary=summary)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         # Robust split: strip each token, drop empties, cap at 12.
@@ -394,7 +394,7 @@ class GeminiLLMProvider(LLMProvider):
             return [self.extract_tags(summaries[0])]
 
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
-        prompt = load_prompt("extract_tags_batch").format(n=len(summaries), numbered=numbered)
+        prompt = render_prompt("extract_tags_batch", n=len(summaries), numbered=numbered)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
 
@@ -446,7 +446,7 @@ class GeminiLLMProvider(LLMProvider):
         entities (slightly higher than tags' 5 since real prose
         sometimes packs multiple brands per turn).
         """
-        prompt = load_prompt("extract_named_entities").format(summary=summary)
+        prompt = render_prompt("extract_named_entities", summary=summary)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = (resp.text or "").strip()
         if not raw or raw.upper().strip(".,!?\"'") == "NONE":
@@ -475,9 +475,7 @@ class GeminiLLMProvider(LLMProvider):
             return [self.extract_named_entities(summaries[0])]
 
         numbered = "\n".join(f"[{i + 1}] {s}" for i, s in enumerate(summaries))
-        prompt = load_prompt("extract_named_entities_batch").format(
-            n=len(summaries), numbered=numbered
-        )
+        prompt = render_prompt("extract_named_entities_batch", n=len(summaries), numbered=numbered)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
 
@@ -573,7 +571,7 @@ class GeminiLLMProvider(LLMProvider):
         """
         if not concepts:
             raise ValueError("concepts must be non-empty")
-        prompt = load_prompt("generate_category_name").format(concepts=", ".join(concepts))
+        prompt = render_prompt("generate_category_name", concepts=", ".join(concepts))
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         cleaned = self._clean_name(resp.text or "")
         # Blocked term or empty response → fallback to first concept
@@ -637,9 +635,7 @@ class GeminiLLMProvider(LLMProvider):
             return [self.generate_category_name(pairs[0])]
 
         numbered = "\n".join(f"[{i + 1}] {', '.join(pair)}" for i, pair in enumerate(pairs))
-        prompt = load_prompt("generate_category_names_batch").format(
-            n=len(pairs), numbered=numbered
-        )
+        prompt = render_prompt("generate_category_names_batch", n=len(pairs), numbered=numbered)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
 
@@ -713,7 +709,7 @@ class GeminiLLMProvider(LLMProvider):
         if not children_summaries:
             return ""
         joined = "\n- ".join(self._sanitise_snippet(s.strip()) for s in children_summaries if s)
-        prompt = load_prompt("generate_junction_summary").format(joined=joined)
+        prompt = render_prompt("generate_junction_summary", joined=joined)
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         return (resp.text or "").strip()
 
@@ -771,8 +767,8 @@ class GeminiLLMProvider(LLMProvider):
             numbered_blocks.append(f"[{i + 1}]\n  - {bullets}")
         numbered = "\n\n".join(numbered_blocks)
 
-        prompt = load_prompt("generate_junction_summaries_batch").format(
-            n=len(groups), numbered=numbered
+        prompt = render_prompt(
+            "generate_junction_summaries_batch", n=len(groups), numbered=numbered
         )
         resp = _generate_with_retry(self._client, self._model, prompt, bucket=self._bucket)
         raw = _strip_markdown_fence((resp.text or "").strip())
