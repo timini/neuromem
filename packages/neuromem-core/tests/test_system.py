@@ -2049,7 +2049,13 @@ class TestResolveCentroidNames:
         system.force_dream()
         system.resolve_centroid_names(system.storage.get_all_nodes())
         first_avoid = llm.last_avoid_names
-        assert first_avoid == set() or first_avoid is None or first_avoid == set()
+        # First cycle: no existing centroids, so the avoid set is
+        # either None (batch path not hit — only one centroid needed
+        # naming, which routes through the single-item path that
+        # doesn't pass avoid_names on the spy) or empty. Either is
+        # fine; the invariant is that NO labels leaked in from
+        # nowhere.
+        assert first_avoid in (None, set())
 
         # Second cycle: 2 more tags cluster. The FIRST cycle's centroid
         # is now in the graph and must appear in avoid_names.
