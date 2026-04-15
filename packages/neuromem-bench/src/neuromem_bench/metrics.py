@@ -38,12 +38,25 @@ _NORMALISE_RE = re.compile(r"[^\w\s-]+")
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
-def _normalise(text: str) -> str:
+def _normalise(text: object) -> str:
     """Lowercase, strip punctuation, collapse whitespace.
 
     Used by both metric implementations so the comparison is
     consistent.
+
+    Accepts any object — LongMemEval-s's multi-session counting
+    questions ship gold answers as bare ints (e.g. ``3`` for
+    "how many tanks?"), so coercion to str is mandatory.
+    ``str(None)`` produces the literal "None" which would
+    spuriously match a prediction containing the word; guard
+    against None explicitly by returning an empty string so the
+    downstream ``norm_gold in norm_pred`` check falls back to
+    0.0 (no spurious match).
     """
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
     text = text.lower().strip()
     text = _NORMALISE_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text)
