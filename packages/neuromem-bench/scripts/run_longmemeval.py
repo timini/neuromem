@@ -159,14 +159,32 @@ class _StratifiedDataset:
     def split(self) -> str:
         return self._inner.split
 
+    # Stop iterating the inner dataset once this many consecutive
+    # instances have been skipped (every one falls into a category
+    # that's already at its cap). Large enough to absorb a late-
+    # appearing rare category, tight enough to not burn minutes
+    # downloading + parsing the tail of a large split once the
+    # first N-of-every-seen-category are all emitted.
+    _SATURATION_SKIP_THRESHOLD = 100
+
     def load(self, *, limit: int | None = None):
         per_type = self._per_type
         seen: dict[str, int] = {}
         emitted = 0
+        consecutive_skips = 0
         for instance in self._inner.load(limit=None):
             qt = instance.question_type or "unknown"
             if seen.get(qt, 0) >= per_type:
+                consecutive_skips += 1
+                # Early exit: if every category we've encountered is
+                # full and we've seen 100 consecutive in-file instances
+                # that all fell into already-full buckets, any
+                # remaining buckets would require scanning arbitrarily
+                # far into the dataset to fill. Bail.
+                if consecutive_skips >= self._SATURATION_SKIP_THRESHOLD:
+                    return
                 continue
+            consecutive_skips = 0
             seen[qt] = seen.get(qt, 0) + 1
             yield instance
             emitted += 1
@@ -423,6 +441,19 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+
+    # --per-type-sample and an explicit --sample-size are mutually
+    # exclusive: the stratifier sets the total count (per_type × number
+    # of categories). Rejecting the combo at parse time beats silently
+    # ignoring --sample-size once the bench has started.
+    # ``args.sample_size == 5`` is the default (unset), so we only
+    # complain when the user explicitly passed a non-default > 0.
+    if args.per_type_sample and args.sample_size not in (5, 0):
+        parser.error(
+            "--per-type-sample and --sample-size are mutually exclusive. "
+            "--per-type-sample sets the total count (N × number of "
+            "categories); pass only one."
+        )
 
     # Default changed to neuromem-adk (ADR-003): the one-shot `neuromem`
     # agent cannot call expand_node / search_memory / retrieve_memories

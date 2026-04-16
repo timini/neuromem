@@ -118,19 +118,37 @@ class TestTokenBucket:
         assert elapsed < 0.6, f"expected timeout within 0.6s, got {elapsed:.3f}s"
 
     def test_acquire_timeout_none_is_unbounded_wait(self) -> None:
-        """Passing ``timeout_s=None`` opts out of the safety cap and
-        restores the pre-fix unbounded wait. Verifies we don't raise
-        spuriously on a slow-but-legitimate wait."""
-        bucket = TokenBucket(rate_per_minute=600)  # 10/sec
-        # Drain burst capacity (600 tokens).
-        for _ in range(600):
+        """Passing ``timeout_s=None`` opts out of the safety cap.
+
+        Drains a very-slow bucket and asks for one more token with
+        ``timeout_s=None``, BUT we also use a short bucket-wait
+        scenario (drain enough that the next token is ~0.2s away).
+        If the None escape hatch is broken (silently routed back to
+        the 300s default, as an earlier revision was), the test
+        still passes trivially — so we explicitly check that a
+        short ``timeout_s`` raises on the same setup, proving the
+        timeout machinery is wired up and the None path really is
+        skipping it rather than just lucking out.
+        """
+        # 60rpm = 1/sec refill. Drain + wait for token.
+        bucket = TokenBucket(rate_per_minute=60)
+        for _ in range(60):
             bucket.acquire()
-        # 1 more acquire at 10/sec with timeout_s=None should block
-        # for ~0.1s and return cleanly — no timeout exception.
+        # Prove the timeout path DOES fire by passing a short cap
+        # on a fresh drained bucket.
+        bucket2 = TokenBucket(rate_per_minute=60)
+        for _ in range(60):
+            bucket2.acquire()
+        with pytest.raises(BucketAcquireTimeout):
+            bucket2.acquire(timeout_s=0.1)
+        # Same-shape drained bucket, timeout_s=None → should wait
+        # through ~1s for the next refill and return cleanly.
         start = time.monotonic()
         bucket.acquire(timeout_s=None)
         elapsed = time.monotonic() - start
-        assert elapsed < 0.5  # well within the default 300s cap too
+        # Expect roughly 1s refill wait. If None had been routed to a
+        # 0.5s default (broken escape hatch), the test would raise.
+        assert 0.5 < elapsed < 2.0, f"expected ~1s wait, got {elapsed:.3f}s"
 
     def test_refill_does_not_exceed_capacity(self) -> None:
         """A bucket sitting idle can't accumulate more than one

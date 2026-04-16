@@ -96,7 +96,7 @@ class TokenBucket:
         """The configured rate — read-only after construction."""
         return self._rate
 
-    def acquire(self, *, timeout_s: float | None = None) -> None:
+    def acquire(self, *, timeout_s: float | None = _DEFAULT_ACQUIRE_TIMEOUT_S) -> None:
         """Block until one token is available, then consume it.
 
         Uses a simple loop with a sleep interval tuned to refill a
@@ -104,16 +104,15 @@ class TokenBucket:
         wake up right as the next token is available rather than
         polling, so there's no busy-wait.
 
-        ``timeout_s`` (default :data:`_DEFAULT_ACQUIRE_TIMEOUT_S`)
-        caps the total wait. When exceeded, raises
+        ``timeout_s`` (default :data:`_DEFAULT_ACQUIRE_TIMEOUT_S`,
+        300s) caps the total wait. When exceeded, raises
         :class:`BucketAcquireTimeout` — a subclass of
         ``TimeoutError`` — so callers can distinguish rate-limit
-        starvation from other timeout sources. Pass ``None`` to
-        opt out of the cap (discouraged in production: a genuinely
-        rate-limited call path can starve threads forever).
+        starvation from other timeout sources. Pass ``None``
+        explicitly to opt out of the cap (discouraged in production:
+        a genuinely rate-limited call path can starve threads forever).
         """
-        budget = _DEFAULT_ACQUIRE_TIMEOUT_S if timeout_s is None else timeout_s
-        deadline = time.monotonic() + budget if budget is not None else None
+        deadline = time.monotonic() + timeout_s if timeout_s is not None else None
         while True:
             with self._lock:
                 now = time.monotonic()
@@ -135,7 +134,7 @@ class TokenBucket:
                 if remaining <= 0:
                     raise BucketAcquireTimeout(
                         f"TokenBucket.acquire: could not get a token within "
-                        f"{budget:.0f}s (rate={self._rate} rpm). This usually "
+                        f"{timeout_s:.0f}s (rate={self._rate} rpm). This usually "
                         f"means the effective RPM is much lower than configured "
                         f"— preview-tier models and quota-exhausted keys are "
                         f"typical causes. Lower --workers or raise the model's "
