@@ -106,6 +106,27 @@ class TestStratifiedDataset:
         assert len(got) == 2
         assert all(i.question_type is None for i in got)
 
+    def test_seed_makes_sample_reproducible_and_shuffled(self) -> None:
+        """Same seed → same sample, in the same order. Without seed,
+        the file-order behaviour is preserved. With seed, the picked
+        items are from different file positions than the file-order
+        version — proving the shuffle actually fired."""
+        instances = [_make_instance(f"a{i:02d}", "A") for i in range(50)]
+        no_seed = list(StratifiedDataset(_ListDataset(instances), per_type=5).load())
+        seeded_a = list(StratifiedDataset(_ListDataset(instances), per_type=5, seed=42).load())
+        seeded_b = list(StratifiedDataset(_ListDataset(instances), per_type=5, seed=42).load())
+        assert [i.instance_id for i in seeded_a] == [i.instance_id for i in seeded_b]
+        # Without seed we get file-order front (a00-a04); with seed we
+        # almost certainly get something different.
+        assert [i.instance_id for i in no_seed] == ["a00", "a01", "a02", "a03", "a04"]
+        assert [i.instance_id for i in seeded_a] != [i.instance_id for i in no_seed]
+
+    def test_different_seeds_give_different_samples(self) -> None:
+        instances = [_make_instance(f"a{i:02d}", "A") for i in range(50)]
+        seeded_1 = list(StratifiedDataset(_ListDataset(instances), per_type=5, seed=1).load())
+        seeded_2 = list(StratifiedDataset(_ListDataset(instances), per_type=5, seed=2).load())
+        assert [i.instance_id for i in seeded_1] != [i.instance_id for i in seeded_2]
+
     def test_early_exit_on_saturation(self) -> None:
         # 2 of type A in positions 0-1, then 200 of type A in
         # positions 2-201. per_type=2 fills A after instance 1.

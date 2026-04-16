@@ -136,20 +136,28 @@ def _resolve_api_key() -> str:
 class _StratifiedDataset:
     """Wrap a ``Dataset`` and cap each ``question_type`` at N instances.
 
-    Used by ``--per-type-sample N``. LongMemEval-s has ~5 categories
+    Used by ``--per-type-sample N``. LongMemEval-s has ~6 categories
     in very uneven proportions (single-session-user dominates the
     first half of the file, other types trail). A top-N-in-file-order
     sample produces a lopsided view; this wrapper yields the first
     N of each type, in file order, producing a balanced subset.
+
+    ``seed`` (optional) enables shuffled sampling: the full inner
+    dataset is materialised, shuffled with a seeded ``random.Random``,
+    then the per-category caps are applied. Same seed ⇒ same sample
+    every time, so runs are reproducible. Without a seed, the
+    pre-existing file-order behaviour is preserved (no shuffle, no
+    full-materialisation cost).
 
     Delegates ``name`` / ``split`` to the wrapped dataset so
     ``run_benchmark``'s metadata (``dataset_name`` / ``dataset_split``
     on each result row) stays accurate.
     """
 
-    def __init__(self, inner, *, per_type: int) -> None:
+    def __init__(self, inner, *, per_type: int, seed: int | None = None) -> None:
         self._inner = inner
         self._per_type = per_type
+        self._seed = seed
 
     @property
     def name(self) -> str:
@@ -169,10 +177,23 @@ class _StratifiedDataset:
 
     def load(self, *, limit: int | None = None):
         per_type = self._per_type
+        if self._seed is not None:
+            # Shuffled sampling: materialise + shuffle once, then
+            # iterate deterministically. Early-exit below still
+            # applies but is rarely hit because the shuffle
+            # interleaves categories evenly.
+            import random  # noqa: PLC0415
+
+            rng = random.Random(self._seed)
+            inner_list = list(self._inner.load(limit=None))
+            rng.shuffle(inner_list)
+            source = iter(inner_list)
+        else:
+            source = self._inner.load(limit=None)
         seen: dict[str, int] = {}
         emitted = 0
         consecutive_skips = 0
-        for instance in self._inner.load(limit=None):
+        for instance in source:
             qt = instance.question_type or "unknown"
             if seen.get(qt, 0) >= per_type:
                 consecutive_skips += 1
@@ -334,11 +355,26 @@ def main() -> None:
         help=(
             "If set, take at most N instances of EACH question_type "
             "(stratified sampling). Overrides --sample-size. LongMemEval-s "
-            "has ~5 categories (single-session-user, multi-session, "
-            "temporal-reasoning, knowledge-update, abstention) with "
-            "wildly different counts — --per-type-sample 20 gives you a "
-            "balanced view of where the agent actually fails rather than "
+            "has ~6 categories (single-session-user, multi-session, "
+            "temporal-reasoning, knowledge-update, single-session-assistant, "
+            "single-session-preference) with wildly different counts — "
+            "--per-type-sample 20 gives you a balanced view rather than "
             "a 70%-single-session-user pile."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Random seed for shuffling the dataset before sampling. "
+            "With --per-type-sample, this picks a random N of each "
+            "category instead of the first N in file order — the only "
+            "way to get a representative sample of the later-in-file "
+            "instances. Same seed always produces the same sample, so "
+            "runs are reproducible. Seed value is recorded in the run "
+            "banner, logged to the JSONL summary, and baked into the "
+            "default output filename."
         ),
     )
     parser.add_argument(
@@ -490,7 +526,9 @@ def main() -> None:
             # Stratified sample: cap each question_type at N.
             # Overrides --sample-size (a top-N-in-file sample produces
             # a lopsided view; stratified gives even category coverage).
-            dataset = _StratifiedDataset(dataset, per_type=args.per_type_sample)
+            # --seed, if set, shuffles the dataset before stratification
+            # so we get a RANDOM N per category instead of the first N.
+            dataset = _StratifiedDataset(dataset, per_type=args.per_type_sample, seed=args.seed)
             limit = None  # Let the wrapper decide when to stop.
 
         # Factory pattern: _build_agent is called fresh per worker
@@ -512,16 +550,27 @@ def main() -> None:
         if args.output is not None:
             output_path = args.output
         else:
-            output_path = (
-                repo_root
-                / "docs"
-                / "benchmarks"
-                / f"longmemeval-{args.split}-{agent_name}-n{limit or 'full'}.jsonl"
-            )
+            # Bake per_type + seed into the default filename so
+            # repeat runs don't silently overwrite each other and
+            # a reviewer can tell from the filename which sample
+            # shape the JSONL came from.
+            if args.per_type_sample:
+                seed_tag = f"-seed{args.seed}" if args.seed is not None else ""
+                file_stem = (
+                    f"longmemeval-{args.split}-{agent_name}-pertype{args.per_type_sample}{seed_tag}"
+                )
+            else:
+                file_stem = f"longmemeval-{args.split}-{agent_name}-n{limit or 'full'}"
+            output_path = repo_root / "docs" / "benchmarks" / f"{file_stem}.jsonl"
 
-        sample_desc = (
-            f"per_type={args.per_type_sample}" if args.per_type_sample else f"limit={limit}"
-        )
+        sample_desc_parts: list[str] = []
+        if args.per_type_sample:
+            sample_desc_parts.append(f"per_type={args.per_type_sample}")
+        else:
+            sample_desc_parts.append(f"limit={limit}")
+        if args.seed is not None:
+            sample_desc_parts.append(f"seed={args.seed}")
+        sample_desc = " ".join(sample_desc_parts)
         print(
             f"\n{'=' * 72}\n"
             f"Running LongMemEval split={args.split} "
