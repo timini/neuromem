@@ -133,6 +133,65 @@ def _resolve_api_key() -> str:
     sys.exit(1)
 
 
+class _StratifiedDataset:
+    """Wrap a ``Dataset`` and cap each ``question_type`` at N instances.
+
+    Used by ``--per-type-sample N``. LongMemEval-s has ~5 categories
+    in very uneven proportions (single-session-user dominates the
+    first half of the file, other types trail). A top-N-in-file-order
+    sample produces a lopsided view; this wrapper yields the first
+    N of each type, in file order, producing a balanced subset.
+
+    Delegates ``name`` / ``split`` to the wrapped dataset so
+    ``run_benchmark``'s metadata (``dataset_name`` / ``dataset_split``
+    on each result row) stays accurate.
+    """
+
+    def __init__(self, inner, *, per_type: int) -> None:
+        self._inner = inner
+        self._per_type = per_type
+
+    @property
+    def name(self) -> str:
+        return self._inner.name
+
+    @property
+    def split(self) -> str:
+        return self._inner.split
+
+    # Stop iterating the inner dataset once this many consecutive
+    # instances have been skipped (every one falls into a category
+    # that's already at its cap). Large enough to absorb a late-
+    # appearing rare category, tight enough to not burn minutes
+    # downloading + parsing the tail of a large split once the
+    # first N-of-every-seen-category are all emitted.
+    _SATURATION_SKIP_THRESHOLD = 100
+
+    def load(self, *, limit: int | None = None):
+        per_type = self._per_type
+        seen: dict[str, int] = {}
+        emitted = 0
+        consecutive_skips = 0
+        for instance in self._inner.load(limit=None):
+            qt = instance.question_type or "unknown"
+            if seen.get(qt, 0) >= per_type:
+                consecutive_skips += 1
+                # Early exit: if every category we've encountered is
+                # full and we've seen 100 consecutive in-file instances
+                # that all fell into already-full buckets, any
+                # remaining buckets would require scanning arbitrarily
+                # far into the dataset to fill. Bail.
+                if consecutive_skips >= self._SATURATION_SKIP_THRESHOLD:
+                    return
+                continue
+            consecutive_skips = 0
+            seen[qt] = seen.get(qt, 0) + 1
+            yield instance
+            emitted += 1
+            if limit is not None and emitted >= limit:
+                return
+
+
 def _build_agent(
     name: str,
     api_key: str,
@@ -269,6 +328,20 @@ def main() -> None:
         help="Number of instances to run (default: 5; 0 = full split)",
     )
     parser.add_argument(
+        "--per-type-sample",
+        type=int,
+        default=None,
+        help=(
+            "If set, take at most N instances of EACH question_type "
+            "(stratified sampling). Overrides --sample-size. LongMemEval-s "
+            "has ~5 categories (single-session-user, multi-session, "
+            "temporal-reasoning, knowledge-update, abstention) with "
+            "wildly different counts — --per-type-sample 20 gives you a "
+            "balanced view of where the agent actually fails rather than "
+            "a 70%-single-session-user pile."
+        ),
+    )
+    parser.add_argument(
         "--agent",
         action="append",
         default=None,
@@ -369,6 +442,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # --per-type-sample and an explicit --sample-size are mutually
+    # exclusive: the stratifier sets the total count (per_type × number
+    # of categories). Rejecting the combo at parse time beats silently
+    # ignoring --sample-size once the bench has started.
+    # ``args.sample_size == 5`` is the default (unset), so we only
+    # complain when the user explicitly passed a non-default > 0.
+    if args.per_type_sample and args.sample_size not in (5, 0):
+        parser.error(
+            "--per-type-sample and --sample-size are mutually exclusive. "
+            "--per-type-sample sets the total count (N × number of "
+            "categories); pass only one."
+        )
+
     # Default changed to neuromem-adk (ADR-003): the one-shot `neuromem`
     # agent cannot call expand_node / search_memory / retrieve_memories
     # and so doesn't exercise the ontology-tree-v2 work. The ADK agent
@@ -400,6 +486,12 @@ def main() -> None:
 
     for agent_name in agents:
         dataset = LongMemEval(split=args.split)
+        if args.per_type_sample is not None and args.per_type_sample > 0:
+            # Stratified sample: cap each question_type at N.
+            # Overrides --sample-size (a top-N-in-file sample produces
+            # a lopsided view; stratified gives even category coverage).
+            dataset = _StratifiedDataset(dataset, per_type=args.per_type_sample)
+            limit = None  # Let the wrapper decide when to stop.
 
         # Factory pattern: _build_agent is called fresh per worker
         # thread when workers>1, or once (at the top of the serial
@@ -427,11 +519,14 @@ def main() -> None:
                 / f"longmemeval-{args.split}-{agent_name}-n{limit or 'full'}.jsonl"
             )
 
+        sample_desc = (
+            f"per_type={args.per_type_sample}" if args.per_type_sample else f"limit={limit}"
+        )
         print(
             f"\n{'=' * 72}\n"
             f"Running LongMemEval split={args.split} "
             f"agent={agent_name} metric={metric_name} "
-            f"limit={limit} model={args.model} workers={args.workers}\n"
+            f"{sample_desc} model={args.model} workers={args.workers}\n"
             f"Output: {output_path}\n"
             f"{'=' * 72}",
             flush=True,
