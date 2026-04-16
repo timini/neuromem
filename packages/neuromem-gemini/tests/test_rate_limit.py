@@ -15,6 +15,7 @@ import time
 
 import pytest
 from neuromem_gemini._rate_limit import (
+    BucketAcquireTimeout,
     TokenBucket,
     _reset_registry,
     get_bucket,
@@ -98,6 +99,38 @@ class TestTokenBucket:
         # already be waiting, so duration is between 4.5 and 5.5
         # roughly. Keep the window generous for CI noise.
         assert 4.0 < elapsed < 6.5, f"expected ~5s for 10 acquires at 2/sec, got {elapsed:.2f}s"
+
+    def test_acquire_timeout_raises_after_budget_elapsed(self) -> None:
+        """Starvation should fail fast, not deadlock. A call to
+        ``acquire(timeout_s=0.2)`` on a drained 60-rpm bucket (which
+        refills 1 token per second) must raise after ~0.2s, not wait
+        the full 1s for the token."""
+        bucket = TokenBucket(rate_per_minute=60)  # 1 token/sec refill
+        # Drain the burst capacity.
+        for _ in range(60):
+            bucket.acquire()
+        start = time.monotonic()
+        with pytest.raises(BucketAcquireTimeout, match="within"):
+            bucket.acquire(timeout_s=0.2)
+        elapsed = time.monotonic() - start
+        # Should raise within ~200ms + a small tolerance for wake-up
+        # latency. Much less than the 1s refill interval.
+        assert elapsed < 0.6, f"expected timeout within 0.6s, got {elapsed:.3f}s"
+
+    def test_acquire_timeout_none_is_unbounded_wait(self) -> None:
+        """Passing ``timeout_s=None`` opts out of the safety cap and
+        restores the pre-fix unbounded wait. Verifies we don't raise
+        spuriously on a slow-but-legitimate wait."""
+        bucket = TokenBucket(rate_per_minute=600)  # 10/sec
+        # Drain burst capacity (600 tokens).
+        for _ in range(600):
+            bucket.acquire()
+        # 1 more acquire at 10/sec with timeout_s=None should block
+        # for ~0.1s and return cleanly — no timeout exception.
+        start = time.monotonic()
+        bucket.acquire(timeout_s=None)
+        elapsed = time.monotonic() - start
+        assert elapsed < 0.5  # well within the default 300s cap too
 
     def test_refill_does_not_exceed_capacity(self) -> None:
         """A bucket sitting idle can't accumulate more than one

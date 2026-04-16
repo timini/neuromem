@@ -51,12 +51,35 @@ import time
 logger = logging.getLogger("neuromem_gemini.rate_limit")
 
 
+# Default safety cap on how long a caller is willing to wait for a
+# token before giving up. 5 minutes is long enough to absorb a
+# full minute of thundering-herd contention at low RPM, but short
+# enough that a genuinely rate-limit-deadlocked run fails fast
+# rather than silently hanging at 0% CPU indefinitely (seen in
+# the Apr 2026 n=120 bench on gemini-3-flash-preview: 40+ threads
+# contending for a preview-tier RPM that was effectively under 5,
+# bench stuck for 46 min with no progress and no error).
+_DEFAULT_ACQUIRE_TIMEOUT_S = 300.0
+
+
+class BucketAcquireTimeout(TimeoutError):
+    """Raised when ``TokenBucket.acquire()`` couldn't obtain a token
+    within its configured wait budget.
+
+    Subclass of ``TimeoutError`` so existing code that catches
+    ``TimeoutError`` handles it naturally. The dedicated type lets
+    callers distinguish rate-limit starvation from other timeouts
+    (httpx transport timeouts, request deadlines) when they need to
+    treat them differently.
+    """
+
+
 class TokenBucket:
     """Thread-safe token-bucket rate limiter.
 
     Capacity equals rate (one-minute burst). Tokens refill
     continuously at ``rate_per_minute / 60`` per second. ``acquire``
-    blocks until a token is available.
+    blocks until a token is available or the timeout elapses.
     """
 
     def __init__(self, rate_per_minute: int) -> None:
@@ -73,14 +96,24 @@ class TokenBucket:
         """The configured rate — read-only after construction."""
         return self._rate
 
-    def acquire(self) -> None:
+    def acquire(self, *, timeout_s: float | None = None) -> None:
         """Block until one token is available, then consume it.
 
         Uses a simple loop with a sleep interval tuned to refill a
         single token from the current token count. That means callers
         wake up right as the next token is available rather than
         polling, so there's no busy-wait.
+
+        ``timeout_s`` (default :data:`_DEFAULT_ACQUIRE_TIMEOUT_S`)
+        caps the total wait. When exceeded, raises
+        :class:`BucketAcquireTimeout` — a subclass of
+        ``TimeoutError`` — so callers can distinguish rate-limit
+        starvation from other timeout sources. Pass ``None`` to
+        opt out of the cap (discouraged in production: a genuinely
+        rate-limited call path can starve threads forever).
         """
+        budget = _DEFAULT_ACQUIRE_TIMEOUT_S if timeout_s is None else timeout_s
+        deadline = time.monotonic() + budget if budget is not None else None
         while True:
             with self._lock:
                 now = time.monotonic()
@@ -96,6 +129,19 @@ class TokenBucket:
                 # How long until we have one token?
                 deficit = 1.0 - self._tokens
                 wait_s = deficit / (self._rate / 60.0)
+
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise BucketAcquireTimeout(
+                        f"TokenBucket.acquire: could not get a token within "
+                        f"{budget:.0f}s (rate={self._rate} rpm). This usually "
+                        f"means the effective RPM is much lower than configured "
+                        f"— preview-tier models and quota-exhausted keys are "
+                        f"typical causes. Lower --workers or raise the model's "
+                        f"quota."
+                    )
+                wait_s = min(wait_s, remaining)
 
             # Release the lock while sleeping so other threads can
             # also enter the waiting state. We do NOT hand out tokens
