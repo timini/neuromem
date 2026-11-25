@@ -612,6 +612,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#views-experiment-separate-linked-views-vs-one-unified-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Views experiment: separate linked views vs one unified tree
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Views experiment: separate linked views vs one unified tree">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-the-linked-views-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the linked views lost
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other findings
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#earlier-smoke-test" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1135,6 +1174,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#views-experiment-separate-linked-views-vs-one-unified-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Views experiment: separate linked views vs one unified tree
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Views experiment: separate linked views vs one unified tree">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-the-linked-views-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the linked views lost
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other findings
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#earlier-smoke-test" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1406,6 +1484,104 @@
 </tbody>
 </table>
 <p>Whole-session embeddings already put the evidence at the top. On this sample, splitting sessions into chunks before clustering would not improve recall.</p>
+<h2 id="views-experiment-separate-linked-views-vs-one-unified-tree">Views experiment: separate linked views vs one unified tree<a class="headerlink" href="#views-experiment-separate-linked-views-vs-one-unified-tree" title="Permanent link">&para;</a></h2>
+<p>Run on 2026-11-25 to test the plan in <a href="../plans/unified-memory-plan/">the unified memory plan</a>: keep separate semantic (neural RAG tree), ontology (tags and entities) and episodic (timelines) views over the same dated memories and link them, or build one unified tree.</p>
+<div class="admonition note">
+<p class="admonition-title">Different models from the Gemini runs</p>
+<p>Every call (summaries, embeddings, answers, judge) used open models on a rented A100: <code>Qwen3-30B-A3B-Instruct-2507-FP8</code> and <code>Qwen3-Embedding-0.6B</code>. The same Qwen model answers and judges, with LongMemEval's official judge prompts. Compare these numbers with each other, not with the Gemini tables above.</p>
+</div>
+<p>Same 60 questions (10 per type, seed 42). All arms read the same built memory; they differ only in which views feed ranking and context.</p>
+<table>
+<thead>
+<tr>
+<th>Arm</th>
+<th>What it uses</th>
+<th>Accuracy, 60K context</th>
+<th>Accuracy, 12K context</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F</td>
+<td>dated memories only, leaf ranking</td>
+<td>0.825</td>
+<td>0.702</td>
+</tr>
+<tr>
+<td>S</td>
+<td>+ semantic view</td>
+<td>0.842</td>
+<td>0.719</td>
+</tr>
+<tr>
+<td>U</td>
+<td>+ one unified tree</td>
+<td>0.789</td>
+<td>0.702</td>
+</tr>
+<tr>
+<td>E</td>
+<td>+ episodic view</td>
+<td>0.754</td>
+<td>0.579</td>
+</tr>
+<tr>
+<td>O</td>
+<td>+ ontology view</td>
+<td>0.596</td>
+<td>0.544</td>
+</tr>
+<tr>
+<td>M</td>
+<td>all three views, linked</td>
+<td>0.632</td>
+<td>0.561</td>
+</tr>
+</tbody>
+</table>
+<p>M lost to F on 14 questions and won 3 (exact McNemar p = 0.013 at 60K). U against F was even (5 wins, 6 losses). Link following changed nothing measurable.</p>
+<h3 id="why-the-linked-views-lost">Why the linked views lost<a class="headerlink" href="#why-the-linked-views-lost" title="Permanent link">&para;</a></h3>
+<p>Each view's ranking was fused with the leaf ranking by equal-weight reciprocal rank fusion. That is what failed, not the view contents:</p>
+<table>
+<thead>
+<tr>
+<th>View</th>
+<th>Leaf ranking had the answer in its top 3</th>
+<th>Fusion pushed it out of the top 3</th>
+<th>Answer missing from the view's list</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ontology</td>
+<td>57</td>
+<td>16</td>
+<td>15</td>
+</tr>
+<tr>
+<td>Episodic</td>
+<td>57</td>
+<td>15</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Semantic</td>
+<td>57</td>
+<td>3</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>The ontology view only lists memories that share a label with another memory (median 24 of 48), so a one-off topic is absent from its list and loses under fusion. The episodic view orders memories by thread and recency rather than by relevance to the question. Because the full transcripts go to the top 3 fused memories, losing the answer from the top 3 costs accuracy directly.</p>
+<p>The test of views as extra context, with ranking left to the leaves, has not been run yet.</p>
+<h3 id="other-findings">Other findings<a class="headerlink" href="#other-findings" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Tags and entities in the embedded text:</strong> no measurable effect on ranking (reciprocal rank 0.937 with, 0.933 without; recall@3 0.910 with, 0.939 without). They stay in the rendered memory lines.</li>
+<li><strong>Scoring nodes by the mean of their members' vectors</strong> ranked the answer's node higher than scoring by the embedding of the node's summary text, in all four views (for example episodic 0.972 against 0.899).</li>
+<li><strong>Noise floor:</strong> answering the unified arm a second time changed 0 of 60 verdicts.</li>
+<li><strong>Cost:</strong> $9.35 of GPU time in total. About $5 of that was an H100 started to speed the run up that never served a request.</li>
+</ul>
+<p>Raw rows, rules and the full summary: <a href="https://github.com/timini/neuromem/tree/episodic-memory-v2/docs/benchmarks/views-experiment/full"><code>docs/benchmarks/views-experiment/full/</code></a>.</p>
 <h2 id="earlier-smoke-test">Earlier smoke test<a class="headerlink" href="#earlier-smoke-test" title="Permanent link">&para;</a></h2>
 <p>One instance per type, seed 42, <code>gemini-3-flash-preview</code>, official judge, episodic agent:</p>
 <table>

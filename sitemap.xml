@@ -81,6 +81,14 @@
          <lastmod>2026-11-25</lastmod>
     </url>
     <url>
+         <loc>https://timini.github.io/neuromem/benchmarks/views-experiment/full/summary/</loc>
+         <lastmod>2026-11-25</lastmod>
+    </url>
+    <url>
+         <loc>https://timini.github.io/neuromem/benchmarks/views-experiment/smoke/summary/</loc>
+         <lastmod>2026-11-25</lastmod>
+    </url>
+    <url>
          <loc>https://timini.github.io/neuromem/decisions/ADR-001-clustering-library-choice/</loc>
          <lastmod>2026-11-25</lastmod>
     </url>
@@ -102,6 +110,10 @@
     </url>
     <url>
          <loc>https://timini.github.io/neuromem/investigations/instance3-target-loss/</loc>
+         <lastmod>2026-11-25</lastmod>
+    </url>
+    <url>
+         <loc>https://timini.github.io/neuromem/plans/unified-memory-plan/</loc>
          <lastmod>2026-11-25</lastmod>
     </url>
 </urlset>

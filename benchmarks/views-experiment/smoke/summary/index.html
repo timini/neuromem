@@ -1,0 +1,2136 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/benchmarks/views-experiment/smoke/summary/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Views experiment - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#views-experiment" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Views experiment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tier-r-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier R: retrieval
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-type-at-b12-descriptive-strict-session-recall-reciprocal-rank" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per type at B12 (descriptive): strict session recall / reciprocal rank
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-registered-comparisons-b12-holm-within-metric" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-registered comparisons (B12, Holm within metric)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tier-a-answers-and-the-official-judge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier A: answers and the official judge
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tokens-and-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tokens and time
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#builds-and-view-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Builds and view checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-rules-plan-76" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision rules (plan 7.6)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="views-experiment">Views experiment<a class="headerlink" href="#views-experiment" title="Permanent link">&para;</a></h1>
+<p>Instances: 2. Arms: F, F-notag, U, S, O, E, SO, SE, OE, M, M-nolink. Budgets: B60, B12.</p>
+<h2 id="tier-r-retrieval">Tier R: retrieval<a class="headerlink" href="#tier-r-retrieval" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>arm</th>
+<th>budget</th>
+<th>n</th>
+<th>rr</th>
+<th>recall@3</th>
+<th>recall@12</th>
+<th>session_recall_strict</th>
+<th>session_recall</th>
+<th>memory_line_recall</th>
+<th>turn_cov_transcript</th>
+<th>turn_cov_memory_line</th>
+<th>context_chars</th>
+<th>retrieval_ms</th>
+<th>all_evidence@3 (multi)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59654.000</td>
+<td>5.429</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>F</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>10779.500</td>
+<td>5.134</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>F-notag</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>58213.000</td>
+<td>3.109</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>F-notag</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>10837.500</td>
+<td>1.943</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>U</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59236.500</td>
+<td>2.086</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>U</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>10966.500</td>
+<td>3.564</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>S</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59233.500</td>
+<td>2.606</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>S</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>11140.500</td>
+<td>2.551</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>O</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>58750.500</td>
+<td>2.561</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>O</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>10634.000</td>
+<td>2.690</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>E</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59357.000</td>
+<td>2.801</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>E</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>11101.500</td>
+<td>2.396</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SO</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>58991.500</td>
+<td>2.405</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SO</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>11105.000</td>
+<td>2.254</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SE</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59421.500</td>
+<td>3.233</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SE</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>11183.000</td>
+<td>3.032</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>OE</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59934.000</td>
+<td>2.524</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>OE</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>10595.500</td>
+<td>2.391</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59763.000</td>
+<td>2.681</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>11299.500</td>
+<td>2.669</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M-nolink</td>
+<td>B60</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>59306.000</td>
+<td>3.468</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M-nolink</td>
+<td>B12</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>1.000</td>
+<td>0.000</td>
+<td>1.000</td>
+<td>10842.500</td>
+<td>2.451</td>
+<td>1.000</td>
+</tr>
+</tbody>
+</table>
+<h2 id="per-type-at-b12-descriptive-strict-session-recall-reciprocal-rank">Per type at B12 (descriptive): strict session recall / reciprocal rank<a class="headerlink" href="#per-type-at-b12-descriptive-strict-session-recall-reciprocal-rank" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>arm</th>
+<th>knowledge-update</th>
+<th>multi-session</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>F-notag</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>U</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>S</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>O</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>E</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>SO</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>SE</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>OE</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>M</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+<tr>
+<td>M-nolink</td>
+<td>1.00 / 1.00</td>
+<td>1.00 / 1.00</td>
+</tr>
+</tbody>
+</table>
+<h2 id="pre-registered-comparisons-b12-holm-within-metric">Pre-registered comparisons (B12, Holm within metric)<a class="headerlink" href="#pre-registered-comparisons-b12-holm-within-metric" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>comparison</th>
+<th>metric</th>
+<th>n</th>
+<th>mean diff</th>
+<th>95% CI</th>
+<th>Wilcoxon p</th>
+<th>Holm p</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M vs U</td>
+<td>rr</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>U vs F</td>
+<td>rr</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs F</td>
+<td>rr</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs M-nolink</td>
+<td>rr</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs U</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>U vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs M-nolink</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs U</td>
+<td>session_recall</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>U vs F</td>
+<td>session_recall</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs F</td>
+<td>session_recall</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs M-nolink</td>
+<td>session_recall</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+</tbody>
+</table>
+<p>Other comparisons (not corrected):</p>
+<table>
+<thead>
+<tr>
+<th>comparison</th>
+<th>metric</th>
+<th>n</th>
+<th>mean diff</th>
+<th>95% CI</th>
+<th>Wilcoxon p</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F vs F-notag</td>
+<td>rr</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs M-nolink</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs M-nolink</td>
+<td>session_recall</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>S vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>O vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>E vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SO vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>SE vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>OE vs F</td>
+<td>session_recall_strict</td>
+<td>2</td>
+<td>0.000</td>
+<td>[0.000, 0.000]</td>
+<td>1.000</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tier-a-answers-and-the-official-judge">Tier A: answers and the official judge<a class="headerlink" href="#tier-a-answers-and-the-official-judge" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>arm</th>
+<th>budget</th>
+<th>n</th>
+<th>accuracy</th>
+<th>Wilson 95%</th>
+<th>n abstention</th>
+<th>abstention acc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F</td>
+<td>B60</td>
+<td>2</td>
+<td>0.500</td>
+<td>[0.095, 0.905]</td>
+<td>0</td>
+<td>-</td>
+</tr>
+<tr>
+<td>F</td>
+<td>B12</td>
+<td>2</td>
+<td>0.500</td>
+<td>[0.095, 0.905]</td>
+<td>0</td>
+<td>-</td>
+</tr>
+<tr>
+<td>M</td>
+<td>B60</td>
+<td>2</td>
+<td>0.500</td>
+<td>[0.095, 0.905]</td>
+<td>0</td>
+<td>-</td>
+</tr>
+<tr>
+<td>M</td>
+<td>B12</td>
+<td>2</td>
+<td>0.500</td>
+<td>[0.095, 0.905]</td>
+<td>0</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>comparison</th>
+<th>budget</th>
+<th>wins</th>
+<th>losses</th>
+<th>exact McNemar p</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M vs F</td>
+<td>B60</td>
+<td>0</td>
+<td>0</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>M vs F</td>
+<td>B12</td>
+<td>0</td>
+<td>0</td>
+<td>1.000</td>
+</tr>
+</tbody>
+</table>
+<p>Noise floor (U at B60 answered again, answer cache off): 0 flips in 0 questions.</p>
+<h2 id="tokens-and-time">Tokens and time<a class="headerlink" href="#tokens-and-time" title="Permanent link">&para;</a></h2>
+<p>Dream and embedding phases, summed over instances:</p>
+<table>
+<thead>
+<tr>
+<th>phase</th>
+<th>calls</th>
+<th>cache hits</th>
+<th>input</th>
+<th>output</th>
+<th>thinking</th>
+<th>paid input</th>
+<th>paid output</th>
+<th>estimated calls</th>
+<th>failed calls</th>
+<th>model seconds (misses)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>embed</td>
+<td>490</td>
+<td>0</td>
+<td>677904</td>
+<td>0</td>
+<td>0</td>
+<td>677904</td>
+<td>0</td>
+<td>490</td>
+<td>0</td>
+<td>19.357</td>
+</tr>
+<tr>
+<td>episodic</td>
+<td>34</td>
+<td>0</td>
+<td>25561</td>
+<td>11711</td>
+<td>0</td>
+<td>25561</td>
+<td>11711</td>
+<td>0</td>
+<td>0</td>
+<td>250.187</td>
+</tr>
+<tr>
+<td>leaf</td>
+<td>95</td>
+<td>0</td>
+<td>256986</td>
+<td>33604</td>
+<td>0</td>
+<td>256986</td>
+<td>33604</td>
+<td>0</td>
+<td>0</td>
+<td>3070.464</td>
+</tr>
+<tr>
+<td>semantic</td>
+<td>77</td>
+<td>0</td>
+<td>125416</td>
+<td>9556</td>
+<td>0</td>
+<td>125416</td>
+<td>9556</td>
+<td>0</td>
+<td>0</td>
+<td>269.699</td>
+</tr>
+<tr>
+<td>unified</td>
+<td>76</td>
+<td>0</td>
+<td>127315</td>
+<td>57704</td>
+<td>0</td>
+<td>127315</td>
+<td>57704</td>
+<td>0</td>
+<td>1</td>
+<td>1610.231</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>arm</th>
+<th>dream tokens if built alone</th>
+<th>answer in B60</th>
+<th>answer out B60</th>
+<th>judge in B60</th>
+<th>judge out B60</th>
+<th>answer in B12</th>
+<th>answer out B12</th>
+<th>judge in B12</th>
+<th>judge out B12</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F</td>
+<td>290590</td>
+<td>26771</td>
+<td>88</td>
+<td>325</td>
+<td>4</td>
+<td>5490</td>
+<td>66</td>
+<td>303</td>
+<td>4</td>
+</tr>
+<tr>
+<td>F-notag</td>
+<td>290590</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>U</td>
+<td>475609</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>S</td>
+<td>425562</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>O</td>
+<td>290590</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>E</td>
+<td>327862</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SO</td>
+<td>425562</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>SE</td>
+<td>462834</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>OE</td>
+<td>327862</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>M</td>
+<td>462834</td>
+<td>28639</td>
+<td>64</td>
+<td>301</td>
+<td>4</td>
+<td>7075</td>
+<td>63</td>
+<td>300</td>
+<td>4</td>
+</tr>
+<tr>
+<td>M-nolink</td>
+<td>462834</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<h2 id="builds-and-view-checks">Builds and view checks<a class="headerlink" href="#builds-and-view-checks" title="Permanent link">&para;</a></h2>
+<p>Instances built: 2 of 2; build failures: 0; evaluation failures: 0.
+Leaf fallbacks: 0 of 95 leaves; node summary fallbacks: 1; failed dream LLM calls (incl. recovered): 1.
+Build wall time this run: 1113.4s total, 556.7s mean over 2 fresh builds.
+GPU cost at 2.09/h for build wall time: 0.65
+View distinctness (S, O, E): 0.629 over 2 instances.</p>
+<p>Node scoring: node-text vector against mean-of-members vector (first answer node RR):</p>
+<table>
+<thead>
+<tr>
+<th>view</th>
+<th>n</th>
+<th>text RR</th>
+<th>mean-of-members RR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>semantic</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>ontology</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>episodic</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>unified</td>
+<td>2</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+</tbody>
+</table>
+<h2 id="decision-rules-plan-76">Decision rules (plan 7.6)<a class="headerlink" href="#decision-rules-plan-76" title="Permanent link">&para;</a></h2>
+<p><code>-</code> means the data needed was not available, or (rule 4) that the test cannot fire.
+Recall rules use <code>session_recall_strict</code>; the plan-wording metric is shown alongside.</p>
+<table>
+<thead>
+<tr>
+<th>rule</th>
+<th>session_recall_strict</th>
+<th>session_recall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 flat wins</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>2 unified wins</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>3 linked views win</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>4 links matter</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>4 links matter, B12 recall (descriptive)</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>5 one view is enough</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
+<td>5 arms recovering 80% of M's gain</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6 tags stay in leaf text</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Rule 4 not testable: M and M-nolink reciprocal ranks are identical on every instance, because link following changes only the node pool, not the fused list. See the descriptive B12 recall comparison instead.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2119 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/plans/unified-memory-plan/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>One memory system with three linked views: final plan - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#one-memory-system-with-three-linked-views-final-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              One memory system with three linked views: final plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-conceptual-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Conceptual model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-data-model-storageadapter-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Data model (StorageAdapter terms)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-dream-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Dream cycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Dream cycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-leaf-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Leaf call
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-view-builders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 View builders
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-llm-calls-per-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 LLM calls per instance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-what-is-embedded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What is embedded
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-retrieval-fusion-and-rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Retrieval, fusion and rendering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-what-carries-over-and-what-is-deleted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What carries over and what is deleted
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. What carries over and what is deleted">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#carries-over" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Carries over
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration-and-adr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration and ADR
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-the-experiment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. The experiment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. The experiment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-cost-what-can-and-cannot-be-said" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 Cost: what can and cannot be said
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-phase-0-measure-first-one-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Phase 0: measure first (one instance)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-arms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 Arms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-where-the-llm-work-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4 Where the LLM work runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-caching-neuromem_bench_cachepy-file-cacheneuromem-benchcachesqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5 Caching (neuromem_bench/_cache.py, file ~/.cache/neuromem-bench/cache.sqlite)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#76-tiers-metrics-statistics-and-decision-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.6 Tiers, metrics, statistics and decision rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#77-tokens-per-arm-per-instance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.7 Tokens per arm per instance
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-implementation-phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Implementation phases
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="one-memory-system-with-three-linked-views-final-plan">One memory system with three linked views: final plan<a class="headerlink" href="#one-memory-system-with-three-linked-views-final-plan" title="Permanent link">&para;</a></h1>
+<p>The base is Design 1: one schema with a <code>view</code> column, one leaf call, no near-duplicate merging, no ward linkage, no hdbscan, and <code>LLMProvider</code> reduced to <code>complete()</code>. Four things come from the other designs:</p>
+<ul>
+<li>Separate jobs per view, a unified baseline on the same member sets and a links-off arm (Design 2).</li>
+<li>Episodic threads anchored on labels (Designs 2 and 3).</li>
+<li>The tight-budget condition, pre-registered rules, answer cache, noise floor and phase 0 metering (Design 3).</li>
+<li>Turn-level evidence metrics (Design 2).</li>
+</ul>
+<p>Left out because they cost a lot of code before any evidence supports them:</p>
+<ul>
+<li>Fact key vectors.</li>
+<li>Personalized PageRank.</li>
+<li>A regex temporal parser.</li>
+<li>A cache inside <code>StorageAdapter</code>.</li>
+<li>New <code>timeline</code> and <code>related</code> tools.</li>
+<li>The ADK session-append rework.</li>
+<li>Rented GPUs as the main path.</li>
+</ul>
+<p>Code facts checked for this plan:</p>
+<ul>
+<li><code>StorageAdapter</code> has 15 abstract methods plus <code>set_named_entities</code>, which is a non-abstract no-op (<code>storage/base.py:148</code>).</li>
+<li><code>EpisodicMemory(db_path=...)</code> is configurable (<code>episodic.py:293</code>), so episodic databases can exist on disk.</li>
+<li>Nothing in <code>neuromem-gemini</code> reads <code>usage_metadata</code> or sets a thinking config.</li>
+<li>Bench agents default to <code>gemini-3.8-flash</code>.</li>
+<li>Prompt files exist in four provider packages: gemini, openai, anthropic and gemma.</li>
+</ul>
+<h2 id="1-conceptual-model">1. Conceptual model<a class="headerlink" href="#1-conceptual-model" title="Permanent link">&para;</a></h2>
+<p>Leaves are dated memories, one per session. They are the only shared identity. Each view is a separate structure over the same leaves, and each has one job:</p>
+<table>
+<thead>
+<tr>
+<th>View</th>
+<th>Question it answers</th>
+<th>Built from</th>
+<th>Node kinds</th>
+<th>LLM text on nodes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Semantic (neural, the RAG tree)</td>
+<td>What is this about, and what else is like it?</td>
+<td>Leaf embedding geometry</td>
+<td><code>cluster</code></td>
+<td>TOPIC plus a topical summary. No timeline.</td>
+</tr>
+<tr>
+<td>Ontology (symbolic)</td>
+<td>Which memories mention X, and what kind of thing is X?</td>
+<td>Tags and entities from the leaf call</td>
+<td><code>label</code>, <code>category</code></td>
+<td>None. Deterministic.</td>
+</tr>
+<tr>
+<td>Episodic (time)</td>
+<td>What happened when, what is true now, what changed?</td>
+<td>Dates, plus ontology labels as anchors</td>
+<td><code>thread</code>, <code>week</code>, <code>month</code></td>
+<td>CURRENT and HISTORY on threads only. Periods are deterministic.</td>
+</tr>
+<tr>
+<td>Unified (experiment baseline)</td>
+<td>All of the above in one tree</td>
+<td>Same member sets as semantic</td>
+<td><code>cluster</code></td>
+<td>TOPIC, ENTITIES, CURRENT, HISTORY</td>
+</tr>
+</tbody>
+</table>
+<p>Views are linked in two ways:</p>
+<ol>
+<li><strong>Shared leaves.</strong> A memory id is the join key. Nodes in different views are related when their member sets overlap, and this is computed at query time.</li>
+<li><strong>One stored typed edge.</strong> A thread is <code>anchored_to</code> the ontology label it was built from, so "Honda Civic" the label and "Honda Civic" the timeline are explicitly the same thing.</li>
+</ol>
+<p>A memory can sit under several label nodes and several threads, so each view is a shallow DAG rather than a strict tree. The whole store is a multi-rooted DAG over one leaf set. That is the "RAG tree, but more".</p>
+<pre class="mermaid"><code>flowchart TB
+    subgraph S["semantic view"]
+        S1["cluster: car purchase and insurance"]
+    end
+    subgraph O["ontology view"]
+        O1["category: vehicles"] --&gt; O2["label: honda civic (product)"]
+        O1 --&gt; O3["label: car insurance"]
+    end
+    subgraph E["episodic view"]
+        E1["thread: honda civic"]
+        E2["week of 2023-05-15"]
+    end
+    M1(["mem 2023-05-20: bought a Civic"])
+    M2(["mem 2023-05-27: insurance quote"])
+    M3(["mem 2023-06-02: first service"])
+    S1 --&gt; M1
+    S1 --&gt; M2
+    O2 --&gt; M1
+    O2 --&gt; M3
+    O3 --&gt; M2
+    E1 --&gt; M1
+    E1 --&gt; M3
+    E2 --&gt; M1
+    E1 -. "anchored_to" .-&gt; O2</code></pre>
+<h2 id="2-data-model-storageadapter-terms">2. Data model (StorageAdapter terms)<a class="headerlink" href="#2-data-model-storageadapter-terms" title="Permanent link">&para;</a></h2>
+<p>One SQLite schema replaces both the tag graph tables and EpisodicMemory's private <code>ep_*</code> tables.</p>
+<pre class="mermaid"><code>erDiagram
+    memories {
+        TEXT id PK
+        TEXT session_id
+        TEXT session_date "as given"
+        REAL sort_key "epoch s, undated sorts last"
+        TEXT raw_content
+        TEXT summary "dated"
+        TEXT tags "JSON list"
+        TEXT named_entities "JSON list of name and type"
+        BLOB embedding "leaf vector"
+        TEXT leaf_version "prompt version, model, embed text version"
+        TEXT status "inbox, dreaming, consolidated, archived"
+        REAL access_weight
+        INTEGER last_accessed
+        INTEGER created_at
+        TEXT metadata
+    }
+    nodes {
+        TEXT id PK
+        TEXT view "semantic, ontology, episodic, unified"
+        TEXT kind "cluster, label, category, thread, week, month"
+        TEXT label
+        TEXT summary "empty for deterministic nodes"
+        BLOB embedding "of node embed text"
+        TEXT member_key "sha1 of view, kind, prompt version, sorted ids"
+        TEXT member_ids "JSON, date order"
+        TEXT first_date
+        TEXT last_date
+        TEXT attrs "JSON: entity type, anchor label"
+        INTEGER active
+    }
+    edges {
+        TEXT source_id
+        TEXT target_id
+        TEXT relationship "member_of, child_of, anchored_to"
+    }
+    schema_version {
+        INTEGER version
+    }</code></pre>
+<p>Changes to the current schema:</p>
+<ul>
+<li><strong>memories:</strong> add <code>session_id</code>, <code>session_date</code>, <code>sort_key</code>, <code>tags</code>, <code>embedding</code> and <code>leaf_version</code>. <code>named_entities</code> already exists.</li>
+<li><strong>nodes:</strong></li>
+<li>Add <code>view</code>, <code>kind</code>, <code>member_key</code>, <code>member_ids</code>, <code>first_date</code>, <code>last_date</code>, <code>attrs</code> and <code>active</code>.</li>
+<li><code>member_key</code> is unique together with <code>view</code>.</li>
+<li>Rename <code>paragraph_summary</code> to <code>summary</code>.</li>
+<li>Drop <code>is_centroid</code>, because tags are no longer nodes.</li>
+<li><strong>edges:</strong></li>
+<li>The CHECK becomes <code>member_of</code> (leaf to node), <code>child_of</code> (node to node, same view) or <code>anchored_to</code> (thread to label).</li>
+<li>Drop <code>weight</code>.</li>
+</ul>
+<p>StorageAdapter contract, 12 abstract methods replacing the current 16:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>insert_memory(raw_content, *, session_id, session_date, metadata)</code></td>
+<td>changed</td>
+</tr>
+<tr>
+<td><code>count_memories_by_status</code>, <code>get_memories_by_status</code>, <code>update_memory_status</code>, <code>get_memory_by_id</code></td>
+<td>kept</td>
+</tr>
+<tr>
+<td><code>set_leaf_data({id: {summary, tags, named_entities, embedding, leaf_version}})</code></td>
+<td>replaces <code>set_summaries</code> and <code>set_named_entities</code></td>
+</tr>
+<tr>
+<td><code>get_node_cache(view) -&gt; {member_key: node}</code></td>
+<td>new. Reuses summaries for unchanged member sets.</td>
+</tr>
+<tr>
+<td><code>replace_view(view, nodes, edges)</code></td>
+<td>new. Atomic: deactivate, upsert by <code>(view, member_key)</code>, swap the view's edges.</td>
+</tr>
+<tr>
+<td><code>get_nodes(view=None, active=True)</code></td>
+<td>replaces <code>get_all_nodes</code> and returns vectors</td>
+</tr>
+<tr>
+<td><code>get_edges(view=None, relationship=None)</code></td>
+<td>replaces <code>get_subgraph</code></td>
+</tr>
+<tr>
+<td><code>apply_decay_and_archive</code>, <code>spike_access_weight</code></td>
+<td>kept</td>
+</tr>
+</tbody>
+</table>
+<p>Similarity search moves into core as numpy over the returned matrices, as EpisodicMemory does today. <code>get_nearest_nodes</code> leaves the contract. The benchmark LLM and embedding cache stays in <code>neuromem-bench</code> and does not enter this contract.</p>
+<h2 id="3-dream-cycle">3. Dream cycle<a class="headerlink" href="#3-dream-cycle" title="Permanent link">&para;</a></h2>
+<p>The trigger stays: a background thread at <code>dream_threshold</code>, or <code>dream(block=True)</code>. The lock and the status flips are unchanged. No LLM calls run on the hot path (ADR-004).</p>
+<pre class="mermaid"><code>flowchart TD
+    A["inbox: flip to dreaming"] --&gt; B["leaf call per memory: SUMMARY, TAGS, ENTITIES"]
+    B --&gt; C["embed leaf text, chunk mean"]
+    C --&gt; D["decay and archive"]
+    D --&gt; V{"for each enabled view"}
+    V --&gt; S["semantic: average linkage, clusters of 2 to 30"]
+    V --&gt; O["ontology: labels with support 2 or more, categories by cosine cut"]
+    O --&gt; E["episodic: threads from labels, weeks and months"]
+    V --&gt; U["unified: same member sets as semantic"]
+    S --&gt; R["summarise new member_keys only, embed node text"]
+    E --&gt; R
+    U --&gt; R
+    O --&gt; R
+    R --&gt; W["replace_view per view; flip to consolidated"]</code></pre>
+<h3 id="31-leaf-call">3.1 Leaf call<a class="headerlink" href="#31-leaf-call" title="Permanent link">&para;</a></h3>
+<p>There is one call per memory (<code>prompts/leaf.prompt</code>). It reuses the <code>MEMORY_SUMMARY_PROMPT</code> rules: absolute dates, the original phrase in brackets, every personal fact, changed values, and assistant specifics.</p>
+<p>The output is a line format, not JSON, because JSON is fragile on small local models:</p>
+<div class="highlight"><pre><span></span><code>SUMMARY: On 2023-05-20 (Sat), the user ...
+TAGS: car purchase; honda civic; budgeting
+ENTITIES: Honda Civic (product); Dave (person); Toyota dealership (organisation)
+</code></pre></div>
+<ul>
+<li>Tags are 3 to 8 lowercase noun phrases.</li>
+<li>Entity types come from a fixed set: person, place, organisation, product, item, event, activity, other.</li>
+<li>If parsing fails, the call is retried once. If it fails again, the summary becomes <code>On &lt;date&gt;: &lt;transcript head&gt;</code> with empty lists.</li>
+<li>The fallback rate is logged, because it hurts the ontology and episodic views more than the semantic one.</li>
+</ul>
+<h3 id="32-view-builders">3.2 View builders<a class="headerlink" href="#32-view-builders" title="Permanent link">&para;</a></h3>
+<p>Builders live in <code>neuromem/views/</code> (<code>base.py</code>, <code>semantic.py</code>, <code>ontology.py</code>, <code>episodic.py</code>, <code>unified.py</code>). Each implements:</p>
+<ul>
+<li><code>build(leaves, ctx) -&gt; ViewGraph</code>, which makes no storage writes.</li>
+<li><code>rank(query, graph, leaves) -&gt; ViewHits</code>, which makes no LLM calls.</li>
+</ul>
+<p>All summaries go through <code>ctx.summarise(kind, member_key, prompt)</code>, which checks <code>get_node_cache</code> first. A view never calls the LLM directly.</p>
+<p><strong>Semantic</strong></p>
+<ul>
+<li>Structure: one scipy <code>average</code> linkage on cosine distance over leaf vectors. <code>dendrogram_member_sets</code> moves here from <code>episodic.py</code>.</li>
+<li>Every internal node of 2 to 30 members becomes a <code>cluster</code>. <code>child_of</code> follows the merge order, and duplicate member sets are dropped.</li>
+<li>Prompt: <code>cluster.prompt</code>, giving TOPIC plus a 2 to 4 sentence topical summary that keeps names and numbers but has no CURRENT or HISTORY. The input is the member summaries in date order.</li>
+<li>About 40 nodes for N = 48.</li>
+</ul>
+<p><strong>Ontology</strong> (no LLM calls)</p>
+<ul>
+<li>Labels:</li>
+<li>Normalise tags and entities: casefold, collapse whitespace, strip a leading "my" or "the", fold simple plurals.</li>
+<li>Keep labels with 2 or more memories, capped at 60 by support with recency as the tie-break.</li>
+<li>Labels that occur in more than N/4 memories are kept as nodes but excluded as thread anchors.</li>
+<li>Label merging: embed each label as <code>"&lt;label&gt; (&lt;type&gt;)"</code> (short, cached by string) and merge same-type pairs at cosine 0.92 or above with union-find.</li>
+<li>Categories:</li>
+<li>Average linkage over the label vectors, cut at cosine distance 0.45.</li>
+<li>A group of 2 or more labels becomes a <code>category</code> whose members are the union of its labels' members.</li>
+<li>The category label is its most frequent member label, so no LLM naming is needed.</li>
+<li>This replaces HDBSCAN, <code>clustering.py</code> and the <code>hdbscan</code> dependency. scipy is already a dependency.</li>
+</ul>
+<p><strong>Episodic</strong></p>
+<ul>
+<li>Threads:</li>
+<li>Anchors are ontology labels with at least 2 memories on at least 2 distinct dates.</li>
+<li>Rank anchors by member count times date span. Drop any anchor whose member set has Jaccard above 0.8 with a higher-ranked one (entity labels win over tags). Keep at most 24.</li>
+<li>One call per new member set with <code>thread.prompt</code>, which is the current <code>EPISODE_PROMPT</code> plus the line "These records all concern: <anchor>". The input is the members' dated summaries.</li>
+<li>The output is CURRENT and HISTORY. Each thread gets an <code>anchored_to</code> edge to its label node.</li>
+<li>Periods:</li>
+<li>ISO week and calendar month nodes, created only with 2 or more members. A level whose node would have a single child is skipped.</li>
+<li>The node text is deterministic: <code>- &lt;date&gt;: &lt;first sentence of each member summary&gt;</code>. No LLM.</li>
+<li>Undated memories are left out of periods.</li>
+</ul>
+<p><strong>Unified</strong> (experiment only)</p>
+<ul>
+<li>Same member sets as semantic, so the comparison isolates how knowledge is split across nodes from how memories are clustered.</li>
+<li>Prompt: <code>unified.prompt</code>, giving TOPIC, ENTITIES, CURRENT and HISTORY.</li>
+</ul>
+<h3 id="33-llm-calls-per-instance">3.3 LLM calls per instance<a class="headerlink" href="#33-llm-calls-per-instance" title="Permanent link">&para;</a></h3>
+<p>These are estimates for N = 48 sessions, about 122K transcript tokens, with thinking off.</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Calls</th>
+<th>Input tokens</th>
+<th>Output tokens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Leaves</td>
+<td>48</td>
+<td>~145K</td>
+<td>~22K</td>
+</tr>
+<tr>
+<td>Semantic clusters</td>
+<td>~40</td>
+<td>~140K</td>
+<td>~10K</td>
+</tr>
+<tr>
+<td>Ontology</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Episodic threads</td>
+<td>up to 24</td>
+<td>~60K</td>
+<td>~10K</td>
+</tr>
+<tr>
+<td>Unified clusters (experiment only)</td>
+<td>~40</td>
+<td>~145K</td>
+<td>~18K</td>
+</tr>
+<tr>
+<td>Production total (no unified)</td>
+<td>~112</td>
+<td>~345K</td>
+<td>~42K</td>
+</tr>
+<tr>
+<td>Experiment shared build</td>
+<td>~152</td>
+<td>~490K</td>
+<td>~60K</td>
+</tr>
+</tbody>
+</table>
+<p>Embedding tokens come to about 300K per instance and are paid once through the cache. That covers leaves with and without the tag header (about 130K each), label strings (about 5K) and node text (about 30K).</p>
+<p>For comparison, the current EpisodicMemory makes about 48 summary calls plus 60 to 75 episode calls across two linkages, about 310K input and 36K visible output per instance.</p>
+<p>Incremental dreams after the first:</p>
+<ul>
+<li>Episodic re-summarises only the threads of the new memory's labels.</li>
+<li>Ontology costs nothing.</li>
+<li>Semantic re-summarises the ancestors whose member set changed, as today.</li>
+</ul>
+<h2 id="4-what-is-embedded">4. What is embedded<a class="headerlink" href="#4-what-is-embedded" title="Permanent link">&para;</a></h2>
+<p>Leaf text is chunked at the embedder's <code>max_input_chars</code>, with the header repeated on every chunk. <code>max_input_chars</code> is about 24,000 for gemini-embedding-2 and about 6,000 for embeddinggemma, which takes 2K tokens. Chunk vectors are normalised and averaged.</p>
+<div class="highlight"><pre><span></span><code>Date: 2023-05-20 (Sat)
+Tags: car purchase; honda civic; budgeting
+Entities: Honda Civic (product); Dave (person); Toyota dealership (organisation)
+Summary: On 2023-05-20 (Sat), the user ...
+
+Transcript:
+&lt;chunk&gt;
+</code></pre></div>
+<p>A second "notag" leaf vector without the Tags and Entities lines is stored for the ablation in section 7. It costs only an embedding.</p>
+<p>Node embed text, one vector per node:</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Embedded text</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>semantic <code>cluster</code></td>
+<td><code>Topic: &lt;label&gt;\nDates: &lt;first&gt; to &lt;last&gt;\nEntities: &lt;8 most frequent member entities&gt;\n&lt;summary&gt;</code></td>
+</tr>
+<tr>
+<td>ontology <code>label</code></td>
+<td><code>Label: &lt;name&gt; (&lt;type&gt;); category: &lt;category&gt;\n- &lt;date&gt;: &lt;first summary sentence of each member, up to 20&gt;</code></td>
+</tr>
+<tr>
+<td>ontology <code>category</code></td>
+<td><code>Category: &lt;label&gt;\nLabels: &lt;member labels&gt;</code></td>
+</tr>
+<tr>
+<td>episodic <code>thread</code></td>
+<td><code>Timeline: &lt;anchor&gt;\nDates: &lt;first&gt; to &lt;last&gt;\nCURRENT: ...\nHISTORY: ...</code></td>
+</tr>
+<tr>
+<td>episodic <code>week</code> / <code>month</code></td>
+<td><code>Period: &lt;range&gt;\n- &lt;date&gt;: &lt;first sentence of each member summary&gt;</code></td>
+</tr>
+<tr>
+<td>unified <code>cluster</code></td>
+<td><code>Topic / Entities / CURRENT / HISTORY</code> text plus dates</td>
+</tr>
+</tbody>
+</table>
+<p><code>mean_embedding</code> and the <code>episode_embedding</code> option are removed. Section 7 checks node scoring by node-text vector against mean-of-members vector, retrieval-only, before the removal lands.</p>
+<h2 id="5-retrieval-fusion-and-rendering">5. Retrieval, fusion and rendering<a class="headerlink" href="#5-retrieval-fusion-and-rendering" title="Permanent link">&para;</a></h2>
+<p><code>NeuroMemory.build_context(query, *, today=None, views=None, links=True, budget="B60")</code> makes one embedding call and no LLM calls. It returns <code>Context(text, memory_ids, session_ids, node_ids_by_view, rankings_by_list)</code>, with everything in rank order.</p>
+<pre class="mermaid"><code>flowchart LR
+    Q["query vector and text"] --&gt; L["L: leaf cosine ranking"]
+    Q --&gt; RS["semantic.rank"]
+    Q --&gt; RO["ontology.rank"]
+    Q --&gt; RE["episodic.rank"]
+    L --&gt; F["RRF over memory lists, k=60, weight 1"]
+    RS --&gt; F
+    RO --&gt; F
+    RE --&gt; F
+    RS --&gt; NS["node pool: per-view quota, Jaccard 0.8 dedupe"]
+    RO --&gt; NS
+    RE --&gt; NS
+    F --&gt; LK["link following: overlap and anchored_to"]
+    LK --&gt; NS
+    F --&gt; R["render under fixed budget"]
+    NS --&gt; R</code></pre>
+<p>Memory lists:</p>
+<ul>
+<li><strong>L</strong> (always on): leaf cosine.</li>
+<li><strong>Semantic:</strong> memories ordered by the rank of the best-ranked cluster that contains them, with ties broken by leaf cosine.</li>
+<li><strong>Ontology:</strong></li>
+<li>Exact match of casefolded query n-grams against label strings comes first, then labels by cosine.</li>
+<li>Memories are ordered by their best label rank.</li>
+<li>Exact names are the main thing the symbolic view adds.</li>
+<li><strong>Episodic:</strong></li>
+<li>Threads are ranked by cosine. Members of the top threads come first, latest first.</li>
+<li>Week and month nodes are ranked by cosine like any other node. No date parser is used.</li>
+<li><strong>Fusion:</strong> <code>score(m) = sum over lists of 1 / (60 + rank)</code>.</li>
+<li>A single-view arm is L plus that view, which measures what the view adds on top of leaves.</li>
+<li>Transcripts go to the top 3 fused memories.</li>
+</ul>
+<p>Node selection:</p>
+<ul>
+<li>Each active view puts its top 10 nodes into the pool. They are interleaved by per-view rank.</li>
+<li>Each view gets an equal share of the node budget. The unified arm gets the whole budget.</li>
+<li>A node is skipped if its member set overlaps an already chosen node, in any view, by more than 0.8 Jaccard.</li>
+</ul>
+<p>Link following is on in M and off in M-nolink:</p>
+<ul>
+<li>A node in another active view that contains at least 2 of the top 5 fused memories joins the pool.</li>
+<li>A chosen thread pulls in its <code>anchored_to</code> label.</li>
+</ul>
+<p>Fixed budgets, identical across arms:</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Total</th>
+<th>Nodes</th>
+<th>Memory lines</th>
+<th>Transcripts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B60</td>
+<td>60K chars</td>
+<td>up to 15K</td>
+<td>rest</td>
+<td>3, capped at 12K each</td>
+</tr>
+<tr>
+<td>B12</td>
+<td>12K chars</td>
+<td>up to 5K</td>
+<td>rest</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p>The arm without nodes (F) spends the node budget on extra memory lines.</p>
+<p>Render format, with each memory appearing once and a section shown only if its view is active:</p>
+<div class="highlight"><pre><span></span><code>Today's date: 2023-05-30 (Tue)
+
+## Timelines
+### honda civic (3 memories, 2023-05-20 to 2023-06-02) [t_ab12]
+CURRENT: ...
+HISTORY: ...
+## Topics
+### car purchase and insurance (2023-05-20 to 2023-05-27) [c_cd34]
+...
+## Labels
+honda civic (product) &gt; vehicles: mem_ab12 2023-05-20, mem_ef56 2023-06-02
+
+## Memories (oldest first)
+[2023-05-20 (Sat)] mem_ab12: On 2023-05-20 (Sat), the user ...
+  tags: car purchase; honda civic | entities: Honda Civic; Dave
+
+## Transcripts
+### mem_ab12 (2023-05-20 (Sat))
+user: ...
+</code></pre></div>
+<p>This removes the tag graph's duplicate rows and its undated output.</p>
+<h2 id="6-what-carries-over-and-what-is-deleted">6. What carries over and what is deleted<a class="headerlink" href="#6-what-carries-over-and-what-is-deleted" title="Permanent link">&para;</a></h2>
+<h3 id="carries-over">Carries over<a class="headerlink" href="#carries-over" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>StorageAdapter pattern and SQLiteAdapter.</strong> The contract shrinks to the 12 methods in section 2.</li>
+<li><strong>Decay and archive on leaves.</strong></li>
+<li>Wall-clock based, as today. Session dates are content, not access times.</li>
+<li>Archived leaves drop out of every view at the next dream, and a node whose members are all archived goes inactive. Nodes do not decay.</li>
+<li>The benchmark sets <code>decay_lambda=0</code>.</li>
+<li><strong>LTP.</strong> <code>retrieve_memories(ids)</code> spikes <code>access_weight</code>. <code>build_context</code> and <code>expand_node</code> do not spike (ADR-003 D4). <code>access_weight</code> is not used in ranking during the experiment.</li>
+<li><strong>Tools.</strong> There are still three:</li>
+<li><code>search_memory(query, system)</code> returns <code>build_context(query).text</code>. The <code>depth</code> argument goes.</li>
+<li><code>expand_node(node_id, system)</code> works in any view. It returns the summary, <code>child_of</code> children, member rows, and an "Also in" line: the <code>anchored_to</code> partner plus the top nodes in other views by member Jaccard. This is where the cross-view links are visible to an agent.</li>
+<li><code>retrieve_memories</code> is unchanged.</li>
+<li><strong>ADK.</strong></li>
+<li><code>callbacks.py</code> and <code>memory_service.py</code> replace <code>ContextHelper(memory).build_prompt_context(query)</code> with <code>memory.build_context(query).text</code>.</li>
+<li><code>memory_service.search_memory</code> builds <code>MemoryEntry</code> objects from <code>Context.memory_ids</code> instead of parsing ids out of the rendered text.</li>
+<li><code>enable.py</code> keeps the <code>NeuroMemory</code> name, drops <code>cluster_threshold</code> and adds <code>views=</code>.</li>
+<li>Per-turn capture stays as it is.</li>
+<li><strong>Providers.</strong> <code>LLMProvider</code> shrinks to:</li>
+<li><code>complete(prompt, *, purpose="", max_output_tokens=None) -&gt; str</code>;</li>
+<li>a <code>last_usage</code> attribute holding input, output and thinking tokens;</li>
+<li>a thinking-level setting.</li>
+</ul>
+<p><code>GeminiLLMProvider</code> reads <code>usage_metadata</code> and sets the lowest thinking level for dream calls. Provider packages become transport plus rate limiting. Prompts move into <code>neuromem-core/src/neuromem/prompts/</code> as <code>leaf</code>, <code>cluster</code>, <code>thread</code> and <code>unified</code>.</p>
+<h3 id="deleted">Deleted<a class="headerlink" href="#deleted" title="Permanent link">&para;</a></h3>
+<p>Core:</p>
+<ul>
+<li><code>neuromem/episodic.py</code>, the whole file:</li>
+<li>Deleted: <code>EpisodicMemory</code>, <code>EpisodicContext</code>, the <code>ep_memories</code> and <code>ep_episodes</code> schema, <code>near_duplicate_groups</code>, <code>MERGE_PROMPT</code>, the unit and merge logic (<code>unit_summary</code>, <code>unit_key</code>, <code>merged_into</code>), and the <code>mean_embedding</code> and <code>episode_embedding</code> options.</li>
+<li>Moved: <code>parse_session_date</code> and <code>format_date</code> go to <code>dates.py</code>. <code>dendrogram_member_sets</code> goes to <code>views/semantic.py</code>. <code>MEMORY_SUMMARY_PROMPT</code> and <code>EPISODE_PROMPT</code> become the bases of <code>leaf.prompt</code> and <code>thread.prompt</code>.</li>
+<li>Merging fired once in the 23 valid episodic instances (<code>memory_stats.merged</code>), so it goes.</li>
+<li><code>neuromem/context.py</code>, the whole file: <code>ContextHelper</code>, <code>_enforce_node_cap</code>, <code>_render_ascii_tree</code>, <code>_emit_memory_row</code>, <code>_format_annotation_line</code>, <code>_format_also_under</code>, <code>_emit_paragraph_summary_line</code>, <code>_render_root</code>, <code>_render_descendant</code>, <code>_summary_snippet</code> and <code>_NODE_CAP</code>. Replaced by <code>render.py</code>.</li>
+<li><code>neuromem/clustering.py</code>, the whole file: <code>HDBSCANClusteringProvider</code> and <code>StubClusteringProvider</code>. Also the <code>hdbscan</code> dependency in <code>neuromem-core/pyproject.toml</code> and its assertion in <code>tests/test_pyproject_dependencies.py</code>.</li>
+<li><code>neuromem/system.py</code>, the tag pipeline: <code>resolve_centroid_names</code>, <code>_do_resolve_centroid_names</code>, <code>_gather_children_for_naming</code>, <code>_try_batched_naming</code>, <code>_fetch_child_records</code>, <code>resolve_junction_summaries</code>, <code>_do_resolve_junction_summaries</code>, <code>_group_by_level</code>, <code>_resolve_level</code>, <code>_try_batched_junction_summaries</code>, <code>_build_junction_summary_updates</code>, <code>_gather_child_snippets</code>, <code>_nearest_child_label</code>, <code>_backfill_summaries</code>, <code>_ensure_tag_nodes</code>, <code>_run_clustering</code>, <code>_run_all_centroid_naming</code>, <code>_run_all_junction_summarisation</code>, <code>_sanitise_category_name</code>, <code>_PLACEHOLDER_LABEL_PREFIX</code>, <code>DEFAULT_CLUSTER_THRESHOLD</code> and the <code>cluster_threshold</code> parameter. The trigger, lock and status flow are kept in the rewritten <code>NeuroMemory</code>.</li>
+<li><code>neuromem/providers.py</code>: <code>Cluster</code>, <code>ClusteringProvider</code>, <code>render_avoid_section</code> and <code>_AVOID_NAMES_MAX</code>. Also these <code>LLMProvider</code> methods: <code>generate_summary(_batch)</code>, <code>extract_tags(_batch)</code>, <code>extract_named_entities(_batch)</code>, <code>generate_category_name</code> / <code>generate_category_names_batch</code> and <code>generate_junction_summary</code> / <code>generate_junction_summaries_batch</code>.</li>
+<li><code>storage/base.py</code> and <code>storage/sqlite.py</code>: <code>set_summaries</code>, <code>set_named_entities</code>, <code>upsert_node</code>, <code>update_node_labels</code>, <code>update_junction_summaries</code>, <code>get_all_nodes</code>, <code>insert_edge</code>, <code>remove_edges_for_memory</code>, <code>_delete_has_tag_edges</code>, <code>get_nearest_nodes</code>, <code>get_subgraph</code>, <code>_traverse_subgraph</code>, <code>_get_first_node_dim</code> and <code>_VALID_RELATIONSHIPS</code> (<code>has_tag</code>). Also the <code>is_centroid</code> column, <code>edges.weight</code>, and the <code>paragraph_summary</code> and <code>named_entities</code> migrations.</li>
+<li><code>neuromem/__init__.py</code>: the <code>ContextHelper</code>, <code>EpisodicMemory</code> and <code>EpisodicContext</code> exports.</li>
+</ul>
+<p>Providers:</p>
+<ul>
+<li>Prompt files in <code>neuromem-gemini</code>, <code>neuromem-openai</code>, <code>neuromem-anthropic</code> and <code>neuromem-gemma</code> <code>src/*/prompts/</code>: <code>generate_summary(_batch)</code>, <code>extract_tags(_batch)</code>, <code>extract_named_entities(_batch)</code>, <code>generate_category_name</code>, <code>generate_category_names_batch</code>, <code>generate_junction_summary</code> and <code>generate_junction_summaries_batch</code>. That is 10 files per package where present.</li>
+<li>Overrides of the removed methods, with their batching, parsing and sanitisation code, in <code>neuromem_gemini/llm.py</code>, <code>neuromem_openai/llm.py</code>, <code>neuromem_anthropic/llm.py</code> and the gemma package.</li>
+<li>Tests: <code>neuromem-gemini/tests/test_llm_batch.py</code>, <code>test_prompt_sanitisation.py</code>, and the tag and batch parts of the openai and anthropic <code>test_llm.py</code>.</li>
+</ul>
+<p>Bench and ADK:</p>
+<ul>
+<li><code>neuromem_bench/agent.py</code>:</li>
+<li><code>NeuromemEpisodicAgent</code> (which hardcodes Gemini), the tag-graph <code>NeuromemAgent</code> and <code>NaiveRagAgent</code> merge into one <code>NeuromemAgent(views=..., links=..., budget=...)</code> built through <code>build_pair</code>. Arm F replaces <code>NaiveRagAgent</code>.</li>
+<li><code>NeuromemAdkAgent</code> is rewired to the new API.</li>
+<li><code>neuromem-bench/scripts</code>:</li>
+<li>Deleted: <code>quality_binary_tower_audit.py</code>, <code>quality_label_audit.py</code>, <code>quality_summary_audit.py</code>, <code>demo_render_tree.py</code>, <code>diag_instance1_full.py</code> and <code>repro_instance3_target.py</code>.</li>
+<li>Ported or deleted: <code>perf_dream_cycle.py</code>, <code>perf_ingestion.py</code>, <code>perf_render_latency.py</code>, <code>perf_retrieval.py</code> and <code>perf_storage_footprint.py</code>.</li>
+<li><code>neuromem-adk/scripts/demo_rich_tree.py</code>.</li>
+</ul>
+<p>Core tests:</p>
+<ul>
+<li>Deleted: <code>test_clustering.py</code>.</li>
+<li>Replaced: <code>test_context.py</code> by <code>test_render.py</code>, and <code>test_episodic.py</code> by <code>test_views_*.py</code> and <code>test_leaves.py</code>.</li>
+<li>Rewritten: <code>test_system.py</code>, <code>test_tools.py</code>, <code>test_hot_path_invariant.py</code>, <code>test_non_blocking_enqueue.py</code>, <code>test_sqlite_adapter.py</code>, <code>test_storage_adapter_contract.py</code>, <code>test_storage_base.py</code>, <code>test_conftest_fixtures.py</code>, <code>conftest.py</code> and <code>test_perf_unit.py</code>.</li>
+</ul>
+<p>Docs:</p>
+<ul>
+<li><code>docs/tag-pipeline.md</code> and <code>docs/episodic-memory.md</code> are replaced by <code>docs/memory-model.md</code>.</li>
+<li>The "two memory models" part of <code>docs/architecture.md</code> is rewritten.</li>
+</ul>
+<h3 id="migration-and-adr">Migration and ADR<a class="headerlink" href="#migration-and-adr" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Version 0.2.0, a breaking change.</strong> Third-party adapters and providers break. The changelog lists old and new methods.</li>
+<li><strong><code>neuromem.storage.sqlite.migrate_v2(db_path)</code>:</strong></li>
+<li>Adds the <code>schema_version</code> table and the new <code>memories</code> columns.</li>
+<li>Drops and recreates <code>nodes</code> and <code>edges</code>.</li>
+<li>Sets <code>consolidated</code> memories back to <code>inbox</code> with <code>leaf_version = NULL</code>, so the next dream rebuilds everything from <code>raw_content</code>. That costs one leaf call per memory plus the view builds.</li>
+<li><code>SQLiteAdapter.__init__</code> raises <code>StorageError</code> naming <code>migrate_v2</code> when it finds the old schema, rather than migrating silently.</li>
+<li><strong><code>scripts/migrate_episodic.py</code></strong> imports <code>ep_memories</code> rows (<code>raw_content</code>, <code>session_id</code>, <code>session_date</code>) from on-disk EpisodicMemory databases into the new schema as <code>inbox</code>.</li>
+<li><strong>ADR-006, "One memory model: dated leaves and linked views":</strong></li>
+<li>Supersedes ADR-001, ADR-002, ADR-003 D1 and D2, and ADR-005.</li>
+<li>Keeps ADR-003 D4 and ADR-004.</li>
+<li>Records the leaf prompt, the embed text, the views and their jobs, links, fusion, the removal of hdbscan and the reduction of <code>LLMProvider</code>.</li>
+<li>The default <code>views</code> stays open (status Proposed) until the experiment reports. The rule from section 7.6 that fired is then recorded.</li>
+</ul>
+<h2 id="7-the-experiment">7. The experiment<a class="headerlink" href="#7-the-experiment" title="Permanent link">&para;</a></h2>
+<h3 id="71-cost-what-can-and-cannot-be-said">7.1 Cost: what can and cannot be said<a class="headerlink" href="#71-cost-what-can-and-cannot-be-said" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Actual spend cannot be read from the repo.</strong> No provider records usage, so check the Google billing console for the real figure. Phase 0 makes spend measurable from here on.</li>
+<li><strong>The model did not get cheaper.</strong> The uncommitted diff moves bench defaults from <code>gemini-2.0-flash-001</code>, which is retired, to <code>gemini-3.8-flash</code>, a newer and more expensive tier. The spending cap was most likely reached by:</li>
+<li>running two agents on 60-instance samples, plus reruns, at about 310K input tokens per instance each;</li>
+<li>thinking tokens, which are not configured, so Gemini 3.x flash models think by default and bill thinking as output.</li>
+</ul>
+<p>The second point is unverified until phase 0.
+- <strong>Cost is computed from a CLI price table</strong> (<code>--price model=in_per_M,out_per_M</code>): <code>cost = input x p_in + (output + thinking) x p_out</code>. No price is hard-coded, and none is asserted here.
+- <strong>Cheaper levers, in order:</strong>
+  1. Thinking off for dream calls.
+  2. A local dream model (7.4).
+  3. The Batch API for dream calls, at half the price of standard calls.
+  4. A lite model for dream calls.</p>
+<h3 id="72-phase-0-measure-first-one-instance">7.2 Phase 0: measure first (one instance)<a class="headerlink" href="#72-phase-0-measure-first-one-instance" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Add <code>last_usage</code> to every provider, with input, output and thinking tokens. Gemini reads them from <code>usage_metadata</code>.</li>
+<li>Add the thinking-level setting and the bench cache (7.5).</li>
+<li>Run one instance of the current episodic agent to get the real tokens per phase (leaf, node, answer, judge) and the thinking share.</li>
+<li>Time one instance of the leaf and thread calls on the local model.</li>
+</ul>
+<h3 id="73-arms">7.3 Arms<a class="headerlink" href="#73-arms" title="Permanent link">&para;</a></h3>
+<p>Every arm shares the leaves, the leaf vectors, the L ranking, the answer model and prompt (<code>episodic_answer.prompt</code>), the judge, the budget conditions, the transcript count and the fusion constant. Arms differ only in which views feed fusion, node selection and rendering.</p>
+<table>
+<thead>
+<tr>
+<th>Arm</th>
+<th>Views on top of leaves</th>
+<th>Purpose</th>
+<th>Tier R</th>
+<th>Tier A</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F</td>
+<td>none</td>
+<td>Does any structure help?</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>F-notag</td>
+<td>none, old leaf text without tags and entities</td>
+<td>Tags-in-embedding ablation; anchor to the old 40-of-43 top-3 leaf ranks</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>U</td>
+<td>unified</td>
+<td>Single merged tree</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>S, O, E</td>
+<td>one view each</td>
+<td>Which view carries a gain</td>
+<td>Yes</td>
+<td>Best one only</td>
+</tr>
+<tr>
+<td>SO, SE, OE</td>
+<td>pairs</td>
+<td>Interactions</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>M</td>
+<td>semantic + ontology + episodic, links on</td>
+<td>The neuro-symbolic proposal</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>M-nolink</td>
+<td>as M, link following off</td>
+<td>Do cross-view links matter?</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>F-notag needs no tree, so it is a free anchor. The old 40-of-43 figure is a leaf-ranking result, and F-notag reproduces that setup with the new code.</p>
+<p>Conditions:</p>
+<ul>
+<li><strong>B60</strong> is close to today's 63K median context.</li>
+<li><strong>B12</strong> has no transcripts and is the condition that can separate arms. At B60 every arm is likely to be at ceiling.</li>
+</ul>
+<h3 id="74-where-the-llm-work-runs">7.4 Where the LLM work runs<a class="headerlink" href="#74-where-the-llm-work-runs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Work</th>
+<th>Where</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Leaf and node calls (dream)</td>
+<td>Ollama locally, <code>qwen3:8b</code> or <code>gemma3:12b</code></td>
+<td>Primary path, $0</td>
+</tr>
+<tr>
+<td>Embeddings</td>
+<td><code>gemini-embedding-2</code>, cached</td>
+<td>Keeps leaf vectors comparable to earlier runs; paid once</td>
+</tr>
+<tr>
+<td>Answer and judge</td>
+<td><code>gemini-3.8-flash</code>, temperature 0, cached</td>
+<td>Keeps the official judge fixed</td>
+</tr>
+</tbody>
+</table>
+<p>Local setup:</p>
+<ul>
+<li><code>build_pair("gemma", model=...)</code> already reaches any Ollama model through the OpenAI-compatible endpoint. The merged agent must use it.</li>
+<li>Set <code>OLLAMA_CONTEXT_LENGTH=16384</code>, or <code>num_ctx</code> in a Modelfile. The OpenAI-compatible endpoint takes no per-request <code>num_ctx</code>, and Ollama's default silently truncates sessions. The longest sessions are about 11K tokens.</li>
+<li>Turn Qwen3 thinking off.</li>
+<li>If embeddinggemma is ever used, chunks must drop to about 6,000 characters, and all arms must share it.</li>
+<li>The machine is an M4 with 16 GB. <code>gemma3:12b</code> is tight at a 16K context, and <code>qwen3:8b</code> is the safer default.</li>
+</ul>
+<p>Throughput is not extrapolated:</p>
+<ul>
+<li>Time one instance, then compute <code>hours = instances x (490K / prefill tok/s + 60K / decode tok/s) / 3600</code>.</li>
+<li>At an assumed 300 tok/s prefill and 20 tok/s decode, that is about 1.3 hours per instance, or about 75 hours for 60.</li>
+<li>If the timed figure is that slow, there are four options:</li>
+<li>run the 60 instances across several nights;</li>
+<li>use <code>qwen3:4b</code>;</li>
+<li>build the dream on Gemini with thinking off through the Batch API;</li>
+<li>run Tier R on fewer instances first.</li>
+<li>A local dream changes absolute accuracy, so arms are compared within the run only. F-notag and U are the in-run anchors.</li>
+</ul>
+<h3 id="75-caching-neuromem_bench_cachepy-file-cacheneuromem-benchcachesqlite">7.5 Caching (<code>neuromem_bench/_cache.py</code>, file <code>~/.cache/neuromem-bench/cache.sqlite</code>)<a class="headerlink" href="#75-caching-neuromem_bench_cachepy-file-cacheneuromem-benchcachesqlite" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>CachedLLM(inner)</code>:</strong> table <code>llm(key PK, text, input_tokens, output_tokens, thinking_tokens, latency)</code>, keyed on <code>sha256(provider, model, purpose, prompt)</code>.</li>
+<li><strong><code>CachedEmbedder(inner)</code>:</strong> table <code>emb(key PK, vector)</code>, keyed on <code>sha256(model, dim, text)</code>.</li>
+<li><strong>Answer cache:</strong> keyed on <code>sha256(model, prompt_version, context_text, question)</code>. Two arms that render the same context get the same answer, so a discordant pair cannot come from sampling noise alone.</li>
+<li><strong>Phase 1:</strong> for each instance, build the leaves and all four view sets (semantic, ontology, episodic, unified) once into <code>artifacts/&lt;instance_id&gt;.db</code>. The views coexist, separated by <code>view</code>.</li>
+<li><strong>Phase 2:</strong> loop over the arms on that database with <code>build_context(..., views=..., links=...)</code>. Arms never trigger a build call.</li>
+</ul>
+<p>Within the 60-instance sample only about 4% of sessions repeat across instances. The cache therefore pays off across arms and reruns, not across instances.</p>
+<p>Cache rows record tokens. The runner can therefore report each arm's "built alone" cost without paying for it twice.</p>
+<h3 id="76-tiers-metrics-statistics-and-decision-rules">7.6 Tiers, metrics, statistics and decision rules<a class="headerlink" href="#76-tiers-metrics-statistics-and-decision-rules" title="Permanent link">&para;</a></h3>
+<p>Sample: LongMemEval_S, stratified 10 per type, seed 42 (60 questions), the same set as earlier runs. It extends to 20 per type (120) for Tier R if 7.7 allows.</p>
+<p><strong>Tier R (retrieval only, primary, no answer LLM).</strong> It runs for all arms under both conditions. Metrics per question and arm:</p>
+<ul>
+<li>Rank of the first answer session in the fused list, and its reciprocal rank.</li>
+<li>recall@3 (the transcript slots), and all-evidence@3 for multi-session questions. recall@12 is already at ceiling (43 of 43), so it is reported but not used.</li>
+<li>Session recall at B12: the share of answer sessions whose memory line or node membership reached the context.</li>
+<li>Evidence-turn coverage: the share of <code>has_answer</code> turns whose session transcript, or whose memory line, is in the context, reported separately. The count of labelled turns is taken from the data at run time.</li>
+<li>Context characters per section and nodes per view.</li>
+<li>View distinctness for M: the mean over nodes of the best Jaccard with any node in another view.</li>
+<li>Two node-vector checks:</li>
+<li>leaf ranking with the notag vectors against the tagged ones;</li>
+<li>node scoring by node-text vector against mean-of-members vector.</li>
+<li>Statistics:</li>
+<li>Paired Wilcoxon signed-rank on reciprocal rank and on B12 session recall.</li>
+<li>Bootstrap 95% CI of the mean paired difference, with 10,000 resamples over questions.</li>
+<li>Holm correction across the pre-registered comparisons: M vs U, U vs F, M vs F and M vs M-nolink.</li>
+<li>Per-type results are descriptive only.</li>
+</ul>
+<p><strong>Tier A (answers and the official judge).</strong> Arms F, U, M, plus the best single view if Tier R names one, at both budgets, n = 60.</p>
+<ul>
+<li>Accuracy overall and per type, with Wilson 95% intervals. Abstention questions are reported separately.</li>
+<li>Exact McNemar on discordant pairs. At accuracy near 0.9, p &lt; 0.05 needs about a 6 to 0 or 8 to 1 split, so 7 to 1 is not enough. Accuracy is therefore a non-inferiority guard: an arm is non-inferior when its losses exceed its wins by at most 2 at both budgets.</li>
+<li>Noise floor: U at B60 is answered a second time with the answer cache off, and the flip rate is recorded. A discordance count at or below that rate is noise.</li>
+</ul>
+<p><strong>Cost and time metrics.</strong> For every arm: input, output and thinking tokens per phase (leaf, each view, answer, judge), both paid and built-alone equivalent. Also dream wall time per view, retrieval latency, and cost from the price table.</p>
+<p><strong>Decision rules (fixed before running; no constant is tuned on the 60).</strong></p>
+<ol>
+<li><strong>Flat wins</strong> if neither U nor M beats F on B12 session recall by at least 0.05 with a CI excluding 0, and F is non-inferior on accuracy. Ship leaves only for retrieval, and keep the cheapest view only if <code>expand_node</code> needs it.</li>
+<li><strong>Unified wins</strong> if U beats F under rule 1 and M does not beat U by at least 0.05 with a CI excluding 0.</li>
+<li><strong>Linked views win</strong> if all of the following hold:</li>
+<li>M beats U by at least 0.05 on B12 recall with a CI excluding 0;</li>
+<li>M is non-inferior on accuracy;</li>
+<li>M's measured dream tokens are at most 1.3 times U's;</li>
+<li>M's view distinctness is below 0.5.</li>
+<li><strong>Links matter</strong> if M beats M-nolink on reciprocal rank (Wilcoxon, Holm-corrected). If they do not, drop link following but keep the stored <code>anchored_to</code> edge for <code>expand_node</code>.</li>
+<li><strong>One view is enough</strong> if a single view or pair recovers at least 80% of M's gain over F. Ship leaves plus that view.</li>
+<li><strong>Tags stay in the leaf text</strong> if F is non-inferior to F-notag on reciprocal rank (one-sided, margin 0.02). Whatever the result, tags and entities stay in the render.</li>
+</ol>
+<p>Known limits:</p>
+<ul>
+<li>The median LongMemEval_S history spans about 10 days, so periods barely exist. The episodic view is tested mostly through threads, and conclusions about long timelines need a longer-span dataset.</li>
+<li>With 10 questions per type, per-type patterns must not pick the architecture.</li>
+</ul>
+<h3 id="77-tokens-per-arm-per-instance">7.7 Tokens per arm per instance<a class="headerlink" href="#77-tokens-per-arm-per-instance" title="Permanent link">&para;</a></h3>
+<p>These are estimates. Thinking is off and excluded, and phase 0 replaces them with measured figures.</p>
+<table>
+<thead>
+<tr>
+<th>Arm (if built alone)</th>
+<th>Dream input</th>
+<th>Dream output</th>
+<th>Answer input, B60 / B12</th>
+<th>Judge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F, F-notag</td>
+<td>145K</td>
+<td>22K</td>
+<td>17K / 4K</td>
+<td>~1K</td>
+</tr>
+<tr>
+<td>S</td>
+<td>285K</td>
+<td>32K</td>
+<td>17K / 4K</td>
+<td>~1K</td>
+</tr>
+<tr>
+<td>O</td>
+<td>145K</td>
+<td>22K</td>
+<td>17K / 4K</td>
+<td>~1K</td>
+</tr>
+<tr>
+<td>E (needs O's labels, which cost no LLM calls)</td>
+<td>205K</td>
+<td>32K</td>
+<td>17K / 4K</td>
+<td>~1K</td>
+</tr>
+<tr>
+<td>U</td>
+<td>290K</td>
+<td>40K</td>
+<td>17K / 4K</td>
+<td>~1K</td>
+</tr>
+<tr>
+<td>M, M-nolink</td>
+<td>345K</td>
+<td>42K</td>
+<td>17K / 4K</td>
+<td>~1K</td>
+</tr>
+<tr>
+<td>Shared build for all arms (leaves, S, O, E, U)</td>
+<td>490K</td>
+<td>60K</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Totals for 60 instances:</p>
+<ul>
+<li><strong>Dream:</strong> about 29M input and 3.6M output tokens, local, $0.</li>
+<li><strong>Embeddings:</strong> about 18M tokens on Gemini, paid once.</li>
+<li><strong>Tier A on Gemini:</strong> about 7M answer input tokens. That is 4 arms at both budgets, plus the noise rerun at B60. Judging adds under 1M.</li>
+<li><strong>Tier R:</strong> no LLM cost beyond the shared build.</li>
+<li><strong>Without the cache,</strong> the 8 Tier A arm-and-budget pairs built independently would cost about 8 times the dream tokens.</li>
+</ul>
+<h2 id="8-implementation-phases">8. Implementation phases<a class="headerlink" href="#8-implementation-phases" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Phase</th>
+<th>Contents</th>
+<th>Rough size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Measure</td>
+<td><code>last_usage</code> and thinking level in providers; <code>_cache.py</code> (LLM, embedder, answer); <code>--price</code>; one-instance measurement of the current episodic agent; Ollama <code>num_ctx</code> setup and one timed local instance</td>
+<td>~250 lines, 1 day</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Leaves and storage</td>
+<td>New schema, <code>migrate_v2</code>, the 12-method contract, <code>leaf.prompt</code> with its parser, leaf embed text with and without tags, <code>dates.py</code>. Built beside the old code under new names, in a separate DB file.</td>
+<td>~500 lines, 2 days</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Semantic, unified, retrieval, render</td>
+<td><code>views/base.py</code>, <code>semantic.py</code>, <code>unified.py</code>, <code>retrieval.py</code> (RRF, node selection), <code>render.py</code> (B60 and B12). Arms F, F-notag and U. Check that F-notag leaf ranks match the old JSONL (40 of 43 top-3) on the 23 old instances.</td>
+<td>~600 lines, 2 to 3 days</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Ontology and episodic</td>
+<td><code>views/ontology.py</code> (labels, merge, categories, exact match), <code>views/episodic.py</code> (threads, periods, <code>anchored_to</code>), link following, M and M-nolink</td>
+<td>~450 lines, 2 days</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Experiment runner</td>
+<td><code>scripts/run_views_experiment.py</code>: phase 1 build, phase 2 arm loop, Tier R metrics including <code>has_answer</code> coverage, Wilcoxon, bootstrap and McNemar, JSONL plus summary table</td>
+<td>~400 lines, 1 to 2 days, then build time</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Run and decide</td>
+<td>Tier R on 60, Tier A on the surviving arms, results in <code>docs/results.md</code>, ADR-006 decision</td>
+<td>run time</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Delete and port</td>
+<td>Remove everything in section 6; rewrite <code>tools.py</code>; port ADK <code>callbacks.py</code>, <code>memory_service.py</code> and <code>enable.py</code>; strip the provider packages; rewrite tests; delete the ontology and episodic builders if rules 1, 2 or 5 fired</td>
+<td>net deletion of several thousand lines, 2 days</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Docs</td>
+<td><code>docs/memory-model.md</code>, <code>architecture.md</code>, changelog for 0.2.0, final ADR-006</td>
+<td>0.5 day</td>
+</tr>
+</tbody>
+</table>
+<p>The old code stays importable until phase 6, so phases 0 to 5 can run without breaking ADK or the earlier benchmark scripts.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
