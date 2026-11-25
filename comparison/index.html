@@ -1081,7 +1081,7 @@
 <tr>
 <td>Episodic memory (partial run)</td>
 <td>0.938 (15/16)</td>
-<td>16 paired instances from the seed-42 stratified sample</td>
+<td>16 instances that finished before the spend cap: 6 multi-session, 3 knowledge-update, 3 single-session-user, 2 temporal, 1 assistant, 1 preference</td>
 <td>gemini-3.8-flash</td>
 <td>Official per-type prompts on gemini-3.8-flash</td>
 </tr>
@@ -1108,7 +1108,7 @@
 <li><strong>Answer model.</strong> <code>gemini-3.8-flash</code> is a 2026 model. The official baselines use gpt-4o (2024). The table below shows the answer model alone moving a system by more than 10 points.</li>
 <li><strong>Interval.</strong> 15 of 16 has a 95% interval of 0.72 to 0.99.</li>
 </ul>
-<p>With those caveats, the episodic model's partial result is in the range of the strongest self-reported systems, and the tag-graph model sits with the mid-table systems in shared-protocol re-runs. A full 500-question run with the official GPT-4o judge would be needed to place it properly.</p>
+<p>The episodic result is 16 instances, not stratified by type (6 of the 16 are multi-session), so it cannot yet be placed against any row below. The tag-graph result (0.746 on a balanced 59) is a rough match for the mid-table systems in shared-protocol re-runs. A full 500-question run with the official GPT-4o judge would be needed to place it properly.</p>
 <h2 id="published-results">Published results<a class="headerlink" href="#published-results" title="Permanent link">&para;</a></h2>
 <p>Every row below was checked against its source by a separate verification pass. Accuracy is as reported by the source.</p>
 <table>

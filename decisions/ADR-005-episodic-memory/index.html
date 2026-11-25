@@ -1213,7 +1213,7 @@
 <strong>Date</strong>: 2026-11-25
 <strong>Extends</strong>: ADR-003 (ontology tree v2), ADR-004 (hot-path split)</p>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>The tag pipeline (ADR-001 to ADR-004) embeds short LLM-extracted tag labels, clusters those label vectors with HDBSCAN and names each centroid with an LLM. A review of the LongMemEval_S seed-42 run (0.729 under the official judge) found:</p>
+<p>The tag pipeline (ADR-001 to ADR-004) embeds short LLM-extracted tag labels, clusters those label vectors with HDBSCAN and names each centroid with an LLM. A review of the LongMemEval_S seed-42 run (0.746 under the official judge prompts on <code>gemini-3.8-flash</code>; 0.729 with <code>gemini-2.5-flash</code> as judge) found:</p>
 <ul>
 <li>Most misses were not retrieval misses. The relevant session was in the rendered context.</li>
 <li>No dates reached the system. Session timestamps and the question date were dropped by the runner, so "how many days ago" was unanswerable and knowledge-update questions had no way to tell the old value from the new one.</li>

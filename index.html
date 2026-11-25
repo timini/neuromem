@@ -1041,6 +1041,10 @@
 <h1 id="neuromem">neuromem<a class="headerlink" href="#neuromem" title="Permanent link">&para;</a></h1>
 <p>Long-term memory for AI agents. neuromem records past conversations, consolidates them in the background (a "dream cycle"), and gives the agent a compact, dated view of what it remembers before each answer.</p>
 <p>The library ships two memory models:</p>
+<div class="admonition note">
+<p class="admonition-title">Not merged yet</p>
+<p><code>EpisodicMemory</code>, the <code>neuromem-episodic</code> benchmark agent and the official judge are on the <a href="https://github.com/timini/neuromem/tree/episodic-memory-v2"><code>episodic-memory-v2</code></a> branch and are not yet in <code>main</code>.</p>
+</div>
 <table>
 <thead>
 <tr>
@@ -1104,7 +1108,7 @@
 <tr>
 <td>Episodic</td>
 <td>15 / 16 (0.938)</td>
-<td>Partial run: 16 instances before the API spending cap was reached</td>
+<td>Partial run: 16 instances before the API spending cap, not balanced by type (6 are multi-session)</td>
 </tr>
 <tr>
 <td>Tag-graph, same 16 instances</td>

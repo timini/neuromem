@@ -1320,6 +1320,10 @@
 
 <h1 id="episodic-memory-episodicmemory">Episodic memory (EpisodicMemory)<a class="headerlink" href="#episodic-memory-episodicmemory" title="Permanent link">&para;</a></h1>
 <p><code>EpisodicMemory</code> is the second memory model in <code>neuromem-core</code> (<code>packages/neuromem-core/src/neuromem/episodic.py</code>, <a href="../decisions/ADR-005-episodic-memory/">ADR-005</a>). It runs alongside the tag-graph model and is selected in the benchmark with <code>--agent neuromem-episodic</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Not merged yet</p>
+<p><code>EpisodicMemory</code>, the <code>neuromem-episodic</code> benchmark agent and the official judge are on the <a href="https://github.com/timini/neuromem/tree/episodic-memory-v2"><code>episodic-memory-v2</code></a> branch and are not yet in <code>main</code>.</p>
+</div>
 <p>The idea in one paragraph: record every conversation as one memory with its date, embed the whole memory, and cluster the memories hierarchically so the same memories can be grouped in many ways at many levels of abstraction. Each cluster (an <strong>episode</strong>) gets an LLM summary written as a dated history that leads with the current state, so a cluster about "where I keep my sneakers" reads like an episodic memory: what changed, when, and what is true now.</p>
 <h2 id="why-a-second-model">Why a second model<a class="headerlink" href="#why-a-second-model" title="Permanent link">&para;</a></h2>
 <p>A review of the tag-graph model on LongMemEval found that most wrong answers were not retrieval failures. The relevant memory was usually in the prompt. The answer was wrong because:</p>

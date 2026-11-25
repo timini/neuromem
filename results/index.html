@@ -592,6 +592,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Head-to-head: episodic vs tag-graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#retrieval-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval quality
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1098,6 +1115,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Head-to-head: episodic vs tag-graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#retrieval-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval quality
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1167,8 +1201,12 @@
 <h1 id="benchmark-results">Benchmark results<a class="headerlink" href="#benchmark-results" title="Permanent link">&para;</a></h1>
 <p>All results are on <strong>LongMemEval_S</strong> (<a href="https://arxiv.org/abs/2410.10813">Wu et al., ICLR 2025</a>). Each question comes with a chat history of about 50 sessions (about 115K tokens). The agent reads the history session by session, then answers one question about it.</p>
 <div class="admonition warning">
-<p class="admonition-title">The head-to-head run is incomplete</p>
-<p>Both head-to-head runs stopped at 10:48 UTC on 2026-11-25, when the Gemini project reached its monthly spending cap. Before that, 16 instances finished validly for both agents. The numbers below are those 16 paired instances. The page will be updated when the full 60-instance runs complete.</p>
+<p class="admonition-title">The head-to-head run is incomplete and not stratified</p>
+<p>Both head-to-head runs stopped at 10:48 UTC on 2026-11-25, when the Gemini project reached its monthly spending cap. Before that, 16 instances finished validly for both agents. The numbers below are those 16 paired instances. They are not a balanced sample: 6 are multi-session questions, 3 knowledge-update, 3 single-session-user, 2 temporal-reasoning, 1 single-session-assistant and 1 preference. The page will be updated when the full 60-instance runs complete.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Not merged yet</p>
+<p><code>EpisodicMemory</code>, the <code>neuromem-episodic</code> benchmark agent and the official judge are on the <a href="https://github.com/timini/neuromem/tree/episodic-memory-v2"><code>episodic-memory-v2</code></a> branch and are not yet in <code>main</code>.</p>
 </div>
 <h2 id="method">Method<a class="headerlink" href="#method" title="Permanent link">&para;</a></h2>
 <table>
@@ -1181,7 +1219,7 @@
 <tbody>
 <tr>
 <td>Dataset</td>
-<td>LongMemEval_S (cleaned release)</td>
+<td>LongMemEval_S, cleaned release (<a href="https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned"><code>xiaowu0162/longmemeval-cleaned</code></a>)</td>
 </tr>
 <tr>
 <td>Sample</td>
@@ -1224,7 +1262,7 @@
 </thead>
 <tbody>
 <tr>
-<td>Correct</td>
+<td>Correct (6 multi-session, 3 knowledge-update, 3 single-session-user, 2 temporal, 1 assistant, 1 preference)</td>
 <td><strong>15 / 16 (0.938)</strong></td>
 <td>12 / 16 (0.750)</td>
 </tr>
@@ -1337,7 +1375,37 @@
 </table>
 <p>The first needs dates to pick the newer value. The second needs two facts from different sessions. The third needs the raw transcript, because the detail was in what the assistant said.</p>
 <p>A 3-to-0 split on discordant pairs is not statistically significant (McNemar exact p ≈ 0.25). The full 60-instance run is needed before drawing a conclusion.</p>
-<p>The comparison is between two whole systems, not two clustering methods. The episodic agent also receives session and question dates, uses <code>gemini-embedding-2</code> instead of <code>gemini-embedding-001</code>, and has a different answer prompt.</p>
+<p>The comparison is between two whole systems, not two clustering methods. The episodic agent also receives session and question dates, gets the raw transcripts of its three closest memories (the tag agent sees only summaries), uses <code>gemini-embedding-2</code> instead of <code>gemini-embedding-001</code>, and has a different answer prompt. Nothing here shows how much of the gain comes from the episodes themselves; a run with <code>top_episodes=0</code> would isolate that.</p>
+<p>All 23 episodic instances that finished before the cap (including 7 with no valid tag-graph pair) scored 22 of 23. No LLM call fell back to degraded text in either run before the cap.</p>
+<h3 id="retrieval-quality">Retrieval quality<a class="headerlink" href="#retrieval-quality" title="Permanent link">&para;</a></h3>
+<p>The JSONL records the session ids of the retrieved memories in rank order, so the rank of each session that holds the answer can be checked. Across the 23 valid episodic instances there are 43 answer sessions:</p>
+<table>
+<thead>
+<tr>
+<th>Rank of the answer session</th>
+<th>Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>22</td>
+</tr>
+<tr>
+<td>2 to 3 (transcript attached)</td>
+<td>18</td>
+</tr>
+<tr>
+<td>4 to 12</td>
+<td>3</td>
+</tr>
+<tr>
+<td>Not retrieved</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>Whole-session embeddings already put the evidence at the top. On this sample, splitting sessions into chunks before clustering would not improve recall.</p>
 <h2 id="earlier-smoke-test">Earlier smoke test<a class="headerlink" href="#earlier-smoke-test" title="Permanent link">&para;</a></h2>
 <p>One instance per type, seed 42, <code>gemini-3-flash-preview</code>, official judge, episodic agent:</p>
 <table>
@@ -1424,7 +1492,7 @@
 </table>
 <p>The overall score did not move, but four types changed in opposite directions.</p>
 <h2 id="why-the-earlier-087-headline-is-not-comparable">Why the earlier 0.87 headline is not comparable<a class="headerlink" href="#why-the-earlier-087-headline-is-not-comparable" title="Permanent link">&para;</a></h2>
-<p>The README used to quote 0.870 on the first 100 LongMemEval_S questions. The file is ordered by type, so the first 100 questions are 70 single-session-user and 30 multi-session questions. Those are the easier types; the first 100 contain no temporal-reasoning, knowledge-update, single-session-assistant or preference questions. Under the official judge that run scores 0.887. The stratified sample is the one to compare against.</p>
+<p>The README quotes 0.870 on the first 100 LongMemEval_S questions. The file is ordered by type, so the first 100 questions are 70 single-session-user and 30 multi-session questions. Those are the easier types; the first 100 contain no temporal-reasoning, knowledge-update, single-session-assistant or preference questions. Under the official judge that run scores 0.887. The stratified sample is the one to compare against.</p>
 <h2 id="reproducing">Reproducing<a class="headerlink" href="#reproducing" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>uv<span class="w"> </span>sync<span class="w"> </span>--dev
 <span class="nb">export</span><span class="w"> </span><span class="nv">GEMINI_API_KEY</span><span class="o">=</span>...
