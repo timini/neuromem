@@ -1,0 +1,1731 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/investigations/instance3-target-loss/">
+      
+      
+        <link rel="prev" href="../../decisions/ADR-005-episodic-memory/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Instance 3 target loss - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#investigation-longmemeval-instance-3-where-did-i-redeem-the-coupon-target" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Instance 3 target loss
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tldr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TL;DR
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-reproducer-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the reproducer shows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the reproducer shows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-1-per-turn-summary-tag-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline 1 — per-turn summary + tag inspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-2-end-to-end-cognitive-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline 2 — end-to-end cognitive loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-cause-not-one-bug-two-interacting-ones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root cause — not one bug, two interacting ones
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Root cause — not one bug, two interacting ones">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-summary-stage-entity-loss-primary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Summary-stage entity loss (primary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-tag-stage-entity-de-prioritisation-secondary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Tag-stage entity de-prioritisation (secondary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-clustering-cant-bridge-summaries-that-dont-share-surface-tags-knock-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Clustering can't bridge summaries that don't share surface tags (knock-on)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixes-ranked-by-costvalue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixes, ranked by cost/value
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fixes, ranked by cost/value">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-add-preserve-named-entities-to-the-summary-prompt-cheap-likely-high-lift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Add "preserve named entities" to the summary prompt (cheap, likely high lift)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-add-preserve-proper-nouns-to-the-tag-prompt-cheap-smaller-lift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Add "preserve proper nouns" to the tag prompt (cheap, smaller lift)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-two-phase-summary-factual-abstractive-medium-cost-high-lift-a-design-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Two-phase summary: factual + abstractive (medium cost, high lift, a design change)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d-co-mention-cross-links-in-the-graph-expensive-graph-schema-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D. Co-mention cross-links in the graph (expensive, graph-schema change)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e-llm-rerank-retrieved-memories-expensive-per-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E. LLM-rerank retrieved memories (expensive per-query)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#result-of-fix-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result of fix A
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Result of fix A">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#before-reproducer-turn-5-pre-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before (reproducer turn 5, pre-fix)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-reproducer-turn-5-post-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After (reproducer turn 5, post-fix)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tldr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TL;DR
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-reproducer-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the reproducer shows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the reproducer shows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-1-per-turn-summary-tag-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline 1 — per-turn summary + tag inspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-2-end-to-end-cognitive-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline 2 — end-to-end cognitive loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-cause-not-one-bug-two-interacting-ones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root cause — not one bug, two interacting ones
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Root cause — not one bug, two interacting ones">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-summary-stage-entity-loss-primary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Summary-stage entity loss (primary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-tag-stage-entity-de-prioritisation-secondary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Tag-stage entity de-prioritisation (secondary)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-clustering-cant-bridge-summaries-that-dont-share-surface-tags-knock-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Clustering can't bridge summaries that don't share surface tags (knock-on)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixes-ranked-by-costvalue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixes, ranked by cost/value
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fixes, ranked by cost/value">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-add-preserve-named-entities-to-the-summary-prompt-cheap-likely-high-lift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Add "preserve named entities" to the summary prompt (cheap, likely high lift)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-add-preserve-proper-nouns-to-the-tag-prompt-cheap-smaller-lift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Add "preserve proper nouns" to the tag prompt (cheap, smaller lift)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-two-phase-summary-factual-abstractive-medium-cost-high-lift-a-design-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Two-phase summary: factual + abstractive (medium cost, high lift, a design change)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d-co-mention-cross-links-in-the-graph-expensive-graph-schema-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D. Co-mention cross-links in the graph (expensive, graph-schema change)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e-llm-rerank-retrieved-memories-expensive-per-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E. LLM-rerank retrieved memories (expensive per-query)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#result-of-fix-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result of fix A
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Result of fix A">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#before-reproducer-turn-5-pre-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before (reproducer turn 5, pre-fix)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-reproducer-turn-5-post-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After (reproducer turn 5, post-fix)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="investigation-longmemeval-instance-3-where-did-i-redeem-the-coupon-target">Investigation: LongMemEval Instance 3 — "Where did I redeem the coupon?" → Target<a class="headerlink" href="#investigation-longmemeval-instance-3-where-did-i-redeem-the-coupon-target" title="Permanent link">&para;</a></h1>
+<p><strong>Status</strong>: Reproduced. Root cause identified. <strong>Fix A applied and verified — Instance 3 now scores 1.0 against the reproducer.</strong> Fixes F and G' still to do (tracked separately).</p>
+<p><strong>Reproduce with</strong>: <code>GOOGLE_API_KEY=... uv run python packages/neuromem-bench/scripts/repro_instance3_target.py</code></p>
+<p>Runs in ~3 minutes and costs well under $0.01.</p>
+<hr />
+<h2 id="tldr">TL;DR<a class="headerlink" href="#tldr" title="Permanent link">&para;</a></h2>
+<p>On LongMemEval Instance 3 (<code>question_id=51a45a95</code>), <code>NeuromemAgent</code> answers <em>correctly</em> that the user saved $5 on coffee creamer with a coupon, but drops the store name "Target" — which is the actual gold answer.</p>
+<p>The headline hypothesis in <code>docs/benchmarks/RESULTS.md</code> was that <code>extract_tags</code> loses named entities. <strong>That turned out to be wrong.</strong> The real failure is upstream:</p>
+<blockquote>
+<p><strong><code>generate_summary</code> compresses named entities out of long turns before the tagging stage ever sees them.</strong> The clustering then has no way to associate the entity-rich memories with the entity-stripped ones, because they share no surviving tags.</p>
+</blockquote>
+<p>The reproducer makes this visible turn-by-turn. Example: assistant turn 5 (1023 raw chars, mentions "Target" once) gets compressed to a 198-char summary where Target has been squeezed out in favour of abstract nouns ("email deals", "coupon organisation"). By the time <code>extract_tags</code> runs, there's nothing left to extract.</p>
+<hr />
+<h2 id="the-data">The data<a class="headerlink" href="#the-data" title="Permanent link">&para;</a></h2>
+<p>Instance 3's <code>answer_session_ids</code> is <code>['answer_d61669c7']</code> — a single 12-turn session. Of those 12 turns, 5 mention Target/Cartwheel (turns 2, 3, 6, 7, 8) and 1 mentions the coffee-creamer-coupon event (turn 4). The evidence is scattered:</p>
+<table>
+<thead>
+<tr>
+<th>Turn</th>
+<th>Role</th>
+<th>Content excerpt</th>
+<th>Mentions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>user</td>
+<td>"...Cartwheel app from Target..."</td>
+<td>Target, Cartwheel</td>
+</tr>
+<tr>
+<td>3</td>
+<td>assistant</td>
+<td>"...saving money...at Target..."</td>
+<td>Target</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>user</strong></td>
+<td><strong>"I actually redeemed a $5 coupon on coffee creamer last Sunday..."</strong></td>
+<td><em>(no entity — just "email inbox")</em></td>
+</tr>
+<tr>
+<td>5</td>
+<td>assistant</td>
+<td>"...like Target, send exclusive coupons..."</td>
+<td>Target</td>
+</tr>
+<tr>
+<td>6</td>
+<td>user</td>
+<td>"I shop at Target pretty frequently..."</td>
+<td>Target, Cartwheel</td>
+</tr>
+<tr>
+<td>7</td>
+<td>assistant</td>
+<td>"You're a regular Target shopper!"</td>
+<td>Target, Cartwheel</td>
+</tr>
+</tbody>
+</table>
+<p>The key insight: <strong>turn 4 — the single turn that contains the coupon-on-creamer event — never mentions Target.</strong> The user assumed (reasonably) that the context carries over. A human reader threads it together from surrounding turns. The cognitive loop does not.</p>
+<hr />
+<h2 id="what-the-reproducer-shows">What the reproducer shows<a class="headerlink" href="#what-the-reproducer-shows" title="Permanent link">&para;</a></h2>
+<p>The reproducer runs two pipelines.</p>
+<h3 id="pipeline-1-per-turn-summary-tag-inspection">Pipeline 1 — per-turn summary + tag inspection<a class="headerlink" href="#pipeline-1-per-turn-summary-tag-inspection" title="Permanent link">&para;</a></h3>
+<p>For each turn, it prints the raw text, the <code>generate_summary</code> output, and the <code>extract_tags</code> output, with markers showing whether "Target" / "Cartwheel" survive each stage.</p>
+<p><strong>Representative output</strong> (edited for brevity):</p>
+<div class="highlight"><pre><span></span><code>--- turn 4 [user] ---
+RAW  (136 chars) [—]:
+     I actually redeemed a $5 coupon on coffee creamer last Sunday,
+     which was a nice surprise since I didn't know I had it in my
+     email inbox.
+SUM  (87 chars) [—]:
+     The author unexpectedly saved $5 on coffee creamer using a
+     coupon found in their email.
+TAGS [Target/Cartwheel NOT in tags]:
+     ['Coupon', 'savings', 'coffee creamer']
+</code></pre></div>
+<p>Turn 4 has no entity to preserve — this one's not the summariser's fault.</p>
+<div class="highlight"><pre><span></span><code>--- turn 5 [assistant] ---
+RAW  (1023 chars) [Target]:
+     ...Many retailers, like Target, send exclusive coupons and
+     promotions to their email subscribers...
+SUM  (198 chars) [—]:          ← Target is gone
+     Finding a surprise coupon for a needed item like coffee creamer
+     is exciting and serves as a reminder to regularly check emails
+     for deals, which can be organized by creating a dedicated email
+     folder.
+TAGS [Target/Cartwheel NOT in tags]:
+     ['Surprise coupon', 'needed item', 'coffee creamer', 'deals',
+      'email folder']
+</code></pre></div>
+<p><strong>This is the bug.</strong> Turn 5 directly replies to turn 4 ("your coffee creamer coupon reminds me, retailers like Target..."), the one place in the session where "Target" is associated with "coffee creamer / coupon / email" in the same 1000 characters. The summariser's 1-2 sentence compression discards Target because the prompt asks for <em>one or two sentences</em> with no instruction to preserve named entities. Fewer tokens = drop the specific, keep the abstract.</p>
+<p>By contrast, turns 2, 6, 7 preserve Target all the way through — but those turns don't mention coffee creamer or the coupon event, so at retrieval time the embedding of the benchmark question ("Where did I redeem a $5 coupon on coffee creamer?") doesn't land near them.</p>
+<h3 id="pipeline-2-end-to-end-cognitive-loop">Pipeline 2 — end-to-end cognitive loop<a class="headerlink" href="#pipeline-2-end-to-end-cognitive-loop" title="Permanent link">&para;</a></h3>
+<p>The reproducer then spins up a real <code>NeuroMemory</code> with <code>GeminiLLMProvider</code> + <code>GeminiEmbeddingProvider</code>, enqueues all 12 turns, forces a dream cycle, runs <code>ContextHelper.build_prompt_context(question)</code>, and prints the rendered tree.</p>
+<p>The tree <strong>does</strong> contain "Target" once — in memory <code>mem_b1ddf85…</code> under the path:</p>
+<div class="highlight"><pre><span></span><code>📁 stuff
+└── 📁 belongings
+    └── 📁 containers
+        └── 📁 storage
+            └── 📁 plastic sleeves
+                └── 📄 mem_b1ddf85…: "Combine the Target Cartwheel app with a well-organized coupon and receipt binder…"
+</code></pre></div>
+<p>Note the path: <code>stuff → belongings → containers → storage → plastic sleeves</code>. The memory that preserves "Target" has been clustered on the <strong>coupon-binder-organisation</strong> axis (because that summary leads with the binder-plus-app suggestion), not the <strong>shopping-at-Target</strong> axis. At retrieval time it surfaces via the wrong centroid, so the answer LLM doesn't recognise it as relevant to the question.</p>
+<p>Meanwhile, the three memories the retrieval ranker <em>does</em> surface near the top (all descendants of <code>discount → voucher → coupon</code>) are the ones that had Target stripped out. The LLM reads them, sees "coffee creamer", "coupon", "$5", "email" — and correctly produces the verbose-but-incomplete answer we saw in the benchmark:</p>
+<div class="highlight"><pre><span></span><code>Pred: You unexpectedly saved $5 on coffee creamer using a coupon you
+      found. I don't have specific information about where you
+      redeemed it.
+</code></pre></div>
+<hr />
+<h2 id="root-cause-not-one-bug-two-interacting-ones">Root cause — not one bug, two interacting ones<a class="headerlink" href="#root-cause-not-one-bug-two-interacting-ones" title="Permanent link">&para;</a></h2>
+<h3 id="1-summary-stage-entity-loss-primary">1. Summary-stage entity loss (primary)<a class="headerlink" href="#1-summary-stage-entity-loss-primary" title="Permanent link">&para;</a></h3>
+<p><code>GeminiLLMProvider.generate_summary</code> uses this prompt (<code>packages/neuromem-gemini/src/neuromem_gemini/llm.py:149</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="s2">"Summarise the following text in one or two sentences. "</span>
+<span class="s2">"Respond with ONLY the summary — no preamble, no markdown, "</span>
+<span class="s2">"no quotation marks.</span><span class="se">\n\n</span><span class="s2">"</span>
+<span class="sa">f</span><span class="s2">"Text: </span><span class="si">{</span><span class="n">raw_text</span><span class="si">}</span><span class="s2">"</span>
+</code></pre></div>
+<p>No instruction to preserve proper nouns / entities / specific brands. When the LLM is squeezed to 1–2 sentences from 1000+ chars, the compression strategy it picks is "keep the high-level concept, drop the specifics". This is the biggest lever.</p>
+<h3 id="2-tag-stage-entity-de-prioritisation-secondary">2. Tag-stage entity de-prioritisation (secondary)<a class="headerlink" href="#2-tag-stage-entity-de-prioritisation-secondary" title="Permanent link">&para;</a></h3>
+<p><code>extract_tags</code> uses this prompt (<code>packages/neuromem-gemini/src/neuromem_gemini/llm.py:169</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="s2">"Extract between 3 and 5 key concepts from the following text "</span>
+<span class="s2">"and return them as a comma-separated list. "</span>
+<span class="s2">"Exclude stopwords, articles, prepositions, and generic words "</span>
+<span class="s1">'(e.g. "the", "is", "a", "of", "to", "for"). '</span>
+</code></pre></div>
+<p>Negative ("exclude…") but no positive instruction. When a summary mentions both a proper noun and an abstract concept, the tagger is just as happy to keep the concept and drop the noun. In the reproducer output, tag lists like <code>['Coupon', 'savings', 'coffee creamer']</code> and <code>['Maximize savings', 'Cartwheel app', 'coupon binder', 'organized sections']</code> show this — the tagger happily picks specific-like terms ("Cartwheel app") when they're the topic, but drops entities that appear incidentally.</p>
+<h3 id="3-clustering-cant-bridge-summaries-that-dont-share-surface-tags-knock-on">3. Clustering can't bridge summaries that don't share surface tags (knock-on)<a class="headerlink" href="#3-clustering-cant-bridge-summaries-that-dont-share-surface-tags-knock-on" title="Permanent link">&para;</a></h3>
+<p>The dream cycle clusters on tag-embedding similarity. Memories about the "coupon-on-creamer event" cluster tightly together (they all share <code>coupon</code>, <code>savings</code>, <code>creamer</code>). Memories about Target as a store cluster separately (they share <code>Target</code>, <code>Cartwheel</code>, <code>household goods</code>). Nothing links them. No single turn in this session survives summarisation carrying both "Target" <em>and</em> "coffee creamer" in its tag list, so there's no shared tag to pull the two clusters into the same subgraph.</p>
+<hr />
+<h2 id="fixes-ranked-by-costvalue">Fixes, ranked by cost/value<a class="headerlink" href="#fixes-ranked-by-costvalue" title="Permanent link">&para;</a></h2>
+<h3 id="a-add-preserve-named-entities-to-the-summary-prompt-cheap-likely-high-lift">A. Add "preserve named entities" to the summary prompt <em>(cheap, likely high lift)</em><a class="headerlink" href="#a-add-preserve-named-entities-to-the-summary-prompt-cheap-likely-high-lift" title="Permanent link">&para;</a></h3>
+<p>One prompt edit in <code>generate_summary</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="s2">"Summarise the following text in one or two sentences. "</span>
+<span class="s2">"Preserve all proper nouns, brand names, places, people, "</span>   <span class="c1"># NEW</span>
+<span class="s2">"and specific numbers as they appear in the text. "</span>          <span class="c1"># NEW</span>
+<span class="s2">"Respond with ONLY the summary — no preamble, no markdown, "</span>
+<span class="s2">"no quotation marks.</span><span class="se">\n\n</span><span class="s2">"</span>
+</code></pre></div>
+<p>This is the single lowest-risk, highest-expected-value change. The reproducer is the correctness test: run before, run after, diff the turn-5 summary. If "Target" starts surviving, the downstream tag + cluster + retrieve path has a fighting chance.</p>
+<h3 id="b-add-preserve-proper-nouns-to-the-tag-prompt-cheap-smaller-lift">B. Add "preserve proper nouns" to the tag prompt <em>(cheap, smaller lift)</em><a class="headerlink" href="#b-add-preserve-proper-nouns-to-the-tag-prompt-cheap-smaller-lift" title="Permanent link">&para;</a></h3>
+<p>Same shape of prompt edit in <code>extract_tags</code> / <code>extract_tags_batch</code>. Useful as a backstop even after A — in case the summariser still drops an entity occasionally, the tagger will be biased toward keeping any that survive.</p>
+<h3 id="c-two-phase-summary-factual-abstractive-medium-cost-high-lift-a-design-change">C. Two-phase summary: factual + abstractive <em>(medium cost, high lift, a design change)</em><a class="headerlink" href="#c-two-phase-summary-factual-abstractive-medium-cost-high-lift-a-design-change" title="Permanent link">&para;</a></h3>
+<p>Split <code>generate_summary</code> into two calls:
+1. An "entity-preserving factual" summary (1–2 sentences, must name every proper noun / number in the source).
+2. An abstractive summary (1–2 sentences, free to generalise).</p>
+<p>Store both. Extract tags from the factual summary. Render the factual summary in the context tree. Feed the abstractive one to the clusterer for higher-level grouping.</p>
+<p>This would double the summariser cost on the hot path. Not cheap. But it directly addresses the "compression forces a choice between specific and abstract" problem that A and B only bias against.</p>
+<h3 id="d-co-mention-cross-links-in-the-graph-expensive-graph-schema-change">D. Co-mention cross-links in the graph <em>(expensive, graph-schema change)</em><a class="headerlink" href="#d-co-mention-cross-links-in-the-graph-expensive-graph-schema-change" title="Permanent link">&para;</a></h3>
+<p>When two memories within N turns of each other survive with tags that <em>co-occur</em> in the raw text, add an edge between them even if they don't share a tag post-extraction. Effectively: "turn 4 and turn 5 are adjacent and their raw texts share the word <code>coupon</code> — link them." This is a whole-design change and should wait until after A/B/C have been tried.</p>
+<h3 id="e-llm-rerank-retrieved-memories-expensive-per-query">E. LLM-rerank retrieved memories <em>(expensive per-query)</em><a class="headerlink" href="#e-llm-rerank-retrieved-memories-expensive-per-query" title="Permanent link">&para;</a></h3>
+<p>At answer time, pull a larger top-k (say 20 instead of 5), feed them to an LLM with the question, ask "which of these mention the same real-world entity as the question implies?", then re-rank. Standard retrieval-rerank pattern. Expensive and doesn't help the many-hop retrieval failure the instance actually has, so probably not worth it here.</p>
+<hr />
+<h2 id="recommended-next-step">Recommended next step<a class="headerlink" href="#recommended-next-step" title="Permanent link">&para;</a></h2>
+<ol>
+<li>✅ Apply fix A (one-line prompt edit). <strong>Done</strong> — see "Result of fix A" below.</li>
+<li>Add a real ADK-backed benchmark agent using <code>neuromem_adk.enable_memory</code> (fix F) so the LLM can call <code>retrieve_memories</code> to drill into <code>raw_content</code> when the summary tree isn't enough.</li>
+<li>Render named entities (stored per memory) alongside tags in the ContextHelper tree (fix G'), so one-shot agents also get entity visibility without needing tool calls.</li>
+</ol>
+<h2 id="result-of-fix-a">Result of fix A<a class="headerlink" href="#result-of-fix-a" title="Permanent link">&para;</a></h2>
+<p>Applied a one-line addition to both the <code>generate_summary</code> and <code>extract_tags</code> prompts in <code>packages/neuromem-gemini/src/neuromem_gemini/llm.py</code>:</p>
+<blockquote>
+<p>Summary prompt: <em>"Preserve all proper nouns — brand names, places, people, organisations — and specific numeric values exactly as they appear in the text."</em></p>
+<p>Tag prompt: <em>"When the text mentions proper nouns — brand names, places, people, organisations — include them as concepts; prefer specific entities over the abstract category they belong to."</em></p>
+</blockquote>
+<p>(Same instruction folded into the batch-tag prompt too.)</p>
+<h3 id="before-reproducer-turn-5-pre-fix">Before (reproducer turn 5, pre-fix)<a class="headerlink" href="#before-reproducer-turn-5-pre-fix" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>SUM: Finding a surprise coupon for a needed item like coffee creamer
+     is exciting and serves as a reminder to regularly check emails
+     for deals...                           ← Target dropped
+
+TAGS: ['Surprise coupon', 'needed item', 'coffee creamer', 'deals',
+       'email folder']                       ← Target/Cartwheel NOT in tags
+
+Final answer:
+   "You unexpectedly saved $5 on coffee creamer using a coupon you
+    found. I don't have specific information about where you redeemed it."
+→ Contains 'Target'? False
+</code></pre></div>
+<h3 id="after-reproducer-turn-5-post-fix">After (reproducer turn 5, post-fix)<a class="headerlink" href="#after-reproducer-turn-5-post-fix" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>SUM: Check your email for exclusive coupons from retailers like Target
+     to catch surprise deals...             ← Target preserved
+
+TAGS: ['Email', 'Coupons', 'Retailers', 'Target', 'Savings']   ← in tags
+
+Final answer:
+   "You redeemed a $5 coupon on coffee creamer at Target."
+→ Contains 'Target'? True
+</code></pre></div>
+<p>Every Target-mentioning turn (2, 3, 5, 6, 7) now survives summarisation with the entity intact. In the rendered ContextHelper tree, the <code>$5 coupon / coffee creamer</code> subtree now sits adjacent to <code>Target shopper</code> memories, so the answer LLM can join them.</p>
+<p>Full workspace test suite still green (282 passed). No prompt-string assertions to update.</p>
+<hr />
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Reproducer script: <code>packages/neuromem-bench/scripts/repro_instance3_target.py</code></li>
+<li>Original failing run: <code>docs/benchmarks/longmemeval-s-neuromem-n3.llm_judge.jsonl</code> (instance 3, score 0.0)</li>
+<li>Summary prompt: <code>packages/neuromem-gemini/src/neuromem_gemini/llm.py:142</code></li>
+<li>Tag prompt: <code>packages/neuromem-gemini/src/neuromem_gemini/llm.py:162</code></li>
+<li>Batch tag prompt: <code>packages/neuromem-gemini/src/neuromem_gemini/llm.py:184</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

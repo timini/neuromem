@@ -1,0 +1,1587 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/decisions/ADR-001-clustering-library-choice/">
+      
+      
+        <link rel="prev" href="../../benchmarks/PERFORMANCE/">
+      
+      
+        <link rel="next" href="../ADR-002-lazy-centroid-naming/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>ADR-001 Clustering library - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#adr-001-hand-rolled-numpy-clustering-vs-scipy-sklearn-hdbscan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ADR-001 Clustering library
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives Considered
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Alternatives Considered">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-scipyclusterhierarchylinkage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A — scipy.cluster.hierarchy.linkage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-sklearnclusteragglomerativeclustering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B — sklearn.cluster.AgglomerativeClustering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-hdbscan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C — hdbscan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-d-pure-python-math-loops-no-numpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option D — Pure-Python math loops (no numpy)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Consequences">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#positive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#revisit-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revisit criteria
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#amendment-2026-04-13-interplay-with-adr-002-lazy-centroid-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment 2026-04-13 — interplay with ADR-002 (lazy centroid naming)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives Considered
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Alternatives Considered">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-scipyclusterhierarchylinkage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A — scipy.cluster.hierarchy.linkage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-sklearnclusteragglomerativeclustering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B — sklearn.cluster.AgglomerativeClustering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-hdbscan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C — hdbscan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-d-pure-python-math-loops-no-numpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option D — Pure-Python math loops (no numpy)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Consequences">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#positive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Positive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#negative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Negative
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#revisit-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revisit criteria
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#amendment-2026-04-13-interplay-with-adr-002-lazy-centroid-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment 2026-04-13 — interplay with ADR-002 (lazy centroid naming)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="adr-001-hand-rolled-numpy-clustering-vs-scipy-sklearn-hdbscan">ADR-001: Hand-rolled numpy clustering vs scipy / sklearn / HDBSCAN<a class="headerlink" href="#adr-001-hand-rolled-numpy-clustering-vs-scipy-sklearn-hdbscan" title="Permanent link">&para;</a></h1>
+<p><strong>Status</strong>: Accepted
+<strong>Date</strong>: 2026-04-11
+<strong>Deciders</strong>: Tim Richardson (author), <code>feature-dev:code-reviewer</code> agent
+<strong>Context</strong>: T020 — <code>NeuroMemory._run_clustering</code> agglomerative clustering loop</p>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>The dreaming pipeline (<code>NeuroMemory._run_dream_cycle</code>) needs to agglomerate
+newly-extracted tag labels into a hierarchy of centroid "parent concept" nodes.
+The algorithm is <strong>greedy bottom-up merging</strong>: find the closest pair of nodes
+by cosine similarity, merge them into a centroid (with element-wise mean
+embedding), name the centroid via an LLM call, record the <code>child_of</code> edges, and
+repeat until no remaining pair exceeds <code>cluster_threshold</code> (default 0.82).</p>
+<p>The question: should this clustering loop be implemented <strong>by hand in pure
+numpy</strong>, or should the project import an established clustering library?</p>
+<h2 id="constraints">Constraints<a class="headerlink" href="#constraints" title="Permanent link">&para;</a></h2>
+<p>Four non-negotiables frame the decision:</p>
+<ol>
+<li>
+<p><strong>Constitution v2.0.0 Principle II — Lean Dependency Set.</strong> Runtime deps are
+   the Python 3.10+ standard library plus <code>numpy</code> plus <code>pandas</code>. Any additional
+   runtime dependency requires a MINOR constitutional amendment with a
+   documented justification.</p>
+</li>
+<li>
+<p><strong>Per-merge LLM callback.</strong> The centroid-naming step
+   (<code>llm.generate_category_name(labels)</code>) is called <strong>at each merge in the
+   loop</strong>, not as a separate post-processing pass. The centroid's name feeds
+   into later merges — a centroid can itself merge into a grander centroid on
+   the next iteration.</p>
+</li>
+<li>
+<p><strong>Threshold-driven stop condition.</strong> Clustering halts when no candidate pair
+   exceeds the cosine threshold. This is <strong>not</strong> "cut the dendrogram at K
+   clusters" and <strong>not</strong> "merge until a density criterion is met" — it is a
+   direct threshold on the pairwise similarity score.</p>
+</li>
+<li>
+<p><strong>Scale.</strong> The dreaming cycle typically clusters a few dozen to a few
+   hundred tag labels per invocation. The spec caps <code>neuromem-core</code> at ~10,000
+   total nodes before recommending a vector-native adapter.</p>
+</li>
+</ol>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p><strong>Hand-roll the clustering loop in numpy.</strong> The implementation lives in
+<code>packages/neuromem-core/src/neuromem/system.py::_run_clustering</code>:</p>
+<ol>
+<li>Build a pairwise cosine-similarity matrix via <code>(normed @ normed.T)</code> — a
+   single BLAS matmul.</li>
+<li><code>np.argmax</code> for the highest-similarity pair, clamp by <code>cluster_threshold</code>.</li>
+<li>Merge via <code>compute_centroid</code> from <code>neuromem.vectors</code>.</li>
+<li>Call <code>llm.generate_category_name</code> + <code>_sanitise_category_name</code> inside the
+   loop to name the new centroid.</li>
+<li><code>upsert_node(centroid, is_centroid=True)</code> + two <code>insert_edge(... 'child_of')</code>
+   calls for the parent-child links.</li>
+<li>Retire both members from the <code>alive</code> list and append the new centroid as a
+   fresh candidate — multi-level hierarchies fall out of the loop naturally.</li>
+<li>Repeat until no pair exceeds the threshold or only one node remains.</li>
+</ol>
+<p>Total implementation: ~100 lines of Python, plus a 6-line
+<code>_sanitise_category_name</code> helper for the "one word per LLM response" contract.</p>
+<h2 id="alternatives-considered">Alternatives Considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
+<h3 id="option-a-scipyclusterhierarchylinkage">Option A — <code>scipy.cluster.hierarchy.linkage</code><a class="headerlink" href="#option-a-scipyclusterhierarchylinkage" title="Permanent link">&para;</a></h3>
+<p>Full academic-grade hierarchical clustering with single, complete, average, and
+Ward linkage options.</p>
+<p><strong>Pros</strong>: robust, well-tested. The nearest-neighbour-chain optimisation used by
+scipy for Ward linkage achieves O(k²) time complexity and O(k²) memory, versus
+the hand-rolled O(k³) worst-case here (O(k²) per iteration × up to O(k)
+iterations before the threshold cuts us off). Single / complete / average
+linkage in scipy's default code path is slower, ranging from O(k²) to O(k³)
+depending on the linkage variant and the input distribution. See Müllner,
+<em>"Modern hierarchical, agglomerative clustering algorithms"</em> (arXiv:1109.2378,
+2011) for the standard analysis of nn-chain and its variants.</p>
+<p>Ward linkage also produces empirically tighter clusters on well-separated data
+because it minimises variance increase on each merge rather than just picking
+the highest similarity.</p>
+<p><strong>Cons rejected for v1</strong>:</p>
+<ul>
+<li>Pulls in <code>scipy</code> (~35 MB wheel), which brings LAPACK/BLAS bindings and Cython
+  extensions. Non-trivial install surface and transitive CVE risk.</li>
+<li><code>linkage</code> produces a full dendrogram in one call and then requires a second
+  pass (<code>fcluster</code>) to cut it. The <strong>per-merge LLM callback doesn't fit</strong> —
+  you'd either (a) run linkage to completion and then walk the tree making LLM
+  calls (losing the early-stop "merge while above threshold" property and the
+  ability to influence subsequent merges with the LLM-generated name), or
+  (b) re-implement the linkage algorithm yourself to insert the callback,
+  which defeats the point of importing scipy in the first place.</li>
+<li>Scipy's <code>linkage</code> + <code>fcluster</code> doesn't natively support "cut at similarity
+  threshold" — it supports "cut at distance threshold" (the inverse). Adapter
+  arithmetic adds confusion for marginal benefit.</li>
+</ul>
+<h3 id="option-b-sklearnclusteragglomerativeclustering">Option B — <code>sklearn.cluster.AgglomerativeClustering</code><a class="headerlink" href="#option-b-sklearnclusteragglomerativeclustering" title="Permanent link">&para;</a></h3>
+<p>Same capabilities as scipy's linkage with a slightly more modern API.</p>
+<p><strong>Cons rejected for v1</strong>: everything in Option A, plus sklearn pulls <code>scipy</code> +
+<code>joblib</code> + <code>threadpoolctl</code> + several smaller transitive deps (~50 MB total
+install). Biggest dependency footprint of the three library options for zero
+additional capability that our use case needs.</p>
+<h3 id="option-c-hdbscan">Option C — <code>hdbscan</code><a class="headerlink" href="#option-c-hdbscan" title="Permanent link">&para;</a></h3>
+<p>Density-based hierarchical clustering, widely used for clustering noisy
+real-world embedding data.</p>
+<p><strong>Cons rejected for v1</strong>:</p>
+<ul>
+<li>Produces a <strong>flat partition</strong> with an embedded hierarchy that still has to be
+  walked to extract parent-child relationships for our concept graph.</li>
+<li>The HDBSCAN value proposition is <strong>discovering the right number of clusters
+  without a threshold</strong> — but we explicitly <em>want</em> a threshold-driven stop
+  condition. Using HDBSCAN here would be using the right tool for the wrong
+  problem.</li>
+<li>Heaviest transitive dep of the three options (pulls scipy + Cython-compiled
+  C extensions + scikit-learn-style validation).</li>
+<li>Per-merge LLM callback fits even worse than scipy — HDBSCAN's internal data
+  structures are opaque and its single-linkage tree isn't directly exposed for
+  insertion of named-centroid callbacks.</li>
+</ul>
+<h3 id="option-d-pure-python-math-loops-no-numpy">Option D — Pure-Python <code>math</code> loops (no numpy)<a class="headerlink" href="#option-d-pure-python-math-loops-no-numpy" title="Permanent link">&para;</a></h3>
+<p>Rejected by the v1.1.0 → v2.0.0 constitution bump. numpy is now a mandatory
+runtime dependency, and doing vector math in pure-Python loops was the
+"ideology, not engineering" pattern v2.0.0 explicitly corrected.</p>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<h3 id="positive">Positive<a class="headerlink" href="#positive" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Zero new runtime dependencies.</strong> <code>neuromem-core</code>'s runtime surface stays at
+  exactly <code>numpy + pandas + stdlib</code>, satisfying Principle II.</li>
+<li><strong>Per-merge LLM integration is trivially clean</strong> — it's just a function call
+  inside the loop body, no callback plumbing required.</li>
+<li><strong>Full algorithm in ~100 lines</strong>, readable top to bottom without having to
+  cross-reference library documentation. Every branch is visible in one file.</li>
+<li><strong>Performance is comfortable inside the spec envelope.</strong> At <code>k=500, D=1536</code>,
+  the pairwise similarity matrix is a single BLAS matmul (~5 ms) and the inner
+  loop finds argmax in microseconds. The dominant cost is the LLM call for
+  centroid naming — which no library would avoid.</li>
+</ul>
+<h3 id="negative">Negative<a class="headerlink" href="#negative" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>At <code>k &gt; ~5000</code>, the dense O(k²) matrix starts to hurt.</strong> Scipy's
+  <code>linkage</code> is faster in practice at that scale because it uses the
+  nearest-neighbour chain algorithm. Not a concern inside the 10,000-node v1
+  cap, but real.</li>
+<li><strong>No Ward linkage</strong> (minimise variance increase on merge) or other linkage
+  variants. The current algorithm is closer to "mean-linkage with centroid
+  representatives": each merge produces a centroid used for subsequent
+  comparisons. Cluster quality may be lower on tricky data than what Ward
+  would produce.</li>
+<li><strong>No soft clustering</strong> — a node belonging partially to multiple centroids is
+  not supported. Once a node is merged, it is retired from the <code>alive</code> set.</li>
+<li><strong>No noise handling.</strong> HDBSCAN explicitly labels points as noise when they
+  don't fit any dense region; our greedy loop just leaves them as orphan leaf
+  tags without a centroid parent, which is arguably the right behaviour but is
+  worth noting.</li>
+</ul>
+<h3 id="revisit-criteria">Revisit criteria<a class="headerlink" href="#revisit-criteria" title="Permanent link">&para;</a></h3>
+<p>Swap to a library-backed clustering algorithm when <strong>any one of</strong> these
+is true:</p>
+<ol>
+<li><code>k &gt; 5000</code> in the dreaming cycle causes measurable latency regressions
+   against the SC-003 performance target (~500 ms for <code>search_memory</code> at
+   10,000 nodes). Unlikely inside v1 scope but worth monitoring.</li>
+<li>A LongMemEval / GraphRAG-Bench / AMB evaluation run (planned in T033 polish)
+   shows measurably degraded recall quality compared to a library baseline,
+   <strong>and</strong> the quality gap is attributable to cluster quality rather than some
+   other factor in the pipeline.</li>
+<li>A downstream framework-wrapper package has a concrete use case that
+   requires Ward linkage, soft clustering, or noise labelling that the current
+   threshold-merge approach cannot satisfy.</li>
+</ol>
+<p>Swapping would require, in order:</p>
+<ol>
+<li>A <strong>constitutional amendment</strong> bumping Principle II's runtime dep list
+   (MINOR bump, e.g., <code>scipy&gt;=1.13</code> added to the whitelist). See
+   <code>.specify/memory/constitution.md</code> for the amendment procedure.</li>
+<li>A <strong>research.md supersession entry</strong> (follow-up to Decision 3) noting the
+   trade-off and the evidence that drove the swap.</li>
+<li>A <strong>rewrite of <code>_run_clustering</code></strong> to integrate the new library's API while
+   preserving the per-merge LLM callback — or, if the callback is no longer
+   needed (e.g., because centroid naming moves to a post-processing pass),
+   document that design change explicitly.</li>
+</ol>
+<h2 id="amendment-2026-04-13-interplay-with-adr-002-lazy-centroid-naming">Amendment 2026-04-13 — interplay with ADR-002 (lazy centroid naming)<a class="headerlink" href="#amendment-2026-04-13-interplay-with-adr-002-lazy-centroid-naming" title="Permanent link">&para;</a></h2>
+<p>ADR-002 moved centroid naming out of the per-merge clustering loop
+and into a render-time hook (<code>NeuroMemory.resolve_centroid_names</code>,
+called from <code>ContextHelper.build_prompt_context</code>). Centroids are
+now written with placeholder labels (<code>cluster_&lt;12-hex-chars&gt;</code>)
+during clustering and renamed to LLM-quality semantic ones lazily,
+on the first render that touches them, in one batched LLM call.</p>
+<p>This <strong>does not invalidate the ADR-001 decision</strong> (stay with hand-
+rolled numpy clustering):</p>
+<ul>
+<li>The per-merge LLM callback was Constraint #2 and one of the main
+  reasons libraries didn't fit (they expose dendrograms, not merge
+  hooks). Lazy naming removes the LLM call from the per-merge step
+  but <strong>the merge loop still calls into provider-supplied logic</strong>
+  for the centroid embedding (<code>compute_centroid</code>) and for the
+  storage upsert. A library-driven dendrogram still wouldn't give
+  us the right shape — we need to write centroids AND <code>child_of</code>
+  edges incrementally as the loop runs, not as a post-pass.</li>
+<li>Speed-wise, the bottleneck this ADR was helping us reason about
+  (per-merge LLM latency) is gone. The next bottleneck on the
+  clustering loop, if one ever appears, would be the dense
+  similarity matrix at very large k — Constraint #4 in this ADR
+  (k ≤ 5000 is single-digit ms) still holds and the revisit
+  criteria there are still the right ones.</li>
+</ul>
+<p>The per-merge LLM revisit clause in this ADR's "Revisit when" list
+is now obsolete: there is no per-merge LLM call. Removing centroid
+naming from the loop didn't require library swap — we just deleted
+the call site. ADR-002 captures the new control flow.</p>
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Implementation: <code>packages/neuromem-core/src/neuromem/system.py::_run_clustering</code></li>
+<li>Lazy naming: ADR-002, <code>packages/neuromem-core/src/neuromem/system.py::resolve_centroid_names</code></li>
+<li>Tests: <code>packages/neuromem-core/tests/test_system.py::TestAgglomerativeClustering</code></li>
+<li>Original decision brief: <code>specs/001-neuromem-core/research.md</code> §Decision 3</li>
+<li>Pipeline context: <code>specs/001-neuromem-core/spec.md</code> §Phase B (Consolidation)</li>
+<li>Dependency governance: <code>.specify/memory/constitution.md</code> §Principle II</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

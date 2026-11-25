@@ -1,0 +1,2440 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/tag-pipeline/">
+      
+      
+        <link rel="prev" href="../episodic-memory/">
+      
+      
+        <link rel="next" href="../results/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Tag-graph memory - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tag-graph-memory-neuromemory" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tag-graph memory
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nodes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        edges
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingestion-and-the-inbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ingestion and the inbox
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ingestion and the inbox">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enqueueraw_text-metadatanone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        enqueue(raw_text, metadata=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enqueue_sessionturns-metadatanone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        enqueue_session(turns, metadata=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#force_dreamblocktrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        force_dream(block=True)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-dream-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The dream cycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The dream cycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-claim-the-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: claim the batch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-summary-backfill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: summary backfill
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-tag-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: tag extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-named-entity-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: named-entity extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-tag-node-creation-and-embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: tag node creation and embedding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-hdbscan-recursive-clustering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: HDBSCAN recursive clustering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-has_tag-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7: has_tag wiring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-8-centroid-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 8: centroid naming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-9-junction-paragraph-summaries-floor-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 9: junction (paragraph) summaries, floor-up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-10-decay-and-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 10: decay and archive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-11-status-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 11: status flip
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example tree
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Retrieval">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#contexthelperbuild_prompt_contexttask-top_k5-depth3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContextHelper.build_prompt_context(task, top_k=5, depth=3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rendering-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ltp-spike-on-retrieve_memories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LTP spike on retrieve_memories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Agent tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#google-adk-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google ADK wiring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tunable-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tunable defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmark-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nodes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        edges
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingestion-and-the-inbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ingestion and the inbox
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ingestion and the inbox">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enqueueraw_text-metadatanone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        enqueue(raw_text, metadata=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enqueue_sessionturns-metadatanone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        enqueue_session(turns, metadata=None)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#force_dreamblocktrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        force_dream(block=True)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-dream-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The dream cycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The dream cycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-claim-the-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: claim the batch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-summary-backfill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: summary backfill
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-tag-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: tag extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-named-entity-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: named-entity extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-tag-node-creation-and-embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: tag node creation and embedding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-hdbscan-recursive-clustering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: HDBSCAN recursive clustering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-has_tag-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7: has_tag wiring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-8-centroid-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 8: centroid naming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-9-junction-paragraph-summaries-floor-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 9: junction (paragraph) summaries, floor-up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-10-decay-and-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 10: decay and archive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-11-status-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 11: status flip
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example tree
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Retrieval">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#contexthelperbuild_prompt_contexttask-top_k5-depth3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContextHelper.build_prompt_context(task, top_k=5, depth=3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rendering-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ltp-spike-on-retrieve_memories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LTP spike on retrieve_memories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Agent tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#google-adk-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Google ADK wiring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tunable-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tunable defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmark-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="tag-graph-memory-neuromemory">Tag-graph memory (NeuroMemory)<a class="headerlink" href="#tag-graph-memory-neuromemory" title="Permanent link">&para;</a></h1>
+<p>This page describes the original neuromem memory model, <code>NeuroMemory</code>, step by step. It covers the data model, ingestion, every step of the dream cycle, retrieval, the agent tools and the tunable defaults. The pipeline, retrieval, tools and defaults sections are taken from the code in:</p>
+<ul>
+<li><code>packages/neuromem-core/src/neuromem/system.py</code> (<code>NeuroMemory</code>)</li>
+<li><code>packages/neuromem-core/src/neuromem/context.py</code> (<code>ContextHelper</code>)</li>
+<li><code>packages/neuromem-core/src/neuromem/clustering.py</code> (<code>HDBSCANClusteringProvider</code>)</li>
+<li><code>packages/neuromem-core/src/neuromem/vectors.py</code></li>
+<li><code>packages/neuromem-core/src/neuromem/tools.py</code></li>
+<li><code>packages/neuromem-core/src/neuromem/storage/sqlite.py</code> (<code>SQLiteAdapter</code>)</li>
+<li><code>packages/neuromem-gemini/src/neuromem_gemini/llm.py</code> and the templates in <code>packages/neuromem-gemini/src/neuromem_gemini/prompts/</code></li>
+<li><code>packages/neuromem-adk/src/neuromem_adk/enable.py</code> and <code>callbacks.py</code></li>
+</ul>
+<p>The benchmark and limitations sections draw on the documents they link to. The episodic model that runs alongside it is described in <a href="../episodic-memory/">episodic-memory.md</a> and <a href="../decisions/ADR-005-episodic-memory/">ADR-005</a>.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>A memory is a piece of raw text, usually a whole conversation session. An LLM summarises it and extracts short <strong>tags</strong> from the summary ("degree", "Acme Corp", "task management"). Each distinct tag becomes a leaf node with an embedding of the tag text. HDBSCAN clusters the tag vectors into a hierarchy of <strong>centroid</strong> nodes, and an LLM names each centroid with one word and writes a short paragraph about what sits under it. Memories link to their tag nodes.</p>
+<p>At query time the query is embedded, the nearest nodes (tags or centroids) are found, the graph is walked outward from them, and the result is rendered as an indented text tree that goes into the answering model's prompt.</p>
+<p>The expensive work happens in a background <strong>dream cycle</strong>. Ingestion only writes a row.</p>
+<h2 id="data-model">Data model<a class="headerlink" href="#data-model" title="Permanent link">&para;</a></h2>
+<p><code>SQLiteAdapter</code> creates three tables (<code>_SCHEMA_DDL</code> in <code>storage/sqlite.py</code>). Foreign keys are switched off (<code>PRAGMA foreign_keys=OFF</code>), so edge endpoints are not checked by the database. The database runs in WAL mode.</p>
+<pre class="mermaid"><code>erDiagram
+    MEMORIES ||--o{ EDGES : "has_tag (source)"
+    NODES ||--o{ EDGES : "has_tag (target)"
+    NODES ||--o{ EDGES : "child_of (source = parent)"
+    NODES ||--o{ EDGES : "child_of (target = child)"
+
+    MEMORIES {
+        text id PK "mem_ plus 32 hex"
+        text raw_content "NOT NULL"
+        text summary "empty until dream step 2"
+        text status "inbox, dreaming, consolidated, archived"
+        real access_weight "default 1.0"
+        integer last_accessed "NULL until retrieved"
+        integer created_at "insert time, Unix seconds"
+        text metadata "JSON or NULL"
+        text named_entities "JSON list, default empty"
+    }
+    NODES {
+        text id PK "node_ plus uuid4"
+        text label "tag text or centroid name"
+        blob embedding "float32 bytes"
+        integer embedding_dim "corruption check"
+        integer is_centroid "0 leaf, 1 centroid"
+        text paragraph_summary "centroids only, NULL until summarised"
+    }
+    EDGES {
+        integer id PK
+        text source_id
+        text target_id
+        real weight
+        text relationship "has_tag or child_of"
+    }</code></pre>
+<h3 id="memories">memories<a class="headerlink" href="#memories" title="Permanent link">&para;</a></h3>
+<p>One row per ingested text. <code>id</code> is <code>mem_</code> followed by 32 hex characters. <code>created_at</code> is the time of insertion (<code>int(time.time())</code>), not the date of the conversation. <code>summary</code> is written as an empty string at insert time and filled in by the dream cycle. <code>named_entities</code> is a JSON list of strings.</p>
+<p><code>status</code> has four values, enforced by a <code>CHECK</code> constraint:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+<th>Set by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>inbox</code></td>
+<td>Ingested, not yet processed</td>
+<td><code>insert_memory</code>; also the rollback target</td>
+</tr>
+<tr>
+<td><code>dreaming</code></td>
+<td>Claimed by a running dream cycle</td>
+<td>Step 1 of the dream cycle</td>
+</tr>
+<tr>
+<td><code>consolidated</code></td>
+<td>Processed, linked into the graph, subject to decay</td>
+<td>Last step of the dream cycle</td>
+</tr>
+<tr>
+<td><code>archived</code></td>
+<td>Decayed below the threshold; tag edges removed</td>
+<td><code>apply_decay_and_archive</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>access_weight</code> starts at 1.0. Decay lowers it; retrieval resets it to 1.0.</p>
+<h3 id="nodes">nodes<a class="headerlink" href="#nodes" title="Permanent link">&para;</a></h3>
+<p>One row per tag (leaf) or centroid. <code>id</code> is <code>node_</code> followed by a hyphenated UUID4. The embedding is stored as raw float32 bytes with its dimension in <code>embedding_dim</code>. The first node written fixes the dimension for the whole table: <code>upsert_node</code> rejects any embedding of a different length, and logs a warning above 4096 dimensions. On read, a blob whose length is not <code>embedding_dim * 4</code> raises <code>StorageError</code>.</p>
+<p><code>paragraph_summary</code> holds the centroid's 2 to 4 sentence summary. An upsert of an existing node id sets it back to NULL.</p>
+<h3 id="edges">edges<a class="headerlink" href="#edges" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Relationship</th>
+<th>Source</th>
+<th>Target</th>
+<th>Weight</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>has_tag</code></td>
+<td>memory id</td>
+<td>node id (normally a leaf tag)</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><code>child_of</code></td>
+<td>parent centroid id</td>
+<td>child node id</td>
+<td>cluster cohesion (mean pairwise cosine of the children)</td>
+</tr>
+</tbody>
+</table>
+<p><code>(source_id, target_id, relationship)</code> is unique and <code>insert_edge</code> uses <code>INSERT OR IGNORE</code>, so repeating an edge is a no-op. Indexes exist on <code>memories(status)</code>, <code>edges(source_id)</code> and <code>edges(target_id)</code>.</p>
+<h2 id="ingestion-and-the-inbox">Ingestion and the inbox<a class="headerlink" href="#ingestion-and-the-inbox" title="Permanent link">&para;</a></h2>
+<h3 id="enqueueraw_text-metadatanone"><code>enqueue(raw_text, metadata=None)</code><a class="headerlink" href="#enqueueraw_text-metadatanone" title="Permanent link">&para;</a></h3>
+<p><code>NeuroMemory.enqueue</code> makes no LLM call.</p>
+<ol>
+<li>Rejects empty <code>raw_text</code> with <code>ValueError</code>.</li>
+<li>Inserts a row with <code>status='inbox'</code>, <code>summary=''</code>, <code>access_weight=1.0</code>, <code>last_accessed=NULL</code>. Metadata must be JSON-serialisable.</li>
+<li>Counts <code>inbox</code> rows. If the count is at least <code>dream_threshold</code> (default 10) and <code>is_dreaming</code> is false, it starts a daemon thread named <code>neuromem-dream</code> that runs <code>_run_dream_cycle</code>.</li>
+<li>Returns the memory id.</li>
+</ol>
+<h3 id="enqueue_sessionturns-metadatanone"><code>enqueue_session(turns, metadata=None)</code><a class="headerlink" href="#enqueue_sessionturns-metadatanone" title="Permanent link">&para;</a></h3>
+<p>Takes a list of dicts with <code>role</code> and <code>text</code> keys (other keys are ignored). It validates the list, builds one transcript with <code>"{role}: {text}"</code> per turn joined by blank lines, and calls <code>enqueue</code> once. A session becomes a single memory. There is no timestamp parameter, so the session date is not stored.</p>
+<h3 id="force_dreamblocktrue"><code>force_dream(block=True)</code><a class="headerlink" href="#force_dreamblocktrue" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>block=True</code>: if a background dream thread is alive, join it, then run <code>_run_dream_cycle</code> on the caller's thread.</li>
+<li><code>block=False</code>: if a background thread is alive, return. Otherwise start a new daemon thread.</li>
+</ul>
+<p>Only one cycle can run at a time. <code>_run_dream_cycle</code> takes <code>_dream_lock</code> without blocking and returns at once if another cycle holds it.</p>
+<h2 id="the-dream-cycle">The dream cycle<a class="headerlink" href="#the-dream-cycle" title="Permanent link">&para;</a></h2>
+<p><code>NeuroMemory._run_dream_cycle</code> runs these steps in this order.</p>
+<pre class="mermaid"><code>flowchart TD
+    A["Acquire _dream_lock (non-blocking)"] --&gt;|held| Z0["Return, no-op"]
+    A --&gt;|acquired| B["Step 1: Read all inbox memories"]
+    B --&gt;|none| Z1["Release lock, return"]
+    B --&gt; C["Flip batch to dreaming"]
+    C --&gt; D["Step 2: Summary backfill (generate_summary_batch)"]
+    D --&gt; E["Step 3: Tag extraction (extract_tags_batch)"]
+    E --&gt; F["Step 4: NER (extract_named_entities_batch), write named_entities"]
+    F --&gt; G["Step 5: Tag nodes: embed new labels, upsert leaves"]
+    G --&gt; H["Step 6: HDBSCAN recursive clustering, write centroids and child_of edges"]
+    H --&gt; I["Step 7: Wire has_tag edges"]
+    I --&gt; J["Step 8: Name placeholder centroids"]
+    J --&gt; K["Step 9: Junction summaries, floor-up"]
+    K --&gt; L["Step 10: Decay and archive consolidated memories"]
+    L --&gt; M["Step 11: Flip batch to consolidated"]
+    M --&gt; Z2["Release lock"]
+    D -. exception .-&gt; R["Flip batch back to inbox, re-raise"]
+    E -. exception .-&gt; R
+    F -. exception .-&gt; R
+    G -. exception .-&gt; R
+    H -. exception .-&gt; R
+    I -. exception .-&gt; R
+    L -. exception .-&gt; R
+    R --&gt; Z2</code></pre>
+<p>Steps 8 and 9 catch and log their own exceptions, so a naming or summary failure does not roll the cycle back.</p>
+<h3 id="step-1-claim-the-batch">Step 1: claim the batch<a class="headerlink" href="#step-1-claim-the-batch" title="Permanent link">&para;</a></h3>
+<p><code>storage.get_memories_by_status("inbox")</code> returns every inbox row ordered by <code>created_at</code>, then <code>id</code>. If there are none the cycle returns. Otherwise one <code>UPDATE ... WHERE id IN (...)</code> sets them all to <code>dreaming</code>. Memories enqueued after this point stay in the inbox for the next cycle.</p>
+<h3 id="step-2-summary-backfill">Step 2: summary backfill<a class="headerlink" href="#step-2-summary-backfill" title="Permanent link">&para;</a></h3>
+<p><code>_backfill_summaries</code> selects memories whose <code>summary</code> is empty or whitespace (rows that already have a summary are skipped). It calls <code>llm.generate_summary_batch</code> on their <code>raw_content</code>. If the number of summaries returned differs from the number of inputs it raises <code>ValueError</code>, which triggers the rollback. Results are written with <code>set_summaries</code> and copied onto the in-memory dicts used by later steps.</p>
+<p>Gemini (<code>GeminiLLMProvider.generate_summary_batch</code>):</p>
+<ul>
+<li>One text goes to <code>generate_summary</code> (prompt <code>generate_summary.prompt</code>).</li>
+<li>Up to 6 texts go in one call; more are split into chunks of 6 (<code>_MEMORY_SUMMARY_BATCH_CHUNK_SIZE</code>) and run on a thread pool of up to 10 workers (<code>_BATCH_WORKERS</code>).</li>
+<li>Each chunk uses <code>generate_summary_batch.prompt</code>, which numbers the texts <code>[1]</code>, <code>[2]</code> and asks for a JSON array of strings. Raw text has <code>\n#</code> replaced by <code>\n</code> first, so it cannot inject Markdown headings into the prompt.</li>
+<li>If the response is not valid JSON or has the wrong length, every item in the chunk is summarised with a single call. An empty or non-string item is redone with a single call.</li>
+</ul>
+<p>The prompts ask for 2 to 4 sentences that keep personal facts about the user, proper nouns, numbers and dates, and implied facts, and that prefer personal facts over generic advice.</p>
+<h3 id="step-3-tag-extraction">Step 3: tag extraction<a class="headerlink" href="#step-3-tag-extraction" title="Permanent link">&para;</a></h3>
+<p><code>llm.extract_tags_batch(summaries)</code> returns one list of tag strings per memory.</p>
+<p>Gemini (<code>extract_tags_batch</code>):</p>
+<ul>
+<li>One summary goes to <code>extract_tags</code> (comma-separated output, <code>extract_tags.prompt</code>).</li>
+<li>Two or more go in one call with no chunking (<code>extract_tags_batch.prompt</code>), asking for a JSON array of arrays with 5 to 12 tags of 1 to 4 words each.</li>
+<li>Parse failure or a length mismatch falls back to one <code>extract_tags</code> call per summary. A non-list inner element falls back for that item.</li>
+<li>Each tag is stripped of whitespace and surrounding quotes. Lists are cut to 12 tags.</li>
+</ul>
+<p>Tags keep the casing the model returns. They are matched to existing nodes by exact string, so "Degree" and "degree" are different tags.</p>
+<h3 id="step-4-named-entity-extraction">Step 4: named-entity extraction<a class="headerlink" href="#step-4-named-entity-extraction" title="Permanent link">&para;</a></h3>
+<p><code>llm.extract_named_entities_batch(summaries)</code> returns proper nouns per memory (brands, products, places, people, organisations). <code>set_named_entities</code> writes them to the <code>named_entities</code> column straight away, before the remaining steps.</p>
+<p>Gemini uses the same shape as tag extraction: a single unchunked call with <code>extract_named_entities_batch.prompt</code>, per-item fallback to <code>extract_named_entities</code>, and a cap of 8 entities. The single-item prompt returns <code>NONE</code> for no entities, which becomes an empty list.</p>
+<p>Entities are not used for clustering or retrieval. They appear only on the annotation line of the rendered tree and in <code>retrieve_memories</code> results.</p>
+<h3 id="step-5-tag-node-creation-and-embedding">Step 5: tag node creation and embedding<a class="headerlink" href="#step-5-tag-node-creation-and-embedding" title="Permanent link">&para;</a></h3>
+<p><code>_ensure_tag_nodes</code>:</p>
+<ol>
+<li>Collects the union of tag strings across the batch.</li>
+<li>Loads every node in storage with <code>get_all_nodes</code> (leaves and centroids, ordered by id) into a dict keyed by <code>label</code>. When two nodes share a label, the one with the later id wins.</li>
+<li>Finds the labels not already in that dict, sorts them, and embeds them in one <code>embedder.get_embeddings</code> call. The Gemini embedder (default model <code>gemini-embedding-001</code>) sends at most 100 texts per request.</li>
+<li>Upserts each as a leaf (<code>is_centroid=False</code>) with id <code>node_&lt;uuid4&gt;</code>.</li>
+</ol>
+<p>It returns the label dict, which now holds every node in storage plus the new leaves. A tag that matches an existing label, including a centroid's label, reuses that node.</p>
+<h3 id="step-6-hdbscan-recursive-clustering">Step 6: HDBSCAN recursive clustering<a class="headerlink" href="#step-6-hdbscan-recursive-clustering" title="Permanent link">&para;</a></h3>
+<p><code>_run_clustering</code> passes every node in the label dict, as <code>(id, embedding)</code> pairs, to <code>self.clusterer.cluster</code>. That includes centroids from earlier cycles, not only the new leaves. With fewer than 2 nodes it does nothing.</p>
+<p><code>HDBSCANClusteringProvider._cluster_level</code> then runs, starting at depth 0:</p>
+<ol>
+<li>Stop if depth is 8 or more (<code>_MAX_RECURSION_DEPTH</code>) or there are fewer than <code>min_cluster_size</code> (2) inputs.</li>
+<li>L2-normalise each embedding, so Euclidean distance orders points the same way as cosine distance.</li>
+<li>Run <code>hdbscan.HDBSCAN(min_cluster_size=2, metric="euclidean", allow_single_cluster=True).fit_predict</code>.</li>
+<li>Drop points labelled <code>-1</code> (noise). Noise points get no parent at this level and are not passed up.</li>
+<li>For each cluster, emit a <code>Cluster</code> with:</li>
+<li>id <code>c_</code> plus 16 hex characters,</li>
+<li><code>embedding</code> = mean of the members' original (not normalised) embeddings,</li>
+<li><code>child_ids</code> = the member ids,</li>
+<li><code>cohesion</code> = mean cosine similarity over all member pairs.</li>
+<li>If this level produced at least 2 clusters, recurse on the cluster centroids at depth + 1.</li>
+</ol>
+<p>Clusters are emitted children first, so a single forward pass can write them. For each cluster <code>_run_clustering</code>:</p>
+<ol>
+<li>Creates a centroid node <code>node_&lt;uuid4&gt;</code> with <code>is_centroid=True</code>, the cluster embedding, and a placeholder label <code>cluster_</code> followed by characters 5 to 16 of the node id (the first 12 characters of the UUID, which always include the hyphen at position 8).</li>
+<li>Writes a <code>child_of</code> edge from the centroid to each child, with weight equal to the cohesion. Child ids that start with <code>c_</code> are mapped to the storage id created earlier; if one has not been seen yet, it raises <code>ValueError</code> (a provider ordering bug).</li>
+</ol>
+<p>Old centroids and their edges are never deleted, and an existing centroid never gains new <code>child_of</code> edges. Because every node, including leaves and older centroids, is clustered again each cycle, each cycle writes a new set of centroids over the whole graph, and a node can collect several parents across cycles.</p>
+<p><code>cluster_threshold</code> (default 0.65) is validated and stored on <code>NeuroMemory</code> but the HDBSCAN provider does not read it. <code>random_state</code> (default 42) is stored by the provider but not passed to HDBSCAN.</p>
+<h3 id="step-7-has_tag-wiring">Step 7: has_tag wiring<a class="headerlink" href="#step-7-has_tag-wiring" title="Permanent link">&para;</a></h3>
+<p>For each memory and each of its tag strings, <code>insert_edge(memory_id, node_id, 1.0, "has_tag")</code>, where <code>node_id</code> comes from the label dict. Memories link to the node whose label matches the tag exactly. No step links a memory to a centroid ancestor. A memory is linked to a centroid only when one of its tags equals that centroid's label (see step 5).</p>
+<h3 id="step-8-centroid-naming">Step 8: centroid naming<a class="headerlink" href="#step-8-centroid-naming" title="Permanent link">&para;</a></h3>
+<p><code>_run_all_centroid_naming</code> loads all nodes, keeps centroids whose label starts with <code>cluster_</code>, and calls <code>resolve_centroid_names(placeholders, expected_placeholders=True, all_nodes=...)</code>.</p>
+<p>For each placeholder centroid:</p>
+<ol>
+<li>Children: <code>get_subgraph([centroid_id], depth=1)</code> and keep the targets of <code>child_of</code> edges whose source is the centroid. A centroid with no children is skipped.</li>
+<li>Input: the labels of the first 20 children.</li>
+<li>avoid_names: the labels of every centroid not in the set being named, skipping empty labels and labels that still start with <code>cluster_</code>.</li>
+<li>Batched call: <code>llm.generate_category_names_batch(groups, avoid_names=...)</code>. If it raises or returns the wrong number of names, the whole batch goes to the fallback.</li>
+<li>First word: each returned name is cut to its first whitespace-separated word. An empty name sends that centroid to the fallback.</li>
+<li>Nearest-child fallback: <code>_nearest_child_label</code> returns the label of the child whose embedding has the highest cosine similarity to the centroid embedding. If the centroid has no embedding or a zero vector, it returns the first child's label.</li>
+<li>Persist: <code>update_node_labels</code> writes all new labels in one transaction.</li>
+</ol>
+<p>Gemini (<code>generate_category_names_batch</code>):</p>
+<ul>
+<li>Groups go in chunks of 30 (<code>_BATCH_CHUNK_SIZE</code>) on up to 10 workers. One group uses the single-call prompt.</li>
+<li><code>generate_category_names_batch.prompt</code> asks for one lowercase English noun per group, bans generic nouns ("thing", "aspect", "topic" and others), asks for distinct names within the batch, and includes the avoid line.</li>
+<li><code>render_avoid_section</code> sorts the avoid labels alphabetically, keeps the first 30 (<code>_AVOID_NAMES_MAX</code>), and renders <code>Avoid reusing these already-taken labels: a, b, c.</code></li>
+<li>Each name is cleaned to its first token, stripped of punctuation and lowercased. A non-string item, a name in <code>_GENERIC_LABEL_BLOCKLIST</code> or an empty name is redone with the single-call prompt. A chunk whose response is not valid JSON or has the wrong length is redone one group at a time with the single-call prompt. If the single-call prompt also returns an empty or blocked name, the result is the first word of the first concept, lowercased, or <code>concept</code> if there are none.</li>
+<li><code>avoid_names</code> is a hint only. A returned name that is in the avoid set is accepted.</li>
+</ul>
+<p>The nearest-child fallback gives a centroid the exact label of one of its children, and nothing stops two centroids from getting the same name. In the next cycle the label dict in step 5 keeps only one node per label, so one of the two same-named nodes is left out of clustering and of tag matching.</p>
+<h3 id="step-9-junction-paragraph-summaries-floor-up">Step 9: junction (paragraph) summaries, floor-up<a class="headerlink" href="#step-9-junction-paragraph-summaries-floor-up" title="Permanent link">&para;</a></h3>
+<p><code>_run_all_junction_summarisation</code> collects every centroid whose <code>paragraph_summary</code> is NULL or empty and calls <code>resolve_junction_summaries(dirty, expected_unsummarised=True)</code>. Centroids that already have a summary are not regenerated, even if new memories have since been linked to the tags under them.</p>
+<p>Levels: <code>_group_by_level</code> orders the dirty centroids so children are summarised before parents. For each dirty centroid it finds which of its <code>child_of</code> children are also dirty. Level 0 is the dirty centroids with no dirty children; it removes them and repeats. If no centroid is ready (a cycle in the graph), the rest go in one final level.</p>
+<p>Snippets: for each centroid in a level, <code>_gather_child_snippets</code> builds one string per child:</p>
+<ul>
+<li>Centroid child: its <code>paragraph_summary</code>, or its label if it has none.</li>
+<li>Leaf child: <code>Memories tagged '&lt;label&gt;': s1 | s2 | s3</code>, using up to 3 non-empty summaries of non-archived memories linked by <code>has_tag</code>. A leaf with no linked memories contributes its label.</li>
+</ul>
+<p>Summarise: <code>llm.generate_junction_summaries_batch(groups)</code> produces one summary per centroid. If it raises or returns the wrong count, the code calls <code>llm.generate_junction_summary</code> once per group. An empty result for one slot is also redone with <code>generate_junction_summary</code>. Results are written with <code>update_junction_summaries</code>, one transaction per level, before the next level reads them.</p>
+<p><code>LLMProvider.generate_junction_summary</code> in the base class joins the snippets with spaces after cutting each to 120 characters. Gemini overrides it with an LLM call, so with Gemini every fallback is another model call.</p>
+<p>Gemini batches 8 groups per call (<code>_JUNCTION_BATCH_CHUNK_SIZE</code>) on up to 10 workers. <code>generate_junction_summaries_batch.prompt</code> asks for 2 to 4 fact-dense sentences per group that keep personal facts and proper nouns, returned as a JSON array. Snippets have <code>\n#</code> replaced by <code>\n</code>.</p>
+<h3 id="step-10-decay-and-archive">Step 10: decay and archive<a class="headerlink" href="#step-10-decay-and-archive" title="Permanent link">&para;</a></h3>
+<p><code>storage.apply_decay_and_archive(decay_lambda, archive_threshold, now)</code> runs in one transaction over memories with <code>status='consolidated'</code>. The current batch is still <code>dreaming</code> at this point, so it is not decayed in its own cycle.</p>
+<p>For each row:</p>
+<div class="highlight"><pre><span></span><code>anchor = last_accessed if not NULL else created_at
+t      = max(0, now - anchor)                 # seconds
+w_new  = access_weight * exp(-decay_lambda * t)
+</code></pre></div>
+<p>If <code>w_new &lt; archive_threshold</code> the row becomes <code>archived</code>, <code>w_new</code> is stored, and all its <code>has_tag</code> edges are deleted. Otherwise <code>w_new</code> is stored.</p>
+<p>With the defaults (<code>decay_lambda = 3e-7</code> per second, <code>archive_threshold = 0.1</code>):</p>
+<ul>
+<li>One application halves the weight at <code>t = ln 2 / 3e-7</code>, about 2.31 million seconds or 26.7 days.</li>
+<li>One application crosses 0.1 at <code>t = ln 10 / 3e-7</code>, about 7.68 million seconds or 88.8 days.</li>
+</ul>
+<p>The anchor does not move when decay is applied, and each cycle multiplies the already-decayed weight by <code>exp(-lambda * t)</code> again with the full elapsed time. Decay therefore compounds across cycles. For example, with cycles at day 10 and day 20 after creation and no retrieval, the stored weight after the second cycle is <code>exp(-lambda * (10 + 20) days)</code>, not <code>exp(-lambda * 20 days)</code>. How fast a memory is archived depends on how often dream cycles run.</p>
+<p>Archiving removes the memory's <code>has_tag</code> edges. Tag nodes and centroids stay, even if nothing links to them any more.</p>
+<h3 id="step-11-status-flip">Step 11: status flip<a class="headerlink" href="#step-11-status-flip" title="Permanent link">&para;</a></h3>
+<p>The batch goes from <code>dreaming</code> to <code>consolidated</code> in one statement.</p>
+<h3 id="rollback">Rollback<a class="headerlink" href="#rollback" title="Permanent link">&para;</a></h3>
+<p>If steps 2 to 7, 10 or 11 raise, the <code>except</code> block logs the error, sets the batch back to <code>inbox</code>, and re-raises. If that update also fails it logs "rollback itself failed". The <code>finally</code> block clears <code>is_dreaming</code> and releases the lock.</p>
+<p>Rollback only changes status. Each storage call commits on its own, so anything written before the failure stays: summaries, named entities, new tag nodes, centroids, <code>child_of</code> edges and <code>has_tag</code> edges. On the next cycle the same memories are processed again. Summaries are not regenerated because they are no longer empty. <code>has_tag</code> edges are deduplicated by the unique constraint. Clustering runs again over all nodes and writes another set of centroids.</p>
+<h2 id="example-tree">Example tree<a class="headerlink" href="#example-tree" title="Permanent link">&para;</a></h2>
+<p>After one or two cycles the graph looks like this. Rectangles are centroids, rounded boxes are leaf tags, and slanted boxes are memories, linked to leaf tags by dashed <code>has_tag</code> edges.</p>
+<pre class="mermaid"><code>graph TD
+    C3["career (centroid)"]
+    C1["education (centroid)"]
+    C2["work (centroid)"]
+    T1("degree")
+    T2("Business Administration")
+    T3("Acme Corp")
+    T4("junior analyst")
+    T5("task management")
+    M1[/"mem_a1: graduated, works at Acme Corp"/]
+    M2[/"mem_b2: Todoist and Trello for tasks"/]
+
+    C3 --&gt;|child_of| C1
+    C3 --&gt;|child_of| C2
+    C1 --&gt;|child_of| T1
+    C1 --&gt;|child_of| T2
+    C2 --&gt;|child_of| T3
+    C2 --&gt;|child_of| T4
+    M1 -.-&gt;|has_tag| T1
+    M1 -.-&gt;|has_tag| T2
+    M1 -.-&gt;|has_tag| T3
+    M1 -.-&gt;|has_tag| T4
+    M2 -.-&gt;|has_tag| T5</code></pre>
+<p><code>task management</code> is a noise point here: HDBSCAN put it in no cluster, so it has no parent and renders as a top-level node. <code>mem_a1</code> has four tags, so it appears four times in a render that reaches all four leaves.</p>
+<h2 id="retrieval">Retrieval<a class="headerlink" href="#retrieval" title="Permanent link">&para;</a></h2>
+<h3 id="contexthelperbuild_prompt_contexttask-top_k5-depth3"><code>ContextHelper.build_prompt_context(task, top_k=5, depth=3)</code><a class="headerlink" href="#contexthelperbuild_prompt_contexttask-top_k5-depth3" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart TD
+    Q["Task text"] --&gt; V{"Empty text, top_k below 1 or negative depth?"}
+    V --&gt;|yes| X["ValueError"]
+    V --&gt;|no| E["Embed task (one get_embeddings call)"]
+    E --&gt; N["get_nearest_nodes: cosine over all nodes, top_k"]
+    N --&gt;|no nodes| R0["Return empty string"]
+    N --&gt; S["get_subgraph(seed ids, depth): BFS over child_of in both directions"]
+    S --&gt; M["Add has_tag memories of reached nodes, skipping archived"]
+    M --&gt; C["_enforce_node_cap: keep seeds, drop farthest nodes above 80"]
+    C --&gt; L["resolve_centroid_names, resolve_junction_summaries (normally no-ops)"]
+    L --&gt; G{"Any nodes or memories?"}
+    G --&gt;|no| R0
+    G --&gt;|yes| T["_render_ascii_tree"]
+    T --&gt; O["Text tree for the prompt"]</code></pre>
+<ol>
+<li>Embed: one <code>embedder.get_embeddings([task])</code> call; row 0 is the query vector.</li>
+<li>Nearest nodes: <code>SQLiteAdapter.get_nearest_nodes</code> loads every node, stacks the embeddings into one matrix, computes cosine similarity with <code>batch_cosine_similarity</code> (zero vectors score 0), and takes the top <code>top_k</code> with <code>argpartition</code>, sorted by similarity. Leaves and centroids compete in the same ranking. This is a full scan with no index.</li>
+<li>Subgraph: <code>get_subgraph(seed_ids, depth)</code> does a breadth-first walk over <code>child_of</code> edges in both directions for <code>depth</code> hops. Going both ways means depth 2 from a leaf reaches its parent and its siblings. It then collects <code>has_tag</code> edges that point at any reached node and whose memory is not <code>archived</code>, and loads those memories.</li>
+<li>Node cap: <code>_enforce_node_cap</code> does nothing if there are 80 nodes or fewer (<code>_NODE_CAP</code>). Otherwise it computes breadth-first distance from the seeds over <code>child_of</code> edges, sorts nodes by (distance, id) with unreachable nodes last, and keeps the first <code>max(80, number of seeds)</code>. Seeds are never dropped. Edges to dropped nodes are removed, and so are memories no longer reachable through a kept <code>has_tag</code> edge.</li>
+<li>Lazy resolvers: <code>resolve_centroid_names</code> and <code>resolve_junction_summaries</code> run on the kept nodes. After a completed dream cycle there are no placeholders or empty summaries, so both return without work. If they do find some (for example after step 8 or 9 failed), they log a warning and make the same LLM calls the dream cycle would, so a retrieval can trigger model calls. Neither ever raises.</li>
+<li>Render: if the subgraph has no nodes and no memories the result is an empty string. Otherwise <code>_render_ascii_tree</code>.</li>
+</ol>
+<p><code>build_prompt_context</code> does not change access weights. Only <code>retrieve_memories</code> does.</p>
+<h3 id="rendering-format">Rendering format<a class="headerlink" href="#rendering-format" title="Permanent link">&para;</a></h3>
+<p><code>_render_ascii_tree</code>:</p>
+<ul>
+<li>First line: <code>Relevant Memory Context:</code>.</li>
+<li>Roots are nodes with no <code>child_of</code> parent inside the subgraph, sorted by id.</li>
+<li>Each node prints as a folder line: the folder emoji (U+1F4C1), a space, and the label. Node ids are not printed.</li>
+<li>A centroid with a <code>paragraph_summary</code> gets a <code>para: "..."</code> line under it. Summaries longer than 400 characters (<code>_JUNCTION_SUMMARY_MAX_CHARS</code>) are cut to 399 characters plus an ellipsis.</li>
+<li>Under each node, child nodes come first, then the node's memories (deduplicated within that node).</li>
+<li>A memory prints as the page emoji (U+1F4C4), the memory id, and the summary in quotes. Summaries longer than 300 characters (<code>_MEMORY_SNIPPET_MAX_CHARS</code>) are cut to 299 plus an ellipsis. <code>raw_content</code> is never rendered.</li>
+<li>If the memory has tags or entities, a second line follows: <code>tags: a, b · entities: X, Y</code>. Tags are the labels of the nodes in the subgraph that the memory's <code>has_tag</code> edges point to.</li>
+<li>Tree connectors are <code>├──</code>, <code>└──</code> and <code>│</code>.</li>
+<li>A node reached from a second parent prints once more as <code>&lt;label&gt; (also under: &lt;first parent label&gt;)</code>, or <code>(also under: top level)</code> if it was first printed as a root, and its subtree is not repeated.</li>
+<li>Memories are not deduplicated across nodes. A memory linked to three tags in the subgraph is printed three times.</li>
+<li>No dates are rendered.</li>
+</ul>
+<p>Output from <code>_render_ascii_tree</code> on a small subgraph, with the two emoji replaced by <code>[F]</code> (folder) and <code>[M]</code> (memory):</p>
+<div class="highlight"><pre><span></span><code>Relevant Memory Context:
+[F] education
+    para: "The user graduated with a Business Administration degree and now works at Acme Corp."
+├── [F] degree
+│   └── [M] mem_a1: "The user graduated with a Business Administration degree last year and works at Acme Corp as a junior analyst."
+│       tags: degree, Business Administration, Acme Corp · entities: Acme Corp
+└── [F] Business Administration
+    └── [M] mem_a1: "The user graduated with a Business Administration degree last year and works at Acme Corp as a junior analyst."
+        tags: degree, Business Administration, Acme Corp · entities: Acme Corp
+[F] career
+    para: "Junior analyst role at Acme Corp."
+├── [F] Acme Corp
+│   └── [M] mem_a1: "The user graduated with a Business Administration degree last year and works at Acme Corp as a junior analyst."
+│       tags: degree, Business Administration, Acme Corp · entities: Acme Corp
+└── [F] Business Administration (also under: education)
+</code></pre></div>
+<h3 id="ltp-spike-on-retrieve_memories">LTP spike on <code>retrieve_memories</code><a class="headerlink" href="#ltp-spike-on-retrieve_memories" title="Permanent link">&para;</a></h3>
+<p><code>neuromem.tools.retrieve_memories(memory_ids, system)</code>:</p>
+<ol>
+<li>Loads each id with <code>get_memory_by_id</code>. Unknown ids are skipped without error.</li>
+<li>Collects the ids whose status is <code>consolidated</code>.</li>
+<li>Calls <code>spike_access_weight(ids, now)</code> once, which sets <code>access_weight = 1.0</code> and <code>last_accessed = now</code> for those rows (the SQL also checks <code>status = 'consolidated'</code>).</li>
+<li>Updates the returned dicts to show the new values.</li>
+</ol>
+<p>Memories in <code>inbox</code>, <code>dreaming</code> or <code>archived</code> are returned unchanged and not spiked. An archived memory stays archived and keeps no tag edges. Because the spike moves <code>last_accessed</code>, it also resets the decay anchor.</p>
+<h2 id="agent-tools">Agent tools<a class="headerlink" href="#agent-tools" title="Permanent link">&para;</a></h2>
+<p><code>packages/neuromem-core/src/neuromem/tools.py</code> exposes three flat functions that take the <code>NeuroMemory</code> instance as an argument:</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Arguments and defaults</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_memory</code></td>
+<td><code>query</code>, <code>top_k=5</code>, <code>depth=2</code></td>
+<td>Calls <code>ContextHelper.build_prompt_context</code> with those values. No LTP.</td>
+</tr>
+<tr>
+<td><code>expand_node</code></td>
+<td><code>node_id</code>, <code>depth=2</code></td>
+<td>Clamps depth to 5 (<code>_EXPAND_NODE_MAX_DEPTH</code>), calls <code>get_subgraph([node_id], depth)</code>, applies the 80-node cap with <code>node_id</code> as the seed, runs both lazy resolvers and renders. Returns an empty string for an unknown id. No embedding, no LTP.</td>
+</tr>
+<tr>
+<td><code>retrieve_memories</code></td>
+<td><code>memory_ids</code></td>
+<td>Returns full records including <code>raw_content</code> and <code>named_entities</code>, and spikes consolidated ones.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="google-adk-wiring">Google ADK wiring<a class="headerlink" href="#google-adk-wiring" title="Permanent link">&para;</a></h3>
+<p><code>neuromem_adk.enable_memory(agent, db_path, *, llm=None, embedder=None, cluster_threshold=None, dream_threshold=None)</code>:</p>
+<ul>
+<li>Creates <code>NeuroMemory(SQLiteAdapter(db_path), llm, embedder)</code>. Missing providers default to <code>GeminiLLMProvider</code> and <code>GeminiEmbeddingProvider</code>, with the key read from <code>GOOGLE_API_KEY</code> or <code>GEMINI_API_KEY</code> (a <code>KeyError</code> if neither is set). <code>cluster_threshold</code> and <code>dream_threshold</code> are passed only if given.</li>
+<li>Appends three tools to <code>agent.tools</code>: <code>search_memory_tool(query, top_k=5, depth=2)</code>, <code>retrieve_memories_tool(memory_ids)</code> and <code>expand_node_tool(node_id, depth=2)</code>. They are plain wrapper functions, so the model's tool schema does not include the <code>system</code> argument.</li>
+<li>Adds a <code>before_model_callback</code>. It takes the current user message (or, failing that, the latest user event in the session), calls <code>build_prompt_context(query)</code> with the defaults (<code>top_k=5</code>, <code>depth=3</code>), and appends the tree after the existing <code>system_instruction</code>, separated by a blank line. An empty tree leaves the request unchanged.</li>
+<li>Adds an <code>after_agent_callback</code>. It calls <code>enqueue</code> twice per turn: once for the user text with metadata <code>{"role": "user", "turn": n}</code> and once for the latest assistant text with <code>{"role": "assistant", "turn": n}</code>, where <code>n</code> is the number of session events. It does not use <code>enqueue_session</code>.</li>
+<li>Existing callbacks are kept and run before neuromem's. A second call on the same agent raises <code>ValueError</code>.</li>
+</ul>
+<p>The rendered tree shows node labels but not node ids, so the model has no id from the tree to pass to <code>expand_node_tool</code>.</p>
+<h2 id="tunable-defaults">Tunable defaults<a class="headerlink" href="#tunable-defaults" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Where</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dream_threshold</code></td>
+<td>10</td>
+<td><code>NeuroMemory.__init__</code></td>
+<td>Inbox count that starts a background cycle. Must be at least 1.</td>
+</tr>
+<tr>
+<td><code>decay_lambda</code></td>
+<td>3e-7 per second</td>
+<td><code>NeuroMemory.__init__</code></td>
+<td>Single-application half-life about 26.7 days. Must be positive.</td>
+</tr>
+<tr>
+<td><code>archive_threshold</code></td>
+<td>0.1</td>
+<td><code>NeuroMemory.__init__</code></td>
+<td>Must be in [0, 1).</td>
+</tr>
+<tr>
+<td><code>cluster_threshold</code></td>
+<td>0.65</td>
+<td><code>NeuroMemory.__init__</code></td>
+<td>Validated to (0, 1]; not read by the HDBSCAN provider.</td>
+</tr>
+<tr>
+<td><code>clusterer</code></td>
+<td><code>HDBSCANClusteringProvider()</code></td>
+<td><code>NeuroMemory.__init__</code></td>
+<td>Any <code>ClusteringProvider</code> can be injected.</td>
+</tr>
+<tr>
+<td><code>min_cluster_size</code></td>
+<td>2</td>
+<td><code>HDBSCANClusteringProvider</code></td>
+<td>Must be at least 2.</td>
+</tr>
+<tr>
+<td><code>random_state</code></td>
+<td>42</td>
+<td><code>HDBSCANClusteringProvider</code></td>
+<td>Stored, not passed to HDBSCAN.</td>
+</tr>
+<tr>
+<td>HDBSCAN options</td>
+<td><code>metric="euclidean"</code>, <code>allow_single_cluster=True</code></td>
+<td><code>_run_hdbscan</code></td>
+<td>Inputs are L2-normalised.</td>
+</tr>
+<tr>
+<td><code>_MIN_CLUSTERS_TO_RECURSE</code></td>
+<td>2</td>
+<td><code>clustering.py</code></td>
+<td>Fewer clusters at a level stops recursion.</td>
+</tr>
+<tr>
+<td><code>_MAX_RECURSION_DEPTH</code></td>
+<td>8</td>
+<td><code>clustering.py</code></td>
+<td>Hierarchy levels per cycle.</td>
+</tr>
+<tr>
+<td>Placeholder prefix</td>
+<td><code>cluster_</code></td>
+<td><code>system.py</code></td>
+<td>Followed by 12 characters of the node id.</td>
+</tr>
+<tr>
+<td>Child labels sent for naming</td>
+<td>20</td>
+<td><code>_try_batched_naming</code></td>
+<td>Per centroid.</td>
+</tr>
+<tr>
+<td><code>_AVOID_NAMES_MAX</code></td>
+<td>30</td>
+<td><code>providers.py</code></td>
+<td>Alphabetically first 30 labels.</td>
+</tr>
+<tr>
+<td>Memory summaries per leaf snippet</td>
+<td>3</td>
+<td><code>_gather_child_snippets</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Base-class junction fallback</td>
+<td>120 characters per snippet</td>
+<td><code>LLMProvider.generate_junction_summary</code></td>
+<td>No total cap.</td>
+</tr>
+<tr>
+<td><code>has_tag</code> edge weight</td>
+<td>1.0</td>
+<td><code>_run_dream_cycle</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>child_of</code> edge weight</td>
+<td>cluster cohesion</td>
+<td><code>_run_clustering</code></td>
+<td>Mean pairwise cosine of the children.</td>
+</tr>
+<tr>
+<td><code>build_prompt_context</code> <code>top_k</code> / <code>depth</code></td>
+<td>5 / 3</td>
+<td><code>context.py</code></td>
+<td>The bench agent passes <code>top_k=20</code>.</td>
+</tr>
+<tr>
+<td><code>_NODE_CAP</code></td>
+<td>80</td>
+<td><code>context.py</code></td>
+<td>Seeds always kept.</td>
+</tr>
+<tr>
+<td><code>_MEMORY_SNIPPET_MAX_CHARS</code></td>
+<td>300</td>
+<td><code>context.py</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>_JUNCTION_SUMMARY_MAX_CHARS</code></td>
+<td>400</td>
+<td><code>context.py</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>search_memory</code> <code>top_k</code> / <code>depth</code></td>
+<td>5 / 2</td>
+<td><code>tools.py</code></td>
+<td>Same in the ADK tool.</td>
+</tr>
+<tr>
+<td><code>expand_node</code> <code>depth</code></td>
+<td>2, clamped to 5</td>
+<td><code>tools.py</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Embedding dimension warning</td>
+<td>above 4096</td>
+<td><code>SQLiteAdapter.upsert_node</code></td>
+<td>Warning only.</td>
+</tr>
+<tr>
+<td>Gemini LLM model</td>
+<td><code>gemini-3.8-flash</code></td>
+<td><code>GeminiLLMProvider</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Gemini request timeout</td>
+<td>60,000 ms</td>
+<td><code>GeminiLLMProvider</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Gemini rate limit</td>
+<td>60 requests per minute</td>
+<td><code>GeminiLLMProvider</code></td>
+<td>Token bucket shared per API key.</td>
+</tr>
+<tr>
+<td>Gemini retries</td>
+<td>5 attempts, sleeps 2, 4, 8, 16 s</td>
+<td><code>_generate_with_retry</code></td>
+<td>Retries Gemini server errors, httpx connect, protocol and timeout errors, and 429.</td>
+</tr>
+<tr>
+<td><code>_MEMORY_SUMMARY_BATCH_CHUNK_SIZE</code></td>
+<td>6</td>
+<td><code>GeminiLLMProvider</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>_JUNCTION_BATCH_CHUNK_SIZE</code></td>
+<td>8</td>
+<td><code>GeminiLLMProvider</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>_BATCH_CHUNK_SIZE</code> (names)</td>
+<td>30</td>
+<td><code>GeminiLLMProvider</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>_BATCH_WORKERS</code></td>
+<td>10</td>
+<td><code>GeminiLLMProvider</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Tags per memory</td>
+<td>5 to 12 requested, 12 kept</td>
+<td><code>extract_tags</code>, <code>extract_tags_batch</code></td>
+<td>Batch call is not chunked.</td>
+</tr>
+<tr>
+<td>Entities per memory</td>
+<td>8 kept</td>
+<td><code>extract_named_entities*</code></td>
+<td>Batch call is not chunked.</td>
+</tr>
+<tr>
+<td>Gemini embedding model</td>
+<td><code>gemini-embedding-001</code></td>
+<td><code>GeminiEmbeddingProvider</code></td>
+<td>100 texts per request.</td>
+</tr>
+</tbody>
+</table>
+<p>The benchmark agents in <code>packages/neuromem-bench/src/neuromem_bench/agent.py</code> override three of these: <code>dream_threshold=9999</code> (they call <code>force_dream</code> themselves), <code>cluster_threshold=0.55</code> (which has no effect on HDBSCAN), and <code>top_k=20</code> for retrieval.</p>
+<h2 id="benchmark-results">Benchmark results<a class="headerlink" href="#benchmark-results" title="Permanent link">&para;</a></h2>
+<p>See <a href="../results/">Results</a>. On the stratified seed-42 LongMemEval_S sample scored with the official judge, the tag-graph model scores 0.746 with <code>gemini-3-flash-preview</code>. It is weakest on knowledge-update, temporal-reasoning and single-session-assistant questions.</p>
+<h2 id="known-limitations">Known limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
+<p>These come from <a href="../benchmarks/RESULTS/">benchmarks/RESULTS.md</a>, the Context section of <a href="../decisions/ADR-005-episodic-memory/">ADR-005</a>, and the code paths above.</p>
+<ul>
+<li>Duplicates across tags: a memory is linked to every one of its tags and the renderer prints it under each tag it reaches. ADR-005 found about a third of rendered rows were duplicates, which uses prompt space without adding information.</li>
+<li>No dates: <code>enqueue_session</code> takes no timestamp, <code>created_at</code> is the insert time, and the render prints no dates. Questions like "how many days ago" cannot be answered, and knowledge-update questions cannot tell an old value from a new one. Knowledge update (0.600) and temporal reasoning (0.667) are among the lowest-scoring types in the stratified run.</li>
+<li>Label-vector centroids: leaf embeddings are embeddings of 1 to 4 word tag strings, and each centroid is the mean of its children's vectors. ADR-005 notes these drift towards generic centres, so a broad centroid can outrank the specific tag a question needs. RESULTS.md records the "degree" tag ranking behind centroids such as "measurement" and "qualification" at <code>top_k=5</code>.</li>
+<li>Lossy summaries: retrieval renders only summaries, cut to 300 characters. Summaries are 2 to 4 sentences focused on the user, so details the assistant gave (a list item, a number, a chess move) are lost unless the agent calls <code>retrieve_memories</code> for the raw transcript. RESULTS.md also records a precision miss where two similar memories both appeared and the summaries did not distinguish them.</li>
+<li>Graph growth: each cycle clusters all existing nodes again, including old centroids, and never deletes centroids, so the hierarchy gains layers and multi-parent nodes over time. Junction summaries of existing centroids are not refreshed when new memories are linked to the tags beneath them.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

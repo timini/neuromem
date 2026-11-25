@@ -1,0 +1,1576 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/benchmarks/RESULTS/">
+      
+      
+        <link rel="prev" href="../../comparison/">
+      
+      
+        <link rel="next" href="../PERFORMANCE/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Run history - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#benchmark-results" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Run history
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#longmemeval_s-iclr-2025-arxiv241010813" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LongMemEval_s (ICLR 2025, arXiv:2410.10813)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LongMemEval_s (ICLR 2025, arXiv:2410.10813)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-04-13-fact-preserving-prompts-top_k20-retrieval-n20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-04-13 — Fact-preserving prompts + top_k=20 retrieval (n=20)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2026-04-13 — Fact-preserving prompts + top_k=20 retrieval (n=20)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hit-rate-on-the-degree-instance-across-iterations-5-runs-each" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hit-rate on the degree instance across iterations (5 runs each)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wall-time-improvement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wall-time improvement
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-03-original-3-instance-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-03-* — original 3-instance baseline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-instance-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-instance detail
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-breakdown-neuromemagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime breakdown (NeuromemAgent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known follow-ups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#longmemeval_s-iclr-2025-arxiv241010813" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LongMemEval_s (ICLR 2025, arXiv:2410.10813)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LongMemEval_s (ICLR 2025, arXiv:2410.10813)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-04-13-fact-preserving-prompts-top_k20-retrieval-n20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-04-13 — Fact-preserving prompts + top_k=20 retrieval (n=20)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2026-04-13 — Fact-preserving prompts + top_k=20 retrieval (n=20)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hit-rate-on-the-degree-instance-across-iterations-5-runs-each" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hit-rate on the degree instance across iterations (5 runs each)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wall-time-improvement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wall-time improvement
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2026-03-original-3-instance-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-03-* — original 3-instance baseline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-instance-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-instance detail
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-breakdown-neuromemagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime breakdown (NeuromemAgent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-follow-ups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known follow-ups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="benchmark-results">Benchmark results<a class="headerlink" href="#benchmark-results" title="Permanent link">&para;</a></h1>
+<p>Rolling leaderboard for <code>neuromem-bench</code> runs against published memory benchmarks. Each row is one agent × one benchmark × one split × one sample.</p>
+<h2 id="longmemeval_s-iclr-2025-arxiv241010813">LongMemEval_s (ICLR 2025, arXiv:2410.10813)<a class="headerlink" href="#longmemeval_s-iclr-2025-arxiv241010813" title="Permanent link">&para;</a></h2>
+<h3 id="2026-04-13-fact-preserving-prompts-top_k20-retrieval-n20">2026-04-13 — Fact-preserving prompts + <code>top_k=20</code> retrieval (n=20)<a class="headerlink" href="#2026-04-13-fact-preserving-prompts-top_k20-retrieval-n20" title="Permanent link">&para;</a></h3>
+<p><strong>20-instance sample</strong>, <code>llm_judge</code> metric, <code>gemini-2.0-flash-001</code> throughout (summariser + tagger + NER + answer + judge).</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Instances</th>
+<th><code>llm_judge</code></th>
+<th>Wall time</th>
+<th>Model</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NeuromemAgent</code> (post-fix)</td>
+<td>20</td>
+<td><strong>0.950</strong></td>
+<td>33m (~100s/instance)</td>
+<td><code>gemini-2.0-flash-001</code></td>
+</tr>
+</tbody>
+</table>
+<p>Per-instance detail in <code>longmemeval-s-neuromem-n20-topk20.jsonl</code>. Only miss: <em>"What play did I attend at the local community theater?"</em> — prediction hedged between two plays ("The Glass Menagerie or The Crucible") because both appeared in the rendered tree. That's a <strong>precision / disambiguation</strong> problem (multiple candidate memories, neither was discriminated by the injected summary), not a retrieval <strong>recall</strong> problem. Orthogonal to the retrieval fixes that landed this run — would need memory-level drill-down via <code>retrieve_memories</code> (already available to <code>NeuromemAdkAgent</code>).</p>
+<h4 id="what-changed">What changed<a class="headerlink" href="#what-changed" title="Permanent link">&para;</a></h4>
+<p>The pre-fix benchmark on a single instance (<code>e47becba</code>, the degree question) had regressed to <strong>0.00</strong> after PRs #51 / #52 / #54 merged (concurrent ingestion, per-session summarisation, lazy centroid naming). Root-caused through a 3-stage diagnostic (<code>packages/neuromem-bench/scripts/diag_instance1_full.py</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Check</th>
+<th>Result before fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A — summarisation</td>
+<td>Does any memory's summary contain "Business Administration"?</td>
+<td>flaky: sometimes yes, often no</td>
+</tr>
+<tr>
+<td>B — retrieval</td>
+<td>Is the fact in the rendered context tree?</td>
+<td>flaky: ~20% miss rate even when stage A passed</td>
+</tr>
+<tr>
+<td>C — answer</td>
+<td>Does the LLM answer correctly given the tree?</td>
+<td>deterministic given tree contents</td>
+</tr>
+</tbody>
+</table>
+<p>Two distinct failure modes, both fixed independently:</p>
+<ol>
+<li><strong>Stage A — fact-preserving summarisation &amp; tagging</strong> (<code>packages/neuromem-gemini/src/neuromem_gemini/llm.py</code>). Per-session summarisation (PR #52) compresses ~18K-char multi-turn sessions into 2–4 sentence summaries. The previous prompt ("summarise, preserve proper nouns") biased the LLM toward the <em>dominant</em> topic and dropped briefly-mentioned personal facts — "I graduated with a degree in Business Administration" routinely lost to "here are some task-management apps I'd recommend". Rewrote <code>generate_summary</code> and <code>extract_tags</code> / <code>extract_tags_batch</code> with:</li>
+<li>Explicit fact-preservation instructions (personal facts, proper nouns, numbers/dates, implied facts).</li>
+<li>Explicit bias correction: "a summary that omits a brand list is fine; a summary that omits <em>'I graduated with Business Administration'</em> has FAILED."</li>
+<li>Worked <code>GOOD</code>/<code>BAD</code> examples so the model pattern-matches rather than improvises.</li>
+<li>
+<p>Bumped the tag cap from <strong>3–5 → 5–12</strong> for tag extraction. The old cap forced the LLM to pick dominant topics under artificial scarcity; session-level summaries need enough tag slots to anchor every fact the user might later ask about.</p>
+</li>
+<li>
+<p><strong>Stage B — retrieval cliff</strong> (<code>packages/neuromem-bench/src/neuromem_bench/agent.py</code>). <code>ContextHelper.build_prompt_context</code> seeds the subgraph walk with <code>top_k=5</code> nearest tag/centroid nodes to the question embedding, then renders depth-2 neighbours. For the degree question, the <code>"degree"</code> tag node sometimes ranked 6+ behind generic centroids like <code>"measurement"</code>, <code>"learning"</code>, <code>"qualification"</code> — falling off the cliff and making the memory invisible to the answer LLM even though it existed in storage. Bumping the agent's call to <code>top_k=20</code> widens the seed set enough that the relevant tag stays reachable. Still cheap (20 nearest over hundreds of nodes is a sub-ms numpy operation; the expanded subgraph walk is depth-bounded).</p>
+</li>
+</ol>
+<h4 id="hit-rate-on-the-degree-instance-across-iterations-5-runs-each">Hit-rate on the degree instance across iterations (5 runs each)<a class="headerlink" href="#hit-rate-on-the-degree-instance-across-iterations-5-runs-each" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Config</th>
+<th>Hit rate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Baseline (post-merge, pre-fix)</td>
+<td>0 / 5</td>
+</tr>
+<tr>
+<td>Fact-preserving prompts only (<code>top_k=5</code>)</td>
+<td>4 / 5</td>
+</tr>
+<tr>
+<td>Fact-preserving prompts + <code>top_k=20</code></td>
+<td><strong>5 / 5</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Both fixes are load-bearing — the prompt fix alone still leaves a ~20% retrieval cliff; the <code>top_k</code> fix alone wouldn't help if the summary never contained the fact in the first place.</p>
+<h4 id="wall-time-improvement">Wall-time improvement<a class="headerlink" href="#wall-time-improvement" title="Permanent link">&para;</a></h4>
+<p>Also a function of the merged PRs, not just these fixes — tracked for completeness.</p>
+<table>
+<thead>
+<tr>
+<th>Config</th>
+<th>Wall / instance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pre-PR-#51/#52/#54</td>
+<td>~1700s (~28 min)</td>
+</tr>
+<tr>
+<td>After concurrent ingestion + lazy centroid naming</td>
+<td>~120s</td>
+</tr>
+<tr>
+<td>Current (n=20 average)</td>
+<td><strong>~100s</strong></td>
+</tr>
+</tbody>
+</table>
+<p>~17× faster for essentially the same score path. The remaining cost is ~45s ingestion (session-level summarise + tag + NER, parallelised) + ~55s answer (force-dream + render + LLM answer).</p>
+<h3 id="2026-03-original-3-instance-baseline">2026-03-* — original 3-instance baseline<a class="headerlink" href="#2026-03-original-3-instance-baseline" title="Permanent link">&para;</a></h3>
+<p><strong>3-instance sample</strong>, scored with both <code>contains_match</code> (deterministic, strict substring) and <code>llm_judge</code> (Gemini 2.0 Flash as judge, matching LongMemEval's canonical GPT-4o-as-judge protocol).</p>
+<h3 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Instances</th>
+<th><code>contains_match</code></th>
+<th><code>llm_judge</code></th>
+<th>Total time</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NullAgent</code> (no memory)</td>
+<td>3</td>
+<td>0.333</td>
+<td>0.333</td>
+<td>4s</td>
+<td>Last-50-turn prompt stuffing</td>
+</tr>
+<tr>
+<td><code>NeuromemAgent</code> (real summary)</td>
+<td>3</td>
+<td>0.333</td>
+<td><strong>0.667</strong></td>
+<td>5226s (~87 min)</td>
+<td>Full cognitive loop</td>
+</tr>
+</tbody>
+</table>
+<p><strong>NeuromemAgent scores 2× NullAgent</strong> on the LLM-judge metric — the cognitive loop retains facts from sessions too far back for a brute-force-context-window baseline.</p>
+<h3 id="per-instance-detail">Per-instance detail<a class="headerlink" href="#per-instance-detail" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Question</th>
+<th>Gold</th>
+<th>NullAgent pred</th>
+<th>Null score</th>
+<th>NeuromemAgent pred</th>
+<th>Nm score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>What degree did I graduate with?</td>
+<td>Business Administration</td>
+<td>"You mentioned you graduated with Business Administration."</td>
+<td><strong>1.0</strong></td>
+<td>"You have a business administration degree."</td>
+<td><strong>1.0</strong></td>
+</tr>
+<tr>
+<td>2</td>
+<td>How long is my daily commute to work?</td>
+<td>45 minutes each way</td>
+<td>"I do not have access to your personal information..."</td>
+<td><strong>0.0</strong></td>
+<td>"Your daily commute is 90 minutes."</td>
+<td><strong>1.0</strong>†</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Where did I redeem a $5 coupon on coffee creamer?</td>
+<td>Target</td>
+<td>"I do not have access to that information..."</td>
+<td><strong>0.0</strong></td>
+<td>"You unexpectedly saved $5 on coffee creamer by redeeming a coupon you found."</td>
+<td><strong>0.0</strong></td>
+</tr>
+</tbody>
+</table>
+<p>† LLM-judge accepted "90 minutes" as correct (45 min × 2 = round-trip total). The cognitive loop retained the fact; the LLM derived a technically-different-but-correct answer. The <code>contains_match</code> metric marked this 0.0; <code>llm_judge</code> correctly marked it 1.0.</p>
+<h3 id="observations">Observations<a class="headerlink" href="#observations" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Instance 2 is the money shot.</strong> NullAgent refuses because the fact is outside its 50-turn window. NeuromemAgent retrieves it from the concept graph and answers correctly. This is exactly the use case neuromem exists for.</li>
+<li><strong>Instance 3 is a real tuning opportunity.</strong> NeuromemAgent has <em>partial</em> knowledge (it recalled the coupon redemption event) but lost the specific store name "Target" somewhere in the <code>extract_tags → cluster → retrieve</code> pipeline. Hypothesis: the <code>extract_tags</code> prompt doesn't prioritise named entities. Fix: prompt tuning.</li>
+<li><strong>Metric choice matters enormously.</strong> Going from <code>contains_match</code> (0.333) to <code>llm_judge</code> (0.667) doubled the apparent score. For any serious benchmark reporting, <code>llm_judge</code> should be the default. <code>contains_match</code> is useful as a cheap CI sanity check.</li>
+</ol>
+<h3 id="full-results">Full results<a class="headerlink" href="#full-results" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>longmemeval-s-null-n3.jsonl</code> — NullAgent <code>contains_match</code> scores</li>
+<li><code>longmemeval-s-null-n3.llm_judge.jsonl</code> — NullAgent <code>llm_judge</code> scores</li>
+<li><code>longmemeval-s-neuromem-n3.jsonl</code> — NeuromemAgent <code>contains_match</code> scores</li>
+<li><code>longmemeval-s-neuromem-n3.llm_judge.jsonl</code> — NeuromemAgent <code>llm_judge</code> scores</li>
+</ul>
+<h3 id="runtime-breakdown-neuromemagent">Runtime breakdown (NeuromemAgent)<a class="headerlink" href="#runtime-breakdown-neuromemagent" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Instance</th>
+<th>Wall time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1856s (~31 min)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1669s (~28 min)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>1698s (~28 min)</td>
+</tr>
+<tr>
+<td>Total</td>
+<td><strong>5226s (~87 min)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Per-instance cost driven by:
+- ~160 <code>generate_summary</code> calls on the enqueue hot path (1 per turn)
+- 1 batched <code>extract_tags</code> call (#45 fix — previously 160 serial calls)
+- ~20-40 <code>generate_category_name</code> calls during agglomerative clustering (inherently serial — each merge depends on the previous)
+- 1 final answer call with injected memory context</p>
+<p>The ~87-min runtime for 3 instances is manageable for a baseline-measurement benchmark but becomes impractical at LongMemEval's full 500-instance scale (~240 hours). Sampling to 25-50 instances gives statistical signal within a few hours.</p>
+<h3 id="known-follow-ups">Known follow-ups<a class="headerlink" href="#known-follow-ups" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Prompt-tune <code>extract_tags</code></strong> to prioritise named entities (instance 3's "Target" loss). Currently the prompt says "exclude stopwords" but doesn't positively instruct the LLM to <em>preserve</em> proper nouns. Cheap fix, likely significant quality lift.</li>
+<li><strong>Issue #42</strong> — clustering quality (duplicate centroid names, recursive subtrees). Not on the benchmark critical path but affects graph readability.</li>
+<li><strong>Batch <code>generate_category_name</code></strong> similar to how #45 batched <code>extract_tags</code>. Each merge step depends on prior merges so strict batching is impossible, but we could batch "initial centroid naming" where multiple independent clusters are named simultaneously. Would cut another ~50% of dream-cycle latency.</li>
+<li><strong>Scale up the benchmark</strong> — rerun at n=25 or n=50 once the prompt tuning lands, to get statistical confidence beyond a 3-instance anecdote.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

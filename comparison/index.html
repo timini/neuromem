@@ -1,0 +1,1692 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/comparison/">
+      
+      
+        <link rel="prev" href="../results/">
+      
+      
+        <link rel="next" href="../benchmarks/RESULTS/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Comparison with other systems - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#comparison-with-other-memory-systems" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Comparison with other systems
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#where-neuromem-sits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where neuromem sits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#published-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources-of-shared-protocol-comparisons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources of shared-protocol comparisons
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#where-neuromem-sits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where neuromem sits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#published-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources-of-shared-protocol-comparisons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources of shared-protocol comparisons
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="comparison-with-other-memory-systems">Comparison with other memory systems<a class="headerlink" href="#comparison-with-other-memory-systems" title="Permanent link">&para;</a></h1>
+<p>How does neuromem compare with published memory systems on LongMemEval? The short answer is that no two rows of any public LongMemEval table were measured the same way, so the comparison is a rough placement, not a ranking.</p>
+<h2 id="where-neuromem-sits">Where neuromem sits<a class="headerlink" href="#where-neuromem-sits" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>neuromem configuration</th>
+<th>Accuracy</th>
+<th>Sample</th>
+<th>Answer model</th>
+<th>Judge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Episodic memory (partial run)</td>
+<td>0.938 (15/16)</td>
+<td>16 paired instances from the seed-42 stratified sample</td>
+<td>gemini-3.8-flash</td>
+<td>Official per-type prompts on gemini-3.8-flash</td>
+</tr>
+<tr>
+<td>Tag-graph memory, same 16 instances</td>
+<td>0.750 (12/16)</td>
+<td>as above</td>
+<td>gemini-3.8-flash</td>
+<td>as above</td>
+</tr>
+<tr>
+<td>Tag-graph memory</td>
+<td>0.746 (44/59)</td>
+<td>10 per type, seed 42</td>
+<td>gemini-3-flash-preview</td>
+<td>Official per-type prompts on gemini-3.8-flash</td>
+</tr>
+</tbody>
+</table>
+<p>Differences from the official protocol, which every comparison below should account for:</p>
+<ul>
+<li><strong>Sample.</strong> neuromem's numbers come from 60 questions (10 per type) or fewer, not all 500. The six types are equally weighted, which matches the "unweighted mean of six types" some vendors report, not question-weighted accuracy over 500 questions (where single-session-user and multi-session dominate).</li>
+<li><strong>Judge.</strong> The prompts are the official ones, but the judge is <code>gemini-3.8-flash</code>, not <code>gpt-4o-2024-08-06</code>. Changing only the judge model moved the tag-graph score by about one question in 59.</li>
+<li><strong>Answer model.</strong> <code>gemini-3.8-flash</code> is a 2026 model. The official baselines use gpt-4o (2024). The table below shows the answer model alone moving a system by more than 10 points.</li>
+<li><strong>Interval.</strong> 15 of 16 has a 95% interval of 0.72 to 0.99.</li>
+</ul>
+<p>With those caveats, the episodic model's partial result is in the range of the strongest self-reported systems, and the tag-graph model sits with the mid-table systems in shared-protocol re-runs. A full 500-question run with the official GPT-4o judge would be needed to place it properly.</p>
+<h2 id="published-results">Published results<a class="headerlink" href="#published-results" title="Permanent link">&para;</a></h2>
+<p>Every row below was checked against its source by a separate verification pass. Accuracy is as reported by the source.</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>Accuracy</th>
+<th>Variant</th>
+<th>Answer model</th>
+<th>Judge</th>
+<th>Source</th>
+<th>Date</th>
+<th>Caveats</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ContextStream</td>
+<td>96.8% (484/500); held-out half 96.0%</td>
+<td>LongMemEval_S</td>
+<td>Claude Opus 5.5</td>
+<td>gpt-4o-2024-08-06 (official)</td>
+<td><a href="https://contextstream.io/benchmarks">contextstream.io</a></td>
+<td>2026-10-26</td>
+<td>Self-reported single run. Half the questions were used for tuning.</td>
+</tr>
+<tr>
+<td>Mastra Observational Memory</td>
+<td>94.87%</td>
+<td>LongMemEval_S</td>
+<td>gpt-5-mini (observer/reflector gemini-2.5-flash)</td>
+<td>gpt-4o</td>
+<td><a href="https://mastra.ai/research/observational-memory">mastra.ai</a></td>
+<td>2026-02-09 (updated 2026-02-17)</td>
+<td>Self-reported. Unweighted mean of six types. Question-weighted accuracy is 93.6%.</td>
+</tr>
+<tr>
+<td>Hindsight v0.4.19, single-query</td>
+<td>94.6%</td>
+<td>LongMemEval_S</td>
+<td>Gemini model, unnamed (AMB harness)</td>
+<td>Second Gemini call</td>
+<td><a href="https://vectorize.io/articles/longmemeval-explained">vectorize.io</a></td>
+<td>2026-11-16</td>
+<td>Vendor's own harness, not the official judge. Question count not stated.</td>
+</tr>
+<tr>
+<td>Mnemon</td>
+<td>94.4% (DeepSeek grader; 93.4% gpt-4.1-mini grader); 83.8% with gpt-4.1-mini (85.4% DeepSeek grader)</td>
+<td>LongMemEval_S</td>
+<td>DeepSeek-V4.1-Flash (thinking) / gpt-4.1-mini</td>
+<td>DeepSeek-V4.1-Flash or gpt-4.1-mini, per-type prompts</td>
+<td><a href="https://arxiv.org/pdf/2609.36059">arXiv 2609.36059</a></td>
+<td>2026-09</td>
+<td>Self-reported. Not the official judge.</td>
+</tr>
+<tr>
+<td>Supermemory (cloud, 2026)</td>
+<td>94.0% headline; 94% Claude Sonnet 5.5; 91.4% gpt-6.2-sol</td>
+<td>LongMemEval_S</td>
+<td>Claude Sonnet 5.5 / gpt-6.2-sol</td>
+<td>Not stated</td>
+<td><a href="https://supermemory.ai/research">supermemory.ai</a></td>
+<td>2026-11</td>
+<td>Self-reported. Judge and question count not stated.</td>
+</tr>
+<tr>
+<td>Mastra Observational Memory</td>
+<td>93.27% (gemini-3-flash-preview 89.20%)</td>
+<td>LongMemEval_S</td>
+<td>gemini-3-pro-preview</td>
+<td>gpt-4o</td>
+<td><a href="https://mastra.ai/research/observational-memory">mastra.ai</a></td>
+<td>2026-02-09</td>
+<td>Self-reported. Unweighted mean of six types.</td>
+</tr>
+<tr>
+<td>ByteRover</td>
+<td>92.8%</td>
+<td>LongMemEval_S</td>
+<td>Gemini 3 Flash, plus Gemini 3.1 Pro justifier</td>
+<td>Gemini 3 Flash, temp 0</td>
+<td><a href="https://arxiv.org/html/2604.01599v1">arXiv 2604.01599</a></td>
+<td>2026-04</td>
+<td>Self-reported. Re-ran Hindsight (91.4) and Honcho (90.4) under its own judge. Other rows in its table are cited from papers with different setups.</td>
+</tr>
+<tr>
+<td>OmniMemEval leaderboard</td>
+<td>Maasv 91.20; cachly 89.60; MemOS 89.20; LCM-X 87.00; ThreadAtlas 87.00; EverOS 80.40; Zep/Graphiti 79.80; mem9 78.00; Letta 77.67; Hindsight 72.20; Supermemory 66.07; MemMachine 63.60; Viking 61.07; Mem0 56.00; Cognee 51.80; Memori 20.80</td>
+<td>LongMemEval_S (cleaned), 500 questions, question-weighted</td>
+<td>gpt-4.1-mini-2025-04-14</td>
+<td>gpt-4o-mini-2024-07-18</td>
+<td><a href="https://github.com/MemTensor/OmniMemEval/blob/main/docs/user_memory/results.md">GitHub</a></td>
+<td>2026 (accessed 2026-11-25)</td>
+<td>Run by MemTensor, the MemOS authors. Some rows were submitted by contributors: Maasv is closed-source, cachly uses a reranker tuned on the benchmark, and LCM-X ran through OpenRouter.</td>
+</tr>
+<tr>
+<td>Hindsight (paper)</td>
+<td>91.4% (Gemini-3 Pro); 89.0% (OSS-120B); 83.6% (OSS-20B)</td>
+<td>LongMemEval_S</td>
+<td>Gemini-3 Pro (memory ops on GPT-OSS-120B) / GPT-OSS-120B / GPT-OSS-20B</td>
+<td>GPT-OSS-120B, temp 0</td>
+<td><a href="https://arxiv.org/html/2512.12818v1">arXiv 2512.12818</a></td>
+<td>2025-12-14</td>
+<td>Written by the vendor. Its baselines are copied from sources that used a GPT-4o judge, so the table mixes judges.</td>
+</tr>
+<tr>
+<td>Honcho</td>
+<td>90.4% (92.6% with Gemini 3 Pro)</td>
+<td>LongMemEval_S</td>
+<td>Not stated for LongMemEval (defaults: gemini-2.5-flash-lite deriver, claude-haiku-4.5 dialectic)</td>
+<td>Not stated</td>
+<td><a href="https://honcho.dev/evals">honcho.dev</a></td>
+<td>2025-12 (modified 2026-09-01)</td>
+<td>Self-reported. Claude Haiku 4.5 full-context baseline 62.6%.</td>
+</tr>
+<tr>
+<td>Letta retrieval, MemStrata run</td>
+<td>87.6% (100k ceiling); 77.4% (8k ceiling)</td>
+<td>LongMemEval_S</td>
+<td>Qwen 3.8 27B Q4_K_M (same reader as MemStrata)</td>
+<td>GPT-5.5</td>
+<td><a href="https://arxiv.org/pdf/2610.05343">arXiv 2610.05343</a></td>
+<td>2026-10</td>
+<td>Run by a competitor. Uses Letta's retrieval only, not Letta's agent loop. The 8k row is an older run with a different reader setup.</td>
+</tr>
+<tr>
+<td>Redis Remis + instruct, with Redis re-runs of others</td>
+<td>86.5%; Oracle Agent Memory 86.0 (gpt-5.5) / 78.1 (gpt-4o); Mastra OM 84.2; Remis alone 83.4; Emergence-fast 81.3; Bedrock AgentCore 77.0; Redis AMS 64.0; RAG-mem k=20 61.5; Vertex Memory Bank 42.4</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o (Oracle 86.0 used gpt-5.5)</td>
+<td>GPT-4o binary judge, same prompt for all</td>
+<td><a href="https://redis.io/resources/agent-memory-benchmark-report/">redis.io</a></td>
+<td>2026-09-21</td>
+<td>Redis is itself a vendor. Task-averaged metric. The vendor-reported rows on the same page were not re-run.</td>
+</tr>
+<tr>
+<td>EmergenceMem Internal</td>
+<td>86.0%</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o-2024-08-06 (page default)</td>
+<td>Not stated</td>
+<td><a href="https://www.emergence.ai/blog/sota-on-longmemeval-with-rag">emergence.ai</a></td>
+<td>2025-06-18</td>
+<td>Self-reported. Internal configuration, not reproducible.</td>
+</tr>
+<tr>
+<td>Supermemory</td>
+<td>85.2% (gemini-3-pro); 84.6% (gpt-5)</td>
+<td>LongMemEval_S</td>
+<td>gemini-3-pro / gpt-5</td>
+<td>gpt-4o</td>
+<td><a href="https://supermemory.ai/research/longmembench">supermemory.ai</a></td>
+<td>2026-05</td>
+<td>Self-reported. The same page's 97% headline is Recall@20, a retrieval metric, not QA accuracy.</td>
+</tr>
+<tr>
+<td>Mastra Observational Memory</td>
+<td>84.23% (Mastra RAG topK 20: 80.05%)</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o</td>
+<td>gpt-4o</td>
+<td><a href="https://mastra.ai/research/observational-memory">mastra.ai</a></td>
+<td>2026-02-09</td>
+<td>Self-reported. Unweighted mean; question-weighted is 84.8%. Of the vendor runs, this is the closest to the official reader and judge.</td>
+</tr>
+<tr>
+<td>SimpleMem</td>
+<td>83.97% (gpt-4.1); 76.87% (gpt-4.1-mini)</td>
+<td>LongMemEval_S</td>
+<td>GPT-4.1 / GPT-4.1-mini</td>
+<td>gpt-4.1-mini</td>
+<td><a href="https://arxiv.org/pdf/2601.02553v3.pdf">arXiv 2601.02553</a></td>
+<td>2026-01-30</td>
+<td>Self-reported. Unweighted mean of six types. Question count not stated.</td>
+</tr>
+<tr>
+<td>EverMemOS</td>
+<td>83.00%</td>
+<td>LongMemEval_S</td>
+<td>GPT-4.1-mini</td>
+<td>GPT-4o-mini plus two auxiliary judges, averaged</td>
+<td><a href="https://arxiv.org/html/2601.02163v1">arXiv 2601.02163</a></td>
+<td>2026-01</td>
+<td>Self-reported. Baselines copied from the MemOS leaderboard (MemU 38.40, Zep 63.80, Mem0 66.40, MemOS 77.80).</td>
+</tr>
+<tr>
+<td>CALM</td>
+<td>83.00% (GPT-4.1-mini); 79.60% (Qwen3-30B); 78.20% (GPT-4o-mini)</td>
+<td>LongMemEval_S</td>
+<td>GPT-4.1-mini / Qwen3-30B-A3B-Instruct-2507 / GPT-4o-mini</td>
+<td>Same model as the answerer for GPT; qwen-turbo for Qwen</td>
+<td><a href="https://arxiv.org/pdf/2610.38573">arXiv 2610.38573</a></td>
+<td>2026-10</td>
+<td>Self-reported, and the GPT runs are judged by the same model that answered. Not stated whether baselines were re-run.</td>
+</tr>
+<tr>
+<td>EvalMem re-evaluation</td>
+<td>EverMemOS 82.6; O-Mem 81.4; MemBox 77.0; GAM 76.6; TiMem 76.0; MemOS 65.0; MemoryOS 55.4</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o-mini (GPT-4.1 and Qwen3-30B columns also reported)</td>
+<td>gpt-5-mini</td>
+<td><a href="https://arxiv.org/pdf/2609.22231">arXiv 2609.22231</a></td>
+<td>2026-09</td>
+<td>Independent third-party re-run. GPT-4.1 column: EverMemOS 86.4 down to MemoryOS 58.8.</td>
+</tr>
+<tr>
+<td>EmergenceMem Simple</td>
+<td>82.4% (Simple Fast 79.0%, Simple Faster 76.8%)</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o-2024-08-06</td>
+<td>Not stated</td>
+<td><a href="https://www.emergence.ai/blog/sota-on-longmemeval-with-rag">emergence.ai</a></td>
+<td>2025-06-18</td>
+<td>Self-reported. Their own full-context gpt-4o run scored 63.8%.</td>
+</tr>
+<tr>
+<td>Supermemory (earlier report)</td>
+<td>81.6%</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o</td>
+<td>gpt-4o (Supermemory setup)</td>
+<td><a href="https://arxiv.org/html/2512.12818v1">arXiv 2512.12818</a></td>
+<td>2025-12-14</td>
+<td>Copied from Supermemory's earlier report. Supermemory's current page no longer shows it.</td>
+</tr>
+<tr>
+<td>Nemori</td>
+<td>74.6% (gpt-4.1-mini); 64.2% (gpt-4o-mini)</td>
+<td>LongMemEval_S</td>
+<td>gpt-4.1-mini / gpt-4o-mini</td>
+<td>LLM judge, model not stated</td>
+<td><a href="https://arxiv.org/html/2508.03341v2">arXiv 2508.03341</a></td>
+<td>2025-08</td>
+<td>Self-reported. Compared only against full context (65.6 / 55.0).</td>
+</tr>
+<tr>
+<td>LightMem</td>
+<td>73.20% (GLM-4.6); 70.20% (Qwen3-30B; 73.20 in Tables 8/9); 68.64% (GPT-4o-mini)</td>
+<td>LongMemEval_S</td>
+<td>GLM-4.6 / Qwen3-30B-A3B-Instruct-2507 / GPT-4o-mini</td>
+<td>GPT-4o-mini</td>
+<td><a href="https://arxiv.org/html/2510.18866v4">arXiv 2510.18866</a></td>
+<td>2025-10</td>
+<td>Self-reported. Its tables disagree with each other. 5 corrupted samples were scored as wrong.</td>
+</tr>
+<tr>
+<td>Zep (paper)</td>
+<td>71.2% (gpt-4o); 63.8% (gpt-4o-mini)</td>
+<td>LongMemEval_S</td>
+<td>gpt-4o / gpt-4o-mini</td>
+<td>GPT-4o with LongMemEval per-type prompts</td>
+<td><a href="https://arxiv.org/html/2501.13956">arXiv 2501.13956</a></td>
+<td>2025-01</td>
+<td>Written by the vendor. Full-context baselines 60.2 / 55.4. Some printed per-type deltas are inconsistent.</td>
+</tr>
+<tr>
+<td>A-MEM (run by LightMem authors)</td>
+<td>70.60% (GLM-4.6); 65.20% (Qwen3-30B); 62.60% (GPT-4o-mini)</td>
+<td>LongMemEval_S</td>
+<td>GLM-4.6 / Qwen3-30B-A3B / GPT-4o-mini</td>
+<td>GPT-4o-mini</td>
+<td><a href="https://arxiv.org/html/2510.18866v4">arXiv 2510.18866</a></td>
+<td>2025-10</td>
+<td>Third-party baseline run.</td>
+</tr>
+<tr>
+<td>Mistral-Nemo-Instruct-2407</td>
+<td>RAG K=V+fact 66.6%; RAG K=V 64.0%; LC CoN 28.6%; LC Direct 16.2%</td>
+<td>LongMemEval_S</td>
+<td>Mistral-Nemo-Instruct-2407</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Benchmark paper, Table 8. RAG uses round-level values. Judge comes from the paper's general setup, not this table.</td>
+</tr>
+<tr>
+<td>Mem0 (via MemOS leaderboard)</td>
+<td>66.4%</td>
+<td>LongMemEval_S</td>
+<td>Not stated</td>
+<td>Not stated</td>
+<td><a href="https://arxiv.org/html/2601.02163v1">arXiv 2601.02163</a></td>
+<td>2026-01</td>
+<td>Reported by a competitor. Older Mem0 version.</td>
+</tr>
+<tr>
+<td>GPT-4o, full history in context</td>
+<td>64.0% with Chain-of-Note; 60.6% without</td>
+<td>LongMemEval_S</td>
+<td>GPT-4o</td>
+<td>gpt-4o-2024-08-06 (official)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10 (ICLR 2025)</td>
+<td>Not a memory system. Oracle scores are 92.4% / 87.0%.</td>
+</tr>
+<tr>
+<td>Phi-3.5-mini-instruct</td>
+<td>RAG K=V+fact 57.0%; RAG K=V 55.0%; LC CoN 35.2%; LC Direct 31.2%</td>
+<td>LongMemEval_S</td>
+<td>Phi-3.5-mini-instruct</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Table 8. Its long-context numbers differ from Figure 3(b) for the same model.</td>
+</tr>
+<tr>
+<td>Llama-3.2-3B-Instruct</td>
+<td>RAG K=V+fact 50.8%; RAG K=V 46.6%; LC CoN 1.0%; LC Direct 0.8%</td>
+<td>LongMemEval_S</td>
+<td>Llama-3.2-3B-Instruct</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Table 8, round-level values.</td>
+</tr>
+<tr>
+<td>MemoryOS (run by LightMem authors)</td>
+<td>49.60% (Qwen3-30B); 44.80% (GPT-4o-mini)</td>
+<td>LongMemEval_S</td>
+<td>Qwen3-30B-A3B / GPT-4o-mini</td>
+<td>GPT-4o-mini</td>
+<td><a href="https://arxiv.org/html/2510.18866v4">arXiv 2510.18866</a></td>
+<td>2025-10</td>
+<td>Third-party baseline run.</td>
+</tr>
+<tr>
+<td>Qwen2.5-7B</td>
+<td>RAG K=V+fact 46.2%; RAG K=V 45.2%; LC CoN 14.4%; LC Direct 12.8%</td>
+<td>LongMemEval_S</td>
+<td>Qwen2.5-7B</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Table 8, round-level values.</td>
+</tr>
+<tr>
+<td>Llama 3.1 8B Instruct, long context</td>
+<td>45.4% (CoN 42.0%)</td>
+<td>LongMemEval_S</td>
+<td>Llama 3.1 8B Instruct</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Not a memory system. Oracle 71.0%.</td>
+</tr>
+<tr>
+<td>Phi-3 128k Instruct 14B, long context</td>
+<td>38.0% (CoN 34.4%)</td>
+<td>LongMemEval_S</td>
+<td>Phi-3 128k Instruct 14B</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Not a memory system. Oracle 70.2%.</td>
+</tr>
+<tr>
+<td>Phi-3.5 Mini Instruct 4B, long context</td>
+<td>34.2% (CoN 32.4%)</td>
+<td>LongMemEval_S</td>
+<td>Phi-3.5 Mini Instruct</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Figure 3(b). Table 8 gives 31.2% / 35.2% for the same model.</td>
+</tr>
+<tr>
+<td>Llama-3.2-1B-Instruct</td>
+<td>RAG K=V+fact 33.6%; RAG K=V 31.2%; LC CoN 1.6%; LC Direct 1.0%</td>
+<td>LongMemEval_S</td>
+<td>Llama-3.2-1B-Instruct</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Table 8, round-level values.</td>
+</tr>
+<tr>
+<td>Llama 3.1 70B Instruct, long context</td>
+<td>33.4% (CoN 28.6%)</td>
+<td>LongMemEval_S</td>
+<td>Llama 3.1 70B Instruct</td>
+<td>GPT-4o (paper setup)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>Not a memory system. Oracle 74.4%.</td>
+</tr>
+<tr>
+<td>Best RAG design in the benchmark paper (session values, K=V+fact, Stella V5)</td>
+<td>71.4% (top-5); 70.0% (top-10)</td>
+<td>LongMemEval_M</td>
+<td>GPT-4o</td>
+<td>GPT-4o (official)</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-10</td>
+<td>M has about 500 sessions per history. Round-level K=V+fact at top-10 scores higher, 72.0%.</td>
+</tr>
+<tr>
+<td>Mem0 (platform, temporal reasoning + decay)</td>
+<td>94.4%</td>
+<td>Not stated (top_200 retrieval)</td>
+<td>Not stated</td>
+<td>Not stated</td>
+<td><a href="https://mem0.ai/blog/the-token-efficient-memory-algorithm-now-has-temporal-reasoning">mem0.ai</a></td>
+<td>2026-05-14 (updated 2026-09-28)</td>
+<td>Self-reported. Managed-platform features only.</td>
+</tr>
+<tr>
+<td>Mem0 (algorithm v2)</td>
+<td>93.4 (old algorithm 67.8)</td>
+<td>Not stated</td>
+<td>Not stated ("production-representative model stack")</td>
+<td>Not stated</td>
+<td><a href="https://pypi.org/project/mem0ai/2.0.0/">PyPI mem0ai 2.0.0</a></td>
+<td>2026-04-16</td>
+<td>Self-reported. No variant, judge or question count given.</td>
+</tr>
+<tr>
+<td>Backboard</td>
+<td>91.2% to 93.4% depending on judge (best 467/500)</td>
+<td>Not stated (500 questions)</td>
+<td>Not stated</td>
+<td>Four unnamed judges</td>
+<td><a href="https://backboard.io/blog/backboard-io-becomes-first-ai-platform-to-lead-both-major-memory-benchmarks">backboard.io</a></td>
+<td>2026-02-12</td>
+<td>Self-reported.</td>
+</tr>
+<tr>
+<td>Zep (2026 platform)</td>
+<td>90.2% (451/500)</td>
+<td>Not stated (500 questions, consistent with S)</td>
+<td>gpt-5.4 (reasoning medium)</td>
+<td>gpt-5.4 with chain-of-thought grading</td>
+<td><a href="https://www.getzep.com/research/memory-benchmarks/">getzep.com</a></td>
+<td>2026-11-04</td>
+<td>Self-reported. Reader and judge are stronger than the official protocol.</td>
+</tr>
+<tr>
+<td>MemOS</td>
+<td>89.20</td>
+<td>Not stated</td>
+<td>Not stated</td>
+<td>Not stated (OmniMemEval)</td>
+<td><a href="https://github.com/MemTensor/MemOS">GitHub</a></td>
+<td>2026-07-02</td>
+<td>Self-reported through the vendor's own harness.</td>
+</tr>
+<tr>
+<td>MemReader-4B-GRPO</td>
+<td>83.00%</td>
+<td>Not stated</td>
+<td>GPT-4.1-mini</td>
+<td>GPT-4.1-mini</td>
+<td><a href="https://arxiv.org/pdf/2604.07877">arXiv 2604.07877</a></td>
+<td>2026-04</td>
+<td>From the MemOS team. Baselines appear to be copied from sources with mixed setups.</td>
+</tr>
+<tr>
+<td>GRAVITY re-runs of host systems</td>
+<td>Base: LightMem 68.8, LiCoMemory 57.4, A-Mem 53.8, Mem0 52.6, Zep 48.2. With GRAVITY: 72.6, 66.6, 63.2, 64.0, 60.4</td>
+<td>Not named (500 questions incl. 30 abstention)</td>
+<td>GPT-4o-mini</td>
+<td>GPT-4o-mini</td>
+<td><a href="https://arxiv.org/pdf/2605.01688">arXiv 2605.01688</a></td>
+<td>2026-05 (v2 2026-09)</td>
+<td>Third-party. Cross-model base (Sonnet 4.6 answering, GPT-5.6 sol judging): A-Mem 82.4, LiCoMemory 72.4, LightMem 70.4, Mem0 66.8, Zep 57.6.</td>
+</tr>
+<tr>
+<td>Unified-framework study</td>
+<td>F1, not accuracy, at 72B: MemoryOS 46.04, MemTree 44.25, MemOS 39.88, Mem0g 38.47, Mem0 37.85, MemoryBank 35.79, MemGPT 32.63, A-MEM 31.32</td>
+<td>Not named (500 questions, S-sized)</td>
+<td>Qwen2.5-72B-Instruct (also 7B)</td>
+<td>None (token F1 / BLEU-1)</td>
+<td><a href="https://arxiv.org/html/2604.01707v2">arXiv 2604.01707</a></td>
+<td>2026-05-01</td>
+<td>Token F1, so it cannot be compared with any judged accuracy.</td>
+</tr>
+<tr>
+<td>ChatGPT web memory</td>
+<td>71.13% (GPT-4o-mini); 57.73% (GPT-4o)</td>
+<td>Other: 97-question pilot, 3-6 session histories</td>
+<td>GPT-4o-mini / GPT-4o</td>
+<td>Human annotators</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-08 (evaluation)</td>
+<td>Histories about 10x shorter than S. Offline GPT-4o reading scored 91.84% on the same pilot.</td>
+</tr>
+<tr>
+<td>Coze</td>
+<td>32.99% (GPT-4o); 24.74% (GPT-3.5-turbo)</td>
+<td>Other: 97-question pilot, 3-6 session histories</td>
+<td>GPT-4o / GPT-3.5-turbo</td>
+<td>Human annotators</td>
+<td><a href="https://arxiv.org/html/2410.10813">arXiv 2410.10813</a></td>
+<td>2024-08 (evaluation)</td>
+<td>Same pilot as ChatGPT. Not comparable with S.</td>
+</tr>
+<tr>
+<td>Mem-alpha (Mem-α-4B)</td>
+<td>0.520</td>
+<td>Other: MemoryAgentBench LME(S*), 5 instances x about 60 questions</td>
+<td>Qwen3-32B</td>
+<td>LLM judge, model not named</td>
+<td><a href="https://arxiv.org/html/2509.25911v1">arXiv 2509.25911</a></td>
+<td>2025-09-30</td>
+<td>Reformatted subset with several questions per context. Same table: RAG-Top2 0.581, Long-Context 0.292.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="reading-the-table">Reading the table<a class="headerlink" href="#reading-the-table" title="Permanent link">&para;</a></h2>
+<p>These numbers do not form one leaderboard. The answer model alone moves a single memory system by 10 points or more: Mastra Observational Memory scores 84.23% with gpt-4o and 94.87% with gpt-5-mini, and Hindsight ranges from 83.6% to 91.4%. Judges also differ. The official protocol uses gpt-4o-2024-08-06 with per-type prompts, while other rows use gpt-4o-mini, gpt-4.1-mini, GPT-OSS-120B, Gemini, gpt-5.4, the answering model itself, or a judge they don't name. Mnemon's results show that changing only the grader shifts its score by 1 to 2 points. The way scores are combined also varies: Mastra, SimpleMem and Redis average the six question types without weighting, which gives a different number from per-question accuracy, and one study reports token F1, which cannot be compared with any judged accuracy. Most of the top scores are self-reported by vendors. Shared-protocol re-runs put several of them lower: on OmniMemEval, Zep scores 79.8, Mem0 56.0 and Hindsight 72.2, against self-reported 90.2, 94.4 and 94.6. Part of each gap comes from the weaker common answer model, so it is not all inflation. The dataset variant also matters. The oracle file holds only the evidence sessions and scores much higher (GPT-4o 87.0% on oracle vs 60.6% on S), M is harder, several vendor pages don't say which variant they used, and OmniMemEval uses the cleaned S data released after the 2024 paper results. The ChatGPT/Coze pilot and the Mem-alpha subset use different question sets and histories, so they should not be compared with any S row. The fairest comparisons are within one source that holds the answer model and judge fixed: the Redis table (gpt-4o answering and judging), OmniMemEval (gpt-4.1-mini answering, gpt-4o-mini judging) and EvalMem (gpt-4o-mini answering, gpt-5-mini judging).</p>
+<h2 id="sources-of-shared-protocol-comparisons">Sources of shared-protocol comparisons<a class="headerlink" href="#sources-of-shared-protocol-comparisons" title="Permanent link">&para;</a></h2>
+<p>The fairest comparisons hold the answer model and judge fixed across systems:</p>
+<ul>
+<li><a href="https://redis.io/resources/agent-memory-benchmark-report/">Redis agent memory benchmark</a>: gpt-4o answering and judging.</li>
+<li><a href="https://github.com/MemTensor/OmniMemEval/blob/main/docs/user_memory/results.md">OmniMemEval</a>: gpt-4.1-mini answering, gpt-4o-mini judging, 500 questions.</li>
+<li><a href="https://arxiv.org/pdf/2609.22231">EvalMem</a>: gpt-4o-mini answering, gpt-5-mini judging.</li>
+</ul>
+<p>Research compiled on 2026-11-25.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

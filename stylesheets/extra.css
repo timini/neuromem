@@ -1,0 +1,7 @@
+/* Wider page so architecture diagrams stay legible. */
+.md-grid {
+  max-width: 96rem;
+}
+.mermaid {
+  text-align: center;
+}

@@ -1,0 +1,1664 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Long-term memory for AI agents, with tag-graph and episodic memory models">
+      
+      
+      
+        <link rel="canonical" href="https://timini.github.io/neuromem/episodic-memory/">
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../tag-pipeline/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Episodic memory - neuromem</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#episodic-memory-episodicmemory" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="neuromem" class="md-header__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neuromem
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Episodic memory
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="neuromem" class="md-nav__button md-logo" aria-label="neuromem" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    neuromem
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timini/neuromem" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timini/neuromem
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory models
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Memory models
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-a-second-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why a second model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ingest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dream-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dream cycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dream cycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-dated-memory-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Dated memory summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-whole-memory-embeddings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Whole-memory embeddings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-near-duplicate-merging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Near-duplicate merging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-many-overlapping-clusterings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Many overlapping clusterings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-episode-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Episode summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#answering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tag-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tag-graph memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Benchmarks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison with other systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/RESULTS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run history
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-001-clustering-library-choice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-001 Clustering library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-002-lazy-centroid-naming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-002 Lazy centroid naming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-003-ontology-tree-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-003 Ontology tree v2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-004-hot-path-ingest-split/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-004 Hot-path split
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/ADR-005-episodic-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-005 Episodic memory
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Investigations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Investigations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../investigations/instance3-target-loss/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Instance 3 target loss
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-a-second-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why a second model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ingest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dream-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dream cycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dream cycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-dated-memory-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Dated memory summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-whole-memory-embeddings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Whole-memory embeddings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-near-duplicate-merging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Near-duplicate merging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-many-overlapping-clusterings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Many overlapping clusterings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-episode-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Episode summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrieval
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#answering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="episodic-memory-episodicmemory">Episodic memory (EpisodicMemory)<a class="headerlink" href="#episodic-memory-episodicmemory" title="Permanent link">&para;</a></h1>
+<p><code>EpisodicMemory</code> is the second memory model in <code>neuromem-core</code> (<code>packages/neuromem-core/src/neuromem/episodic.py</code>, <a href="../decisions/ADR-005-episodic-memory/">ADR-005</a>). It runs alongside the tag-graph model and is selected in the benchmark with <code>--agent neuromem-episodic</code>.</p>
+<p>The idea in one paragraph: record every conversation as one memory with its date, embed the whole memory, and cluster the memories hierarchically so the same memories can be grouped in many ways at many levels of abstraction. Each cluster (an <strong>episode</strong>) gets an LLM summary written as a dated history that leads with the current state, so a cluster about "where I keep my sneakers" reads like an episodic memory: what changed, when, and what is true now.</p>
+<h2 id="why-a-second-model">Why a second model<a class="headerlink" href="#why-a-second-model" title="Permanent link">&para;</a></h2>
+<p>A review of the tag-graph model on LongMemEval found that most wrong answers were not retrieval failures. The relevant memory was usually in the prompt. The answer was wrong because:</p>
+<ul>
+<li>no dates reached the system, so "how many days ago" and "what is my current X" could not be answered;</li>
+<li>short, user-centric summaries dropped details the assistant had given;</li>
+<li>the same memory was rendered under several tags, using about a third of the context on duplicates;</li>
+<li>centroid vectors were averages of 1 to 4 word tag labels, which drift towards generic meanings.</li>
+</ul>
+<p>The episodic model removes tags entirely and makes dates first-class.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TD
+    S["Session turns + date + session id"] --&gt; E["enqueue_session(): no LLM calls"]
+    E --&gt; I[("ep_memories, status = inbox")]
+    I --&gt; D1["1. Dated summary per memory (LLM)"]
+    D1 --&gt; D2["2. Embed whole memory (chunk-mean)"]
+    D2 --&gt; D3["3. Merge near-duplicates into units"]
+    D3 --&gt; D4["4. Dendrograms over units, several linkages"]
+    D4 --&gt; D5["5. Episode per internal node, cached by member set"]
+    D5 --&gt; D6["6. Chronological episode summary (LLM) + 2 vectors"]
+    D6 --&gt; R1["Retrieval: score units and episodes against the query"]
+    Q["Query + today's date"] --&gt; R1
+    R1 --&gt; R2["Render: date, episodes, dated memories, transcripts"]</code></pre>
+<h2 id="data-model">Data model<a class="headerlink" href="#data-model" title="Permanent link">&para;</a></h2>
+<p>Storage is a self-contained SQLite database (<code>:memory:</code> by default, or a file path). Two tables:</p>
+<pre class="mermaid"><code>erDiagram
+    ep_memories {
+        TEXT id PK "mem_&lt;12 hex&gt;"
+        TEXT session_id
+        TEXT session_date "as given, e.g. 2023/05/20 (Sat) 02:21"
+        REAL sort_key "epoch seconds; undated = 1e12 + insertion order"
+        TEXT raw_content "full transcript, role: text per turn"
+        TEXT summary "dated LLM summary"
+        BLOB embedding "float32, L2-normalised"
+        TEXT merged_into "canonical memory id if merged, else NULL"
+        TEXT unit_summary "merged summary, on the canonical row only"
+        TEXT unit_key "hash of the member set unit_summary was built from"
+        TEXT status "inbox | consolidated"
+        TEXT metadata "JSON"
+    }
+    ep_episodes {
+        TEXT id PK "ep_&lt;12 hex&gt;"
+        TEXT member_key UK "sha1 of sorted member memory ids"
+        TEXT member_ids "JSON list of unit ids, date order"
+        TEXT first_date
+        TEXT last_date
+        TEXT summary "TOPIC / CURRENT / HISTORY"
+        BLOB summary_embedding "embedding of the summary text"
+        BLOB mean_embedding "normalised mean of member embeddings"
+        INTEGER active "1 if produced by the latest dream"
+    }
+    ep_memories ||--o{ ep_memories : "merged_into"
+    ep_episodes }o--o{ ep_memories : "member_ids"</code></pre>
+<p>A <strong>unit</strong> is the thing that gets clustered: a canonical memory plus any near-duplicates merged into it. Most units contain one memory.</p>
+<h2 id="ingest">Ingest<a class="headerlink" href="#ingest" title="Permanent link">&para;</a></h2>
+<p><code>enqueue_session(turns, timestamp=None, session_id=None, metadata=None)</code> joins the turns as <code>role: text</code> paragraphs and stores one row in the inbox. It makes no LLM or embedding call, so it is safe on a request path.</p>
+<p>Dates are parsed from the formats used by chat logs and LongMemEval (<code>2023/05/20 (Sat) 02:21</code>, ISO 8601 and a few others). The parsed time becomes <code>sort_key</code>. Undated memories sort after all dated ones, in insertion order.</p>
+<h2 id="dream-cycle">Dream cycle<a class="headerlink" href="#dream-cycle" title="Permanent link">&para;</a></h2>
+<p><code>dream()</code> runs the whole consolidation synchronously under a lock. If any step raises, the database transaction is rolled back so the next cycle starts from a clean state. A failed or empty LLM call does not abort the cycle: that one summary falls back to the raw records (or the transcript head for memory summaries) and a warning is logged.</p>
+<h3 id="1-dated-memory-summaries">1. Dated memory summaries<a class="headerlink" href="#1-dated-memory-summaries" title="Permanent link">&para;</a></h3>
+<p>Each new memory is summarised with one LLM call (<code>MEMORY_SUMMARY_PROMPT</code>), in parallel across <code>workers</code> threads. The prompt gets the session date and must:</p>
+<ul>
+<li>start with "On YYYY-MM-DD (Day),";</li>
+<li>convert every relative time expression into an absolute date, keeping the original phrase in brackets ("on 2023-05-13 (last Saturday)");</li>
+<li>keep every personal fact: possessions, purchases, places, people, amounts, counts, durations, preferences, plans and changes of mind;</li>
+<li>state changed values explicitly ("The user now keeps X in Y");</li>
+<li>keep the concrete specifics the assistant gave: names, numbers, list items with their numbers, steps, moves;</li>
+<li>run 3 to 10 sentences depending on content.</li>
+</ul>
+<h3 id="2-whole-memory-embeddings">2. Whole-memory embeddings<a class="headerlink" href="#2-whole-memory-embeddings" title="Permanent link">&para;</a></h3>
+<p>Each memory is embedded as:</p>
+<div class="highlight"><pre><span></span><code>Date: 2023-05-20 (Sat)
+Summary: &lt;dated summary&gt;
+
+Transcript:
+&lt;full transcript&gt;
+</code></pre></div>
+<p>Embedding APIs silently truncate long input: both <code>gemini-embedding-001</code> and <code>gemini-embedding-2</code> accept a 40,000-character input without an error. So any text longer than <code>embed_chunk_chars</code> (24,000 characters, about 6,000 tokens) is split into chunks. Each chunk carries the same date and summary header, the chunk vectors are L2-normalised and averaged, and the average is normalised again. The default embedder is <code>gemini-embedding-2</code>, which takes about 8,000 tokens per input.</p>
+<p><code>gemini-embedding-2</code> is multimodal: given a plain list of strings it returns one embedding for the whole list. <code>GeminiEmbeddingProvider</code> therefore wraps each text in its own <code>Content</code> so it gets one vector per text from every model.</p>
+<h3 id="3-near-duplicate-merging">3. Near-duplicate merging<a class="headerlink" href="#3-near-duplicate-merging" title="Permanent link">&para;</a></h3>
+<p>Memories whose embeddings have cosine similarity at or above <code>merge_threshold</code> (0.97) are merged. Pairs above the threshold are joined with union-find, so merging is transitive. The earliest memory in each group becomes the canonical id, and the others get <code>merged_into</code> set.</p>
+<p>A merged unit gets one LLM summary (<code>MERGE_PROMPT</code>) that keeps every fact and date, orders events by date, and states the latest value first where values changed. The summary is rebuilt whenever the unit's member set changes, which is detected by comparing <code>unit_key</code> with a hash of the current member ids.</p>
+<p>In the rendered context a merged unit appears once, with all its dates, for example <code>[2023-01-01 (Sun), 2023-02-01 (Wed)] mem_…</code>.</p>
+<h3 id="4-many-overlapping-clusterings">4. Many overlapping clusterings<a class="headerlink" href="#4-many-overlapping-clusterings" title="Permanent link">&para;</a></h3>
+<p>For each linkage method in <code>linkages</code> (default <code>average</code> and <code>ward</code>), scipy builds the full agglomerative dendrogram over the unit embeddings:</p>
+<ul>
+<li><code>average</code>, <code>complete</code>, <code>single</code> and <code>weighted</code> use cosine distance on L2-normalised vectors;</li>
+<li><code>ward</code> uses Euclidean distance on the same normalised vectors, which ranks the same as cosine distance.</li>
+</ul>
+<p>Every internal node of every dendrogram becomes a candidate episode. Identical member sets from different linkages are kept once. Sets larger than <code>max_episode_size</code> (30) are skipped, because a summary of 30+ sessions turns generic and the prompt gets slow.</p>
+<p>With N units and two linkages there are up to 2(N - 1) episodes. A memory belongs to one episode per dendrogram level above it, so it sits in many episodes at different granularities. The two linkages disagree in useful ways: average linkage tends to chain related topics together, while Ward produces compact, balanced groups.</p>
+<pre class="mermaid"><code>graph TD
+    subgraph average["average linkage"]
+        A1["ep: sneakers + shoe rack"] --&gt; m1["mem 2023-01-02: sneakers under bed"]
+        A1 --&gt; m2["mem 2023-03-04: moved sneakers to rack"]
+        A2["ep: home organisation"] --&gt; A1
+        A2 --&gt; m3["mem 2023-02-10: closet clear-out"]
+    end
+    subgraph ward["ward linkage"]
+        W1["ep: closet + sneakers"] --&gt; w3["mem 2023-02-10"]
+        W1 --&gt; w2["mem 2023-03-04"]
+        W2["ep: home organisation"] --&gt; W1
+        W2 --&gt; w1["mem 2023-01-02"]
+    end</code></pre>
+<p>In this example "home organisation" has the same member set in both trees, so it is stored once; the two lower episodes differ and both are kept.</p>
+<h3 id="5-episode-summaries">5. Episode summaries<a class="headerlink" href="#5-episode-summaries" title="Permanent link">&para;</a></h3>
+<p>Each new episode is summarised from its members' summaries, oldest first, each prefixed with its dates (<code>EPISODE_PROMPT</code>). The output format is fixed:</p>
+<div class="highlight"><pre><span></span><code>TOPIC: Where the user keeps their old sneakers
+CURRENT: As of 2023-03-04 the user keeps their old sneakers on the shoe rack by
+the front door; before that (2023-01-02) they were in a box under the bed.
+HISTORY:
+- 2023-01-02: Keeps old sneakers in a box under the bed.
+- 2023-02-10: Cleared out the closet, donated two pairs of boots.
+- 2023-03-04: Moved the sneakers to the new shoe rack by the front door.
+</code></pre></div>
+<p>The prompt also tells the model to name each distinct item when several of the same kind appear, which helps counting questions.</p>
+<p>Episodes are cached by <code>member_key</code>, a hash of the sorted member <strong>memory</strong> ids (not unit ids). A later dream cycle that produces the same set reactivates the stored episode without an LLM call. A set that changed, including a unit that gained a merged memory, gets a new summary.</p>
+<p>Each episode stores two vectors:</p>
+<table>
+<thead>
+<tr>
+<th>Vector</th>
+<th>What it is</th>
+<th>Good for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>summary_embedding</code></td>
+<td>Embedding of the episode summary text</td>
+<td>Matching the query against the words the answering model will read</td>
+</tr>
+<tr>
+<td><code>mean_embedding</code></td>
+<td>Normalised mean of the member memory embeddings</td>
+<td>Pure geometry, no dependence on summary quality</td>
+</tr>
+</tbody>
+</table>
+<p>Summing member vectors instead of averaging them gives a vector with the same direction, so it ranks identically under cosine similarity and is not offered as a separate option.</p>
+<h2 id="retrieval">Retrieval<a class="headerlink" href="#retrieval" title="Permanent link">&para;</a></h2>
+<p><code>build_context(query, today=None, ...)</code> makes one embedding call and no LLM calls.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant A as Agent
+    participant M as EpisodicMemory
+    participant E as Embedder
+    A-&gt;&gt;M: build_context(question, today=question_date)
+    M-&gt;&gt;E: embed(question)
+    E--&gt;&gt;M: q
+    M-&gt;&gt;M: score every unit: cos(q, unit vector)
+    M-&gt;&gt;M: score every active episode: cos(q, summary or mean vector)
+    M-&gt;&gt;M: take top episodes, skipping overlap &gt; 0.8 Jaccard
+    M-&gt;&gt;M: take top units, sort chosen units by date
+    M--&gt;&gt;A: text + memory, session and episode ids</code></pre>
+<p>Scoring:</p>
+<ul>
+<li><strong>Units</strong> are ranked by cosine similarity between the query and the unit vector (the normalised mean of its members). The top <code>top_memories</code> (12) are kept.</li>
+<li><strong>Episodes</strong> are ranked by <code>episode_embedding</code>: <code>"summary"</code> (default), <code>"mean"</code> or <code>"max"</code> (the better of the two). Walking down the ranking, an episode is skipped if its member set overlaps an already chosen one by more than <code>max_episode_overlap</code> (0.8, Jaccard), so the context does not fill with near-identical parent and child episodes. The top <code>top_episodes</code> (6) are kept.</li>
+</ul>
+<p>The rendered context has four parts:</p>
+<div class="highlight"><pre><span></span><code>Today's date: 2023-05-30 (Tue)
+
+## Episodes
+### Episode ep_… (3 memories: 2023-01-02 (Mon), 2023-02-10 (Fri), 2023-03-04 (Sat))
+TOPIC: …
+CURRENT: …
+HISTORY: …
+
+## Memories
+The most relevant individual memories, oldest first.
+[2023-01-02 (Mon)] mem_…: On 2023-01-02 (Mon), the user …
+[2023-03-04 (Sat)] mem_…: On 2023-03-04 (Sat), the user …
+
+## Transcripts
+### mem_… (2023-03-04 (Sat))
+user: …
+assistant: …
+</code></pre></div>
+<p>The transcripts section holds the full text of the <code>raw_memories</code> (3) closest units, each capped at <code>raw_chars</code> (12,000 characters). It is there for questions about exact details, especially what the assistant said.</p>
+<p>The result also lists the memory ids, session ids and episode ids used, which the benchmark uses to compute evidence recall.</p>
+<h2 id="answering">Answering<a class="headerlink" href="#answering" title="Permanent link">&para;</a></h2>
+<p>The benchmark agent (<code>NeuromemEpisodicAgent</code>) puts the context into <code>episodic_answer.prompt</code> with these rules:</p>
+<ul>
+<li>compute elapsed time from the memory dates to today's date (the question date), not the real current date;</li>
+<li>the most recent dated statement of a changed fact is the current one;</li>
+<li>for "how many" questions, list each distinct item with its date, remove duplicates, then count, and do not count the subject of the question;</li>
+<li>quote exact details from the transcripts for questions about what the assistant said;</li>
+<li>say so when the memory does not contain the answer or contradicts the question's premise.</li>
+</ul>
+<h2 id="defaults">Defaults<a class="headerlink" href="#defaults" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>linkages</code></td>
+<td><code>("average", "ward")</code></td>
+<td><code>EpisodicMemory</code></td>
+</tr>
+<tr>
+<td><code>merge_threshold</code></td>
+<td>0.97 cosine</td>
+<td><code>EpisodicMemory</code></td>
+</tr>
+<tr>
+<td><code>max_episode_size</code></td>
+<td>30 units</td>
+<td><code>EpisodicMemory</code></td>
+</tr>
+<tr>
+<td><code>embed_chunk_chars</code></td>
+<td>24,000 characters</td>
+<td><code>EpisodicMemory</code></td>
+</tr>
+<tr>
+<td><code>workers</code></td>
+<td>16 threads (agent uses 24)</td>
+<td><code>EpisodicMemory</code></td>
+</tr>
+<tr>
+<td><code>top_memories</code></td>
+<td>12</td>
+<td><code>build_context</code></td>
+</tr>
+<tr>
+<td><code>top_episodes</code></td>
+<td>6</td>
+<td><code>build_context</code></td>
+</tr>
+<tr>
+<td><code>raw_memories</code> / <code>raw_chars</code></td>
+<td>3 / 12,000</td>
+<td><code>build_context</code></td>
+</tr>
+<tr>
+<td><code>episode_embedding</code></td>
+<td><code>"summary"</code></td>
+<td><code>build_context</code></td>
+</tr>
+<tr>
+<td><code>max_episode_overlap</code></td>
+<td>0.8 Jaccard</td>
+<td><code>build_context</code></td>
+</tr>
+<tr>
+<td>LLM</td>
+<td><code>gemini-3.8-flash</code></td>
+<td><code>NeuromemEpisodicAgent</code></td>
+</tr>
+<tr>
+<td>Embedder</td>
+<td><code>gemini-embedding-2</code></td>
+<td><code>NeuromemEpisodicAgent</code></td>
+</tr>
+<tr>
+<td>Request timeout</td>
+<td>180 s</td>
+<td><code>NeuromemEpisodicAgent</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="cost">Cost<a class="headerlink" href="#cost" title="Permanent link">&para;</a></h2>
+<p>Per dream cycle with N new memories:</p>
+<ul>
+<li>N memory-summary calls;</li>
+<li>one merge call per merged unit whose membership changed (rare);</li>
+<li>one episode call per new member set, up to <code>len(linkages) × (N − 1)</code> on the first cycle (about 60 to 75 for a 50-session LongMemEval instance after de-duplication and the size cap);</li>
+<li>one or two batched embedding calls.</li>
+</ul>
+<p>Retrieval costs one embedding call. On LongMemEval_S instances (about 50 sessions each) the first dream cycle took 400 to 600 seconds with 8 workers on <code>gemini-3-flash-preview</code>; the worker count was raised to 24 for the full benchmark.</p>
+<h2 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h2>
+<p><strong>Chunks or sessions as the unit.</strong> A memory is currently a whole session. Embedding a whole session averages over everything said in it, so a brief aside (where the user keeps their sneakers, mentioned during a recipe chat) has little weight in the vector. Splitting sessions into chunks before clustering would let that aside cluster with other sneaker mentions. It would also multiply the number of units and episodes by roughly ten. A cheaper middle ground is to keep sessions as the memory but store one vector per chunk and score a memory by its best chunk. Evidence recall from the benchmark (the share of answer sessions that reached the prompt) decides whether either is needed.</p>
+<p><strong>Incremental cost.</strong> Every dream cycle rebuilds the dendrograms from scratch. Episode summaries are cached by member set, but adding one memory changes the member set of every ancestor in the tree, so each new memory triggers about log N to N new episode summaries.</p>
+<p><strong>Storage contract.</strong> The model uses its own SQLite tables, not the <code>StorageAdapter</code> contract. Adopting it as the main model would need memory embeddings and episode records in that contract.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
